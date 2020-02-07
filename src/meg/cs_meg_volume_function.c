@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -58,18 +58,18 @@ BEGIN_C_DECLS
  * \brief This function is used to compute user defined values for fields over a
  *        given volume zone
  *
+ * \param[in]       zone        pointer to cs_zone_t structure related to a volume
  * \param[in, out]  f[]         array of pointers to cs_field_t
- * \param[in]       vz          pointer to cs_zone_t structure related to a volume
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_meg_volume_function(cs_field_t       *f[],
-                       const cs_zone_t  *vz)
+cs_meg_volume_function(const cs_zone_t  *zone,
+                       cs_field_t       *f[])
 {
 
+  CS_UNUSED(zone);
   CS_UNUSED(f);
-  CS_UNUSED(vz);
 
 }
 

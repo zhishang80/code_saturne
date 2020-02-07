@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -50,7 +50,7 @@ BEGIN_C_DECLS
 
 #define CS_F_(e) cs_glob_field_pointers[CS_FIELD_POINTER_ ## e].f
 
-#define CS_FI_(e, i) cs_glob_field_pointers[CS_FIELD_POINTER_ ## e].a->p[i]
+#define CS_FI_(e, i) cs_glob_field_pointers[CS_FIELD_POINTER_ ## e].p[i]
 
 /*============================================================================
  * Type definitions
@@ -254,15 +254,8 @@ typedef enum {
 /*! Field pointer array type */
 
 struct cs_field_pointer_array_t {
-  int           n;    /*!< number of elements */
-  cs_field_t  *p[];   /*!< array of field pointers */
-};
-
-/*! Field pointer value or array type */
-
-union cs_field_pointer_val_t {
-  cs_field_t                        *f;    /*!< pointer to single field */
-  struct cs_field_pointer_array_t   *a;    /*!< pointer to array of fields */
+  cs_field_t   *f;   /*!< pointer to single (first) field */
+  cs_field_t  **p;   /*!< array of field pointers */
 };
 
 /*============================================================================
@@ -271,7 +264,7 @@ union cs_field_pointer_val_t {
 
 /* Pointers */
 
-extern union cs_field_pointer_val_t  *cs_glob_field_pointers;
+extern struct cs_field_pointer_array_t  *cs_glob_field_pointers;
 
 /*=============================================================================
  * Public function prototypes

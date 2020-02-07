@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -205,13 +205,11 @@ void CS_PROCF (uinum1, UINUM1) (double *cdtvar);
  * *****************
  *
  * INTEGER          RELAXP  -->   pressure relaxation
- * INTEGER          EXTRAG  -->   wall pressure extrapolation
  * INTEGER          IMRGRA  -->   gradient reconstruction
  *----------------------------------------------------------------------------*/
 
-void CS_PROCF (csnum2, CSNUM2) (double *relaxp,
-                                double *extrag,
-                                   int *imrgra);
+void CS_PROCF (csnum2, CSNUM2) (double  *relaxp,
+                                int     *imrgra);
 
 void CS_PROCF (csphys, CSPHYS) (
                                 double       *viscv0,
@@ -481,6 +479,13 @@ cs_gui_parallel_io(void);
 void
 cs_gui_partition(void);
 
+/*-----------------------------------------------------------------------------
+ * Set MPI related algorithm options
+ *----------------------------------------------------------------------------*/
+
+void
+cs_gui_mpi_algorithms(void);
+
 /*----------------------------------------------------------------------------
  * Determine porosity model type
  *----------------------------------------------------------------------------*/
@@ -508,6 +513,20 @@ cs_gui_properties_value(const char  *property_name,
                         double      *value);
 
 /*-----------------------------------------------------------------------------
+ * Get value of property markup for fluid of given id
+ *
+ * parameters:
+ *   fluid_id           <--   fluid index
+ *   property_name      <--   name of the property
+ *   value              -->   new initial value of the property
+ *----------------------------------------------------------------------------*/
+
+void
+cs_gui_properties_value_by_fluid_id(const int    fluid_id,
+                                    const char  *property_name,
+                                    double      *value);
+
+/*-----------------------------------------------------------------------------
  * Get value of reference fluid properties parameter.
  *
  * parameters:
@@ -523,7 +542,7 @@ cs_gui_fluid_properties_value(const char  *param,
  * Get thermal scalar model.
  *
  * return:
- *   value of itherm
+ *   value of itherm*10 + (temperature variant flag), or -1 if not defined
  *----------------------------------------------------------------------------*/
 
 int

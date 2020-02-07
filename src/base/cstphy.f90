@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -54,8 +54,13 @@ module cstphy
   parameter(stephn = 5.6703d-8)
 
   !> Perfect gas constant for air (mixture)
-  double precision :: rair
-  parameter(rair = 287.d0)
+  real(c_double), pointer, save :: rair
+
+  !> ratio gaz constant h2o/ dry air
+  real(c_double), pointer, save :: rvsra
+
+  !> latent heat of evaporation
+  real(c_double), pointer, save :: clatev
 
   !> Boltzmann constant (\f$J.K^{-1}\f$)
   double precision kboltz
@@ -374,12 +379,13 @@ module cstphy
   !> constant \f$C_1\f$ for the \f$R_{ij}-\varepsilon\f$ LRR model.
   !> Useful if and only if \ref iturb=30
   !> (\f$R_{ij}-\varepsilon\f$ LRR)
-  double precision, save :: crij1
+  real(c_double), pointer, save :: crij1
+
 
   !> constant \f$C_2\f$ for the \f$R_{ij}-\varepsilon\f$ LRR model.
   !> Useful if and only if \ref iturb=30
   !> (\f$R_{ij}-\varepsilon\f$ LRR)
-  double precision, save :: crij2
+  real(c_double), pointer, save :: crij2
 
   !> constant \f$C_3\f$ for the buoyant production term \f$R_{ij}-\varepsilon\f$
   !>  models.
@@ -524,9 +530,17 @@ module cstphy
   !> Useful if and only if \ref iturb=60 (\f$k-\omega\f$ SST)
   double precision, save :: ckwbt2
 
-  !> constant \f$ C_{DDES}\f$ for the \f$k-\omega\f$ SST model.
-  !> Useful if and only if \ref iturb=60 (\f$k-\omega\f$ SST) and iddes=1
+  !> constant \f$ C_{DDES}\f$ for the hybrid \f$k-\omega\f$ SST model.
+  !> Useful if and only if \ref iturb=60 (\f$k-\omega\f$ SST) and hybrid_turb=1
   double precision, save :: cddes
+
+  !> constant \f$ C_{SAS}\f$ for the hybrid \f$k-\omega\f$ SST model.
+  !> Useful if and only if \ref iturb=60 (\f$k-\omega\f$ SST) and hybrid_turb=3
+  double precision, save :: csas
+
+  !> constant \f$ C_{DDES}\f$ for the hybrid \f$k-\omega\f$ SST model.
+  !> Useful if and only if \ref iturb=60 (\f$k-\omega\f$ SST) and hybrid_turb=3
+  double precision, save :: csas_eta2
 
   !> \f$\frac{\beta_1}{C_\mu}-\frac{\kappa^2}{\sqrt{C_\mu}\sigma_{\omega 1}}\f$
   !> constant \f$\gamma_1\f$ for the \f$k-\omega\f$ SST model.
@@ -804,6 +818,9 @@ module cstphy
                                                   t0,      &
                                                   cp0,     &
                                                   cv0,     &
+                                                  rair,    &
+                                                  rvsra,   &
+                                                  clatev,  &
                                                   xmasmr,  &
                                                   ipthrm,  &
                                                   pther,   &
@@ -817,7 +834,7 @@ module cstphy
       implicit none
       type(c_ptr), intent(out) :: ixyzp0, icp, icv, irovar, ivivar, ivsuth
       type(c_ptr), intent(out) :: ro0, viscl0, p0, pred0
-      type(c_ptr), intent(out) :: xyzp0, t0, cp0, cv0, xmasmr
+      type(c_ptr), intent(out) :: xyzp0, t0, cp0, cv0, rair, rvsra, clatev, xmasmr
       type(c_ptr), intent(out) :: ipthrm
       type(c_ptr), intent(out) :: pther, pthera, pthermax
       type(c_ptr), intent(out) :: sleak, kleak, roref
@@ -858,11 +875,11 @@ module cstphy
     ! Interface to C function retrieving pointers to constants of the
     ! turbulence model
 
-    subroutine cs_f_turb_model_constants_get_pointers(sigmae, cmu, cmu025) &
+    subroutine cs_f_turb_model_constants_get_pointers(sigmae, cmu, cmu025, crij1, crij2) &
       bind(C, name='cs_f_turb_model_constants_get_pointers')
       use, intrinsic :: iso_c_binding
       implicit none
-      type(c_ptr), intent(out) :: sigmae , cmu  , cmu025
+      type(c_ptr), intent(out) :: sigmae , cmu  , cmu025 , crij1 , crij2
     end subroutine cs_f_turb_model_constants_get_pointers
 
     !---------------------------------------------------------------------------
@@ -912,7 +929,7 @@ contains
 
     type(c_ptr) :: c_ixyzp0, c_icp, c_icv, c_irovar, c_ivivar
     type(c_ptr) :: c_ivsuth, c_ro0, c_viscl0, c_p0
-    type(c_ptr) :: c_pred0, c_xyzp0, c_t0, c_cp0, c_cv0, c_xmasmr
+    type(c_ptr) :: c_pred0, c_xyzp0, c_t0, c_cp0, c_cv0,c_rair,c_rvsra,c_clatev, c_xmasmr
     type(c_ptr) :: c_ipthrm
     type(c_ptr) :: c_pther, c_pthera, c_pthermax
     type(c_ptr) :: c_sleak, c_kleak, c_roref
@@ -921,6 +938,7 @@ contains
                                             c_irovar, c_ivivar, c_ivsuth,   &
                                             c_ro0, c_viscl0, c_p0, c_pred0, &
                                             c_xyzp0, c_t0, c_cp0, c_cv0,    &
+                                            c_rair,c_rvsra,c_clatev,        &
                                             c_xmasmr,                       &
                                             c_ipthrm, c_pther, c_pthera,    &
                                             c_pthermax, c_sleak, c_kleak,   &
@@ -941,6 +959,9 @@ contains
     call c_f_pointer(c_t0, t0)
     call c_f_pointer(c_cp0, cp0)
     call c_f_pointer(c_cv0, cv0)
+    call c_f_pointer(c_rair, rair)
+    call c_f_pointer(c_rvsra, rvsra)
+    call c_f_pointer(c_clatev, clatev)
     call c_f_pointer(c_xmasmr, xmasmr)
     call c_f_pointer(c_ipthrm, ipthrm)
     call c_f_pointer(c_pther, pther)
@@ -982,13 +1003,15 @@ contains
 
     ! Local variables
 
-    type(c_ptr) :: c_sigmae, c_cmu, c_cmu025
+    type(c_ptr) :: c_sigmae, c_cmu, c_cmu025, c_crij1, c_crij2
 
-    call cs_f_turb_model_constants_get_pointers(c_sigmae, c_cmu, c_cmu025)
+    call cs_f_turb_model_constants_get_pointers(c_sigmae, c_cmu, c_cmu025, c_crij1, c_crij2)
 
     call c_f_pointer(c_sigmae , sigmae)
     call c_f_pointer(c_cmu    , cmu   )
     call c_f_pointer(c_cmu025 , cmu025)
+    call c_f_pointer(c_crij1 , crij1)
+    call c_f_pointer(c_crij2 , crij2)
 
   end subroutine turb_model_constants_init
 

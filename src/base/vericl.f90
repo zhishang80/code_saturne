@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -100,7 +100,7 @@ implicit none
 
 ! Arguments
 
-integer          nvar   , nscal
+integer          nvar, nscal
 
 integer          itypfb(nfabor)
 integer          icodcl(nfabor,nvar)
@@ -112,8 +112,8 @@ double precision rcodcl(nfabor,nvar,3)
 character(len=80) :: chaine
 
 double precision grav2
-integer          ifac, ivar, icode, f_dim
-integer          nstoni        , nstvit, nstopp
+integer          ifac, ivar, icode, f_dim, f_type
+integer          nstoni, nstvit, nstopp
 integer          nstoke, nstosc, nstovf
 integer          nstuvw, nstoup, nstuke
 integer          nstrij, nsurij, nstov2
@@ -170,7 +170,7 @@ enddo
 !  donne, pour l'instant, les contraintes suivantes :
 
 !   - meme type de c.l pour les 3 composantes de vitesse
-!   - pas de conditions de frottemt sur la pression
+!   - pas de conditions de frottement sur la pression
 !   - coherence entre les c.l vitesses et pression
 !   - coherence entre les c.l vitesses et turbulence
 
@@ -200,28 +200,40 @@ nstonu = 0
 ! --- Premiere boucle rapide
 iokcod = 0
 do ivar = 1, nvar
-  do ifac = 1, nfabor
-    icode = icodcl(ifac,ivar)
-    if(icode.eq. 0) then
-      iokcod = 1
-    endif
-  enddo
+  call field_get_type(ivarfl(ivar), f_type)
+  ! Is this field not managed by CDO?
+  if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
+
+    do ifac = 1, nfabor
+      icode = icodcl(ifac,ivar)
+      if(icode.eq. 0) then
+        iokcod = 1
+      endif
+    enddo
+
+  endif ! CDO ?
 enddo
 
 ! --- Seconde boucle lente si pb plus haut
 if (iokcod.ne.0) then
   do ivar = 1, nvar
-    do ifac = 1, nfabor
-      icode = icodcl(ifac,ivar)
-      if(icode.eq. 0) then
-        if (itypfb(ifac).gt.0) then
-          itypfb(ifac) = -itypfb(ifac)
+    call field_get_type(ivarfl(ivar), f_type)
+    ! Is this field not managed by CDO?
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
+
+      do ifac = 1, nfabor
+        icode = icodcl(ifac,ivar)
+        if(icode.eq. 0) then
+          if (itypfb(ifac).gt.0) then
+            itypfb(ifac) = -itypfb(ifac)
+          endif
+          icodni(1) = ivar
+          icodni(2) = ifac
+          nstoni = nstoni + 1
         endif
-        icodni(1) = ivar
-        icodni(2) = ifac
-        nstoni = nstoni + 1
-      endif
-    enddo
+      enddo
+
+    endif ! CDO ?
   enddo
 endif
 
@@ -291,7 +303,8 @@ do ifac = 1, nfabor
 
   if (icodcl(ifac,ipr).ne.1 .and. icodcl(ifac,ipr).ne.2 .and.     &
       icodcl(ifac,ipr).ne.3 .and. icodcl(ifac,ipr).ne.11.and.     &
-      icodcl(ifac,ipr).ne.13) then
+      icodcl(ifac,ipr).ne.12.and. icodcl(ifac,ipr).ne.13.and.     &
+      icodcl(ifac,ipr).ne.15) then
     if (itypfb(ifac).gt.0) then
       itypfb(ifac) = -itypfb(ifac)
     endif
@@ -1670,7 +1683,7 @@ endif
 '@ @@ WARNING: ABORT DURING THE BOUNDARY CONDITIONS CHECK     ',/,&
 '@    ========                                                ',/,&
 '@                                                            ',/,&
-'@         Unexpeted boundary conditions:                     ',/,&
+'@         Unexpected boundary conditions:                    ',/,&
 '@             on the velocity                      : ',I10    ,/,&
 '@             on the pressure                      : ',I10    ,/,&
 '@             on k and epsilon                     : ',I10    ,/,&

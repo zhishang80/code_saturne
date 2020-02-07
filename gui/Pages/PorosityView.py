@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -140,7 +140,7 @@ class PorosityView(QWidget, Ui_PorosityForm):
         self.treeView.setModel(self.modelPorosity)
 
         # Combo model
-        if self.case['package'].name == 'code_saturne':
+        if self.case.module_name() == 'code_saturne':
             self.modelPorosityType = ComboModel(self.comboBoxType, 2, 1)
             self.modelPorosityType.addItem(self.tr("isotropic"), 'isotropic')
             self.modelPorosityType.addItem(self.tr("anisotropic"), 'anisotropic')

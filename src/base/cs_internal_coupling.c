@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -164,19 +164,14 @@ _compute_ani_weighting_cocg(const cs_real_t  wi[],
   for (int ii = 0; ii < 6; ii++)
     sum[ii] = a*wi[ii] + (1. - a)*wj[ii];
 
-  cs_math_sym_33_inv_cramer(wj,
-                            inv_wj);
+  cs_math_sym_33_inv_cramer(wj, inv_wj);
 
   /* Note: K_i.K_f^-1 = SUM.K_j^-1
    *       K_j.K_f^-1 = SUM.K_i^-1
    * So: K_i d = SUM.K_j^-1.IJ */
 
-  cs_math_sym_33_3_product(inv_wj,
-                           d,
-                           _d);
-  cs_math_sym_33_3_product(sum,
-                           _d,
-                           ki_d);
+  cs_math_sym_33_3_product(inv_wj, d, _d);
+  cs_math_sym_33_3_product(sum, _d, ki_d);
 }
 
 /*----------------------------------------------------------------------------
@@ -208,15 +203,10 @@ _compute_ani_weighting(const cs_real_t  wi[],
   for (ii = 0; ii < 6; ii++)
     sum[ii] = a*wi[ii] + (1. - a)*wj[ii];
 
-  cs_math_sym_33_inv_cramer(wj,
-                            inv_wj);
+  cs_math_sym_33_inv_cramer(wj, inv_wj);
 
-  cs_math_sym_33_3_product(inv_wj,
-                           d,
-                           _d);
-  cs_math_sym_33_3_product(sum,
-                           _d,
-                           ki_d);
+  cs_math_sym_33_3_product(inv_wj, d, _d);
+  cs_math_sym_33_3_product(sum, _d, ki_d);
 
   /* 1 / ||Ki. K_f^-1. IJ||^2 */
   cs_real_t normi = 1. / cs_math_3_dot_product(ki_d, ki_d);
@@ -348,8 +338,6 @@ _destroy_entity(cs_internal_coupling_t  *cpl)
   BFT_FREE(cpl->ci_cj_vect);
   BFT_FREE(cpl->offset_vect);
   BFT_FREE(cpl->coupled_faces);
-  BFT_FREE(cpl->cocgb_s_lsq);
-  BFT_FREE(cpl->cocg_it);
   BFT_FREE(cpl->cells_criteria);
   BFT_FREE(cpl->faces_criteria);
   BFT_FREE(cpl->namesca);
@@ -619,18 +607,9 @@ _cpl_initialize(cs_internal_coupling_t *cpl)
 
   cpl->coupled_faces = NULL;
 
-  /* cpl->h_int = NULL; */
-  /* cpl->h_ext = NULL; */
-
   cpl->g_weight = NULL;
   cpl->ci_cj_vect = NULL;
   cpl->offset_vect = NULL;
-
-  /* cpl->thetav = 0; */
-  /* cpl->idiff = 0; */
-
-  cpl->cocgb_s_lsq = NULL;
-  cpl->cocg_it = NULL;
 
   cpl->namesca = NULL;
 }
@@ -659,6 +638,27 @@ _criteria_initialize(const char               criteria_cells[],
 }
 
 /*----------------------------------------------------------------------------
+ * Define face to face mappings for internal couplings.
+ *
+ * parameters:
+ *   cpl          <->  pointer to internal coupling structure
+ *   coupling_id  <--  associated coupling id
+ *----------------------------------------------------------------------------*/
+
+static void
+_auto_group_name(cs_internal_coupling_t  *cpl,
+                 int                      coupling_id)
+{
+  char group_name[64];
+  snprintf(group_name, 63, "auto:internal_coupling_%d", coupling_id);
+  group_name[63] = '\0';
+  BFT_REALLOC(cpl->faces_criteria,
+              strlen(group_name)+1,
+              char);
+  strcpy(cpl->faces_criteria, group_name);
+}
+
+/*----------------------------------------------------------------------------
  * Initialize internal coupling and insert boundaries
  * using cell selection criteria ONLY.
  *
@@ -683,26 +683,16 @@ _volume_initialize_insert_boundary(cs_mesh_t               *m,
                             &n_selected_cells,
                             selected_cells);
 
-  int coupling_id = _n_internal_couplings;
+  int coupling_id = _n_internal_couplings - 1;
 
-  char group_name[64];
-
-  snprintf(group_name, 63, "auto:internal_coupling_%d", coupling_id);
-  group_name[63] = '\0';
+  _auto_group_name(cpl, coupling_id);
 
   cs_mesh_boundary_insert_separating_cells(m,
-                                           group_name,
+                                           cpl->faces_criteria,
                                            n_selected_cells,
                                            selected_cells);
 
   BFT_FREE(selected_cells);
-
-  /* Save new boundary group name */
-  BFT_MALLOC(cpl->faces_criteria,
-             strlen(group_name)+1,
-             char);
-
-  strcpy(cpl->faces_criteria, group_name);
 }
 
 /*----------------------------------------------------------------------------
@@ -867,9 +857,6 @@ _locator_initialize(cs_mesh_t               *m,
   _compute_ci_cj_vect(cpl);
 
   BFT_MALLOC(cpl->coupled_faces, m->n_b_faces, bool);
-
-  cpl->cocgb_s_lsq = NULL;
-  cpl->cocg_it = NULL;
 }
 
 /*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
@@ -896,7 +883,7 @@ cs_internal_coupling_n_couplings(void)
 /*!
  * \brief Define coupling volume using given selection criteria.
  *
- * Then, this volume must be seperated from the rest of the domain with a wall.
+ * Then, this volume must be separated from the rest of the domain with a wall.
  *
  * \param[in, out]  mesh            pointer to mesh structure to modify
  * \param[in]      criteria_cells  criteria for the first group of cells
@@ -916,6 +903,8 @@ cs_internal_coupling_add(cs_mesh_t   *mesh,
               cs_internal_coupling_t);
 
   cs_internal_coupling_t *cpl = _internal_coupling + _n_internal_couplings;
+
+  cpl->id = _n_internal_couplings;
 
   _cpl_initialize(cpl);
 
@@ -949,6 +938,8 @@ cs_internal_coupling_add_volume(cs_mesh_t   *mesh,
               cs_internal_coupling_t);
 
   cs_internal_coupling_t *cpl = _internal_coupling + _n_internal_couplings;
+
+  cpl->id = _n_internal_couplings;
 
   _cpl_initialize(cpl);
 
@@ -2688,82 +2679,10 @@ cs_internal_coupling_setup(void)
 void
 cs_internal_coupling_initialize(void)
 {
-  if (_n_internal_couplings < 1)
-    return;
-
-  int field_id;
-  cs_field_t *f;
-  int coupling_id = 0;
-
-  const int key_cal_opt_id = cs_field_key_id("var_cal_opt");
-  cs_var_cal_opt_t var_cal_opt;
-
-  const int n_fields = cs_field_n_fields();
-
   for (int i = 0; i < _n_internal_couplings; i++) {
     cs_internal_coupling_t *cpl = _internal_coupling + i;
     _locator_initialize(cs_glob_mesh, cpl);
-  }
-
-  /* Initialization of coupling entities */
-
-  coupling_id = 0;
-  cs_internal_coupling_t *cpl = _internal_coupling;
-  for (field_id = 0; field_id < n_fields; field_id++) {
-    f = cs_field_by_id(field_id);
-    if (f->type & CS_FIELD_VARIABLE) {
-      cs_field_get_key_struct(f, key_cal_opt_id, &var_cal_opt);
-      if (var_cal_opt.icoupl > 0) {
-
-        if (coupling_id == 0) {
-
-          /* Initialize coupled_faces */
-          _initialize_coupled_faces(cpl);
-
-          /* Initialize cocg & cocgb */
-          cs_halo_type_t halo_type = CS_HALO_STANDARD;
-          cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
-
-          cs_gradient_type_by_imrgra(var_cal_opt.imrgra,
-                                     &gradient_type,
-                                     &halo_type);
-
-          if (halo_type == CS_HALO_EXTENDED)
-            bft_error(__FILE__, __LINE__, 0,
-                      _("Extended neighborhood "
-                        "not implemented for internal coupling."));
-
-          switch(gradient_type){
-          case CS_GRADIENT_ITER:
-            cs_compute_cell_cocg_it_coupling(cs_glob_mesh,
-                                             cs_glob_mesh_quantities,
-                                             cpl);
-            break;
-          case CS_GRADIENT_LSQ:
-            cs_compute_cell_cocg_lsq_coupling(cs_glob_mesh,
-                                              cs_glob_mesh_quantities,
-                                              cpl);
-            break;
-          case CS_GRADIENT_LSQ_ITER:
-            cs_compute_cell_cocg_it_coupling(cs_glob_mesh,
-                                             cs_glob_mesh_quantities,
-                                             cpl);
-            cs_compute_cell_cocg_lsq_coupling(cs_glob_mesh,
-                                              cs_glob_mesh_quantities,
-                                              cpl);
-            break;
-          default:
-            bft_error(__FILE__, __LINE__, 0,
-                      _("Gradient type %s is \n"
-                        "not implemented with internal coupling."),
-                      cs_gradient_type_name[gradient_type]);
-            break;
-          }
-
-        }
-        coupling_id++;
-      }
-    }
+    _initialize_coupled_faces(cpl);
   }
 }
 
@@ -2821,7 +2740,7 @@ cs_internal_coupling_dump(void)
  * Add preprocessing operations required by coupling volume using given
  * criteria.
  *
- * The volume is seperated from the rest of the domain with inserted
+ * The volume is separated from the rest of the domain with inserted
  * boundaries.
  *
  * parameters:
@@ -2874,6 +2793,8 @@ cs_internal_coupling_map(cs_mesh_t   *mesh)
 
   for (int cpl_id = 0; cpl_id < _n_internal_couplings; cpl_id++) {
     cs_internal_coupling_t  *cpl = _internal_coupling + cpl_id;
+    if (cpl->faces_criteria == NULL)
+      _auto_group_name(cpl, cpl_id);
     _volume_face_initialize(mesh, cpl);
   }
 }

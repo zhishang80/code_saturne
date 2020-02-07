@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -73,6 +73,7 @@ typedef struct {
 
   /* Flag to know if scalar or vector equations are requested and which kind
      of numerical schemes is requested to solve these equations */
+  cs_flag_t                 eb_scheme_flag;
   cs_flag_t                 fb_scheme_flag;
   cs_flag_t                 vb_scheme_flag;
   cs_flag_t                 vcb_scheme_flag;
@@ -218,7 +219,7 @@ cs_domain_needs_iteration(cs_domain_t  *domain);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Check if an ouput is requested according to the domain setting
+ * \brief  Check if an output is requested according to the domain setting
  *
  * \param[in]   domain    pointer to a cs_domain_t structure
  *

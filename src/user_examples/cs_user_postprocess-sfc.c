@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -33,32 +33,10 @@
  *----------------------------------------------------------------------------*/
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_mem.h"
-#include "bft_error.h"
-
-#include "fvm_writer.h"
-
-#include "cs_base.h"
-#include "cs_field.h"
-#include "cs_interpolate.h"
-#include "cs_mesh.h"
-#include "cs_selector.h"
-#include "cs_post.h"
-#include "cs_probe.h"
-#include "cs_time_plot.h"
-
-#include "cs_order.h"
-#include "cs_part_to_block.h"
-#include "fvm_nodal_append.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -67,6 +45,8 @@ BEGIN_C_DECLS
 /*============================================================================
  * Local (user defined) function definitions
  *============================================================================*/
+
+/*! [sfc_fvm_writer_def] */
 
 /*----------------------------------------------------------------------------
  * Write space-filling curves for main mesh
@@ -332,11 +312,15 @@ _cs_post_write_sfc_parall(fvm_writer_t  *writer)
 
 #endif /* defined(HAVE_MPI) */
 
+/*! [sfc_fvm_writer_def] */
+
+/*! [sfc_cells_selection] */
+
 /*----------------------------------------------------------------------------
  * Cell selection function adapted to generate space-filling curves.
  *
  * This is a specific case, where we do not actually select any cells, but
- * generate a temporary, speicif writer (based on writer -1 settings),
+ * generate a temporary, specific writer (based on writer -1 settings),
  * and edge meshes illustrating the various space-filling curve
  * possibilities are output using this writer.
  *
@@ -373,6 +357,8 @@ _sfc_cell_select(void        *input,
   fvm_writer_finalize(w);
 }
 
+/*! [sfc_cells_selection] */
+
 /*============================================================================
  * User function definitions
  *============================================================================*/
@@ -389,6 +375,9 @@ void
 cs_user_postprocess_meshes(void)
 {
   {
+
+    /*! [sfc_def] */
+
     const int n_writers = 1;
     const int writer_ids[] = {CS_POST_WRITER_DEFAULT};
 
@@ -401,6 +390,9 @@ cs_user_postprocess_meshes(void)
                                        false,           /* auto_variables */
                                        n_writers,
                                        writer_ids);
+
+  /*! [sfc_def] */
+
   }
 }
 

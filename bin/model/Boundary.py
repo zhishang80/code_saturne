@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -178,8 +178,8 @@ class Boundary(object) :
 
         formula_velocity = 'ale_formula_' + "fixed_velocity"
         formula_displacement = 'ale_formula_' + "fixed_displacement"
-        self._defaultValues[formula_velocity] = 'mesh_velocity_U = 0;\nmesh_velocity_V = 0;\nmesh_velocity_W = 0;'
-        self._defaultValues[formula_displacement] = 'mesh_x = 0;\nmesh_y = 0;\nmesh_z = 0;'
+        self._defaultValues[formula_velocity] = 'mesh_velocity[0] = 0;\nmesh_velocity[1] = 0;\nmesh_velocity[2] = 0;'
+        self._defaultValues[formula_displacement] = 'mesh_displacement[0] = 0;\nmesh_displacement[1] = 0;\nmesh_displacement[2] = 0;'
 
 
     @Variables.noUndo
@@ -216,7 +216,7 @@ class Boundary(object) :
 
 
     @Variables.noUndo
-    def getFormula(self):
+    def getALEFormula(self):
         """
         Get the formula from the xml
         """
@@ -254,16 +254,12 @@ class Boundary(object) :
         """
         Check and update type of scalar scalarName for boundary conditions for wall
         """
-        if self.sca_model.getMeteoScalarsNameList() != None:
-            if scalarName in self.sca_model.getMeteoScalarsNameList():
-                scalarNode['type'] = self.sca_model.getMeteoScalarType(scalarName)
-            else :
-                scalarNode['type'] = self.sca_model.getScalarTypeByName(scalarName)
-        elif self.sca_model.getElectricalScalarsNameList() != None:
-            if scalarName in self.sca_model.getElectricalScalarsNameList():
-                scalarNode['type'] = self.sca_model.getElectricalScalarType(scalarName)
-            else :
-                scalarNode['type'] = self.sca_model.getScalarTypeByName(scalarName)
+        if self.sca_model.getMeteoScalarsNameList() != None and \
+           scalarName in self.sca_model.getMeteoScalarsNameList():
+            scalarNode['type'] = self.sca_model.getMeteoScalarType(scalarName)
+        elif self.sca_model.getElectricalScalarsNameList() != None and \
+             scalarName in self.sca_model.getElectricalScalarsNameList():
+            scalarNode['type'] = self.sca_model.getElectricalScalarType(scalarName)
         else:
             scalarNode['type'] = self.sca_model.getScalarTypeByName(scalarName)
 

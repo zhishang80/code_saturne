@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -60,8 +60,10 @@ pkginclude_HEADERS = \
 cs_alge_headers.h \
 cs_balance.h \
 cs_benchmark.h \
+cs_benchmark_matrix.h \
 cs_blas.h \
 cs_balance_by_zone.h \
+cs_cell_to_vertex.h \
 cs_convection_diffusion.h \
 cs_face_viscosity.h \
 cs_divergence.h \
@@ -100,9 +102,11 @@ $(FCFLAGS_DBG) $(FCFLAGS_HOT)
 libcsalge_la_SOURCES = \
 cs_balance.c \
 cs_benchmark.c \
+cs_benchmark_matrix.c \
 cs_blas.c \
 cs_bw_time_diff.c \
 cs_balance_by_zone.c \
+cs_cell_to_vertex.c \
 cs_convection_diffusion.c \
 cs_face_viscosity.c \
 cs_divergence.c \

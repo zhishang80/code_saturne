@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -50,6 +50,7 @@
 #include "cs_gwf.h"
 #include "cs_log.h"
 #include "cs_log_iteration.h"
+#include "cs_maxwell.h"
 #include "cs_navsto_system.h"
 #include "cs_parall.h"
 #include "cs_post.h"
@@ -74,6 +75,14 @@ BEGIN_C_DECLS
  *----------------------------------------------------------------------------*/
 
 /*============================================================================
+ * Prototypes for functions intended for use only by Fortran wrappers.
+ * (descriptions follow, with function bodies).
+ *============================================================================*/
+
+void
+cs_f_cdo_post_domain(void);
+
+/*============================================================================
  * Static global variables
  *============================================================================*/
 
@@ -96,7 +105,7 @@ _needs_adimensional_numbers(void)
   int n_adv_fields = cs_advection_field_get_n_fields();
   for (int adv_id = 0; adv_id < n_adv_fields; adv_id++) {
     const cs_adv_field_t  *adv = cs_advection_field_by_id(adv_id);
-    if (adv->flag & CS_ADVECTION_FIELD_POST_COURANT)
+    if (adv->post_flag & CS_ADVECTION_FIELD_POST_COURANT)
       return true;
   }
 
@@ -179,7 +188,7 @@ _post_courant_number(const cs_adv_field_t       *adv,
 {
   if (adv == NULL)
     return;
-  if (!(adv->flag & CS_ADVECTION_FIELD_POST_COURANT))
+  if (!(adv->post_flag & CS_ADVECTION_FIELD_POST_COURANT))
     return;
 
   int  len = strlen(adv->name) + 8 + 1;
@@ -369,6 +378,22 @@ _domain_post(void                      *input,
 }
 
 /*============================================================================
+ * Fortran wrapper function definitions
+ *============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Solve only steady-state equations
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_f_cdo_post_domain(void)
+{
+  cs_domain_post(cs_glob_domain);
+}
+
+/*============================================================================
  * Public function prototypes
  *============================================================================*/
 
@@ -400,22 +425,16 @@ cs_domain_post(cs_domain_t  *domain)
 {
   cs_timer_t  t0 = cs_timer_time();
 
+  assert(domain->cdo_context != NULL);
+
   /* Extra-operations */
   /* ================ */
 
   /* Predefined extra-operations related to advection fields */
-  assert(domain->cdo_context != NULL);
-
   cs_advection_field_update(domain->time_step->t_cur, true);
-
-  /* User-defined extra operations */
-  cs_user_extra_operations(domain);
 
   /* Log output */
   if (cs_domain_needs_log(domain)) {
-
-    /* Basic statistic related to variables */
-    cs_log_iteration();
 
     /* Post-processing */
     /* =============== */
@@ -462,13 +481,24 @@ cs_domain_post(cs_domain_t  *domain)
                              domain->cdo_quantities,
                              domain->time_step);
 
-    /* 5. Specific operations for the GWF module */
+    /* 5.a Specific operations for the GWF module */
     if (cs_gwf_is_activated())
       cs_gwf_extra_op(domain->connect, domain->cdo_quantities);
 
-    /* 5. Specific operations for the Navier-Stokes module */
+    /* 5.b Specific operations for the Maxwell module */
+    if (cs_maxwell_is_activated())
+      cs_maxwell_extra_op(domain->connect, domain->cdo_quantities);
+
+    /* 5.c Specific operations for the Navier-Stokes module */
     if (cs_navsto_system_is_activated())
-      cs_navsto_system_extra_op(domain->connect, domain->cdo_quantities);
+      cs_navsto_system_extra_op(domain->mesh,
+                                domain->connect,
+                                domain->cdo_quantities,
+                                domain->time_step);
+
+    /* Basic statistic related to variables */
+    if (domain->cdo_context->mode == CS_DOMAIN_CDO_MODE_ONLY)
+      cs_log_iteration(); /* Otherwise called from the FORTRAN part */
 
   } /* Needs a new log */
 
@@ -476,10 +506,14 @@ cs_domain_post(cs_domain_t  *domain)
      - the domain (advection fields and properties),
      - equations
      - groundwater flows
+     - Maxwell module
      are also handled during the call of this function thanks to
      cs_post_add_time_mesh_dep_output() function pointer
   */
   cs_post_time_step_output(domain->time_step);
+
+  /* User-defined extra operations */
+  cs_user_extra_operations(domain);
 
   cs_timer_t  t1 = cs_timer_time();
   cs_timer_counter_add_diff(&(domain->tcp), &t0, &t1);
@@ -504,7 +538,7 @@ cs_domain_read_restart(cs_domain_t  *domain)
     return;
   }
 
-  cs_restart_t  *restart = cs_restart_create("main", /* restart file name */
+  cs_restart_t  *restart = cs_restart_create("main.csc", /* restart file name */
                                              NULL,   /* directory name */
                                              CS_RESTART_MODE_READ);
 
@@ -708,7 +742,7 @@ cs_domain_write_restart(const cs_domain_t  *domain)
   if (cs_restart_checkpoint_required(domain->time_step) == false)
     return;
 
-  cs_restart_t  *restart = cs_restart_create("main", /* restart file name */
+  cs_restart_t  *restart = cs_restart_create("main.csc", /* restart file name */
                                              NULL,   /* directory name */
                                              CS_RESTART_MODE_WRITE);
 

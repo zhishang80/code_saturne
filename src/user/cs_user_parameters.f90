@@ -4,7 +4,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -71,8 +71,7 @@
 !______________________________________________________________________________.
 !  mode           name          role                                           !
 !______________________________________________________________________________!
-!> \param[in]     ixmlpu        indicates if the XML file from the GUI is used
-!>                              (1 : yes, 0 : no)
+!> \param[in]     ixmlpu        indicates if an XML file from the GUI is used  !
 !______________________________________________________________________________!
 
 subroutine usppmo &
@@ -198,7 +197,6 @@ use cstphy
 use entsor
 use parall
 use period
-use ihmpre
 use albase
 use ppppar
 use ppthch
@@ -267,7 +265,6 @@ use entsor
 use field
 use parall
 use period
-use ihmpre
 use post
 use ppppar
 use ppthch
@@ -380,7 +377,6 @@ use cstphy
 use entsor
 use cstnum
 use parall
-use ihmpre
 use period
 use ppppar
 use ppthch
@@ -463,7 +459,6 @@ subroutine uscfx1
 !===============================================================================
 
 use paramx
-use ihmpre
 use dimens
 use numvar
 use optcal
@@ -486,35 +481,6 @@ implicit none
 !===============================================================================
 
 !===============================================================================
-
-! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_START
-!===============================================================================
-! 0.  This test allows the user to ensure that the version of this subroutine
-!       used is that from his case definition, and not that from the library.
-!     This subroutine is  mandatory for compressible flow,
-!       thus the default (library reference) version stops immediately.
-!===============================================================================
-
-if (iihmpr.eq.0) then
-  write(nfecra,9000)
-  call csexit (1)
-endif
-
- 9000 format(                                                     &
-'@',/,                                                            &
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@',/,                                                            &
-'@ @@ WARNING:    stop in compressible flow options definition',/,&
-'@    =======',/,                                                 &
-'@     The user subroutine ''uscfx1'' must be completed.',/,      &
-'@',/,                                                            &
-'@  The calculation will not be run.',/,                          &
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@',/)
-
-
-! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_END
 
 !----
 ! End
@@ -553,7 +519,6 @@ subroutine uscfx2
 !===============================================================================
 
 use paramx
-use ihmpre
 use dimens
 use numvar
 use optcal
@@ -571,35 +536,6 @@ implicit none
 ! Arguments
 
 !===============================================================================
-
-! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_START
-!===============================================================================
-! 0.  This test allows the user to ensure that the version of this subroutine
-!       used is that from his case definition, and not that from the library.
-!     This subroutine is  mandatory for compressible flow,
-!       thus the default (library reference) version stops immediately.
-!===============================================================================
-
-if (iihmpr.eq.0) then
-  write(nfecra,9000)
-  call csexit (1)
-endif
-
- 9000 format(                                                     &
-'@',/,                                                            &
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@',/,                                                            &
-'@ @@ WARNING:    stop in data input for compressible flow',/,    &
-'@    =======',/,                                                 &
-'@     The user subroutine ''uscfx2'' must be completed',/,       &
-'@',/,                                                            &
-'@  The calculation will not be run.',/,                          &
-'@',/,                                                            &
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@',/)
-
-
-! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_END
 
 !----
 ! End
@@ -704,7 +640,6 @@ subroutine user_darcy_ini1
 ! Module files
 !===============================================================================
 
-use ihmpre, only: iihmpr
 use entsor
 use darcy_module
 
@@ -713,37 +648,6 @@ use darcy_module
 implicit none
 
 !===============================================================================
-
-! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_START
-!===============================================================================
-! 0. This test allows the user to ensure that the version of this subroutine
-!       used is that from his case definition, and not that from the library.
-!     If a file from the GUI is used, this subroutine may not be mandatory,
-!       thus the default (library reference) version returns immediately.
-!===============================================================================
-
-if (iihmpr.eq.0) then
-  write(nfecra,9000)
-  call csexit (1)
-endif
-
- 9000 format(                                                     &
-'@',/,                                                            &
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@',/,                                                            &
-'@ @@ WARNING:    stop in data input',/,                          &
-'@    =======',/,                                                 &
-'@     The user subroutine ''user_darcy_ini1'' ',/,               &
-'@     must be completed',/,                                      &
-'@                                                            ',/,&
-'@',/,                                                            &
-'@  The calculation will not be run.',/,                          &
-'@',/,                                                            &
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@',/)
-
-!===============================================================================
-! TEST_TO_REMOVE_FOR_USE_OF_SUBROUTINE_END
 
 !----
 ! End

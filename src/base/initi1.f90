@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -34,7 +34,6 @@ subroutine initi1
 use paramx
 use optcal
 use entsor
-use ihmpre
 use ppincl, only: ippmod, nmodmx, iatmos
 use post
 use cs_c_bindings
@@ -140,9 +139,7 @@ call cs_user_time_moments
 
 ! Postprocessing and logging
 
-if (iihmpr.eq.1) then
-  call gui_output
-endif
+call gui_output
 
 ! Restart
 
@@ -172,7 +169,11 @@ if (icdo.lt.2) then
    call usipes(nmodpp)
 
    ! Avoid a second spurious call to this function
-   call user_finalize_setup_wrapper
+   ! Call in the C part if CDO is activated, i.e. when
+   ! additional geometric quantities and connectivities are built
+   if (icdo.lt.0) then
+      call user_finalize_setup_wrapper
+   endif
 endif
 
 !===============================================================================

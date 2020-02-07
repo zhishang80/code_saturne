@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -43,9 +43,9 @@ try:
 except Exception:
     import configparser  # Python3
 
-import cs_exec_environment
-import cs_case_domain
-import cs_case
+from code_saturne import cs_exec_environment
+from code_saturne import cs_case_domain
+from code_saturne import cs_case
 
 #-------------------------------------------------------------------------------
 # Process the command line arguments
@@ -92,7 +92,7 @@ def process_cmd_line(argv, pkg):
 
     parser.add_option("--id-prefix", dest="id_prefix", type="string",
                       metavar="<prefix>",
-                      help="prefix the run id with the given tring")
+                      help="prefix the run id with the given string")
 
     parser.add_option("--id-suffix", dest="id_suffix", type="string",
                       metavar="<suffix>",
@@ -173,6 +173,12 @@ def process_cmd_line(argv, pkg):
         sys.stderr.write(err_str)
 
     param = options.param
+
+    # If no parameter file passed, and a setup.xml is present in DATA, run it
+    if param is None:
+        has_setup = os.path.isfile(os.path.join(casedir, 'DATA', 'setup.xml'))
+        if has_setup:
+            param = "setup.xml"
 
     # Stages to run (if no filter given, all are done).
 
@@ -265,7 +271,7 @@ def run(argv, pkg):
     if coupling:
 
         # Specific case for coupling
-        import cs_case_coupling
+        from code_saturne import cs_case_coupling
 
         if os.path.isfile(coupling):
             try:
@@ -333,7 +339,7 @@ def main(argv, pkg):
 if __name__ == '__main__':
 
     # Run package
-    from cs_package import package
+    from code_saturne.cs_package import package
     pkg = package()
 
     retval = main(sys.argv[1:], pkg)
@@ -343,4 +349,3 @@ if __name__ == '__main__':
 #-------------------------------------------------------------------------------
 # End
 #-------------------------------------------------------------------------------
-

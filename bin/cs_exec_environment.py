@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -39,7 +39,10 @@ import tempfile
 
 python_version = sys.version[:3]
 
-import cs_batch
+try:
+    from code_saturne import cs_batch
+except Exception:
+    import cs_batch
 
 #===============================================================================
 # Utility functions
@@ -152,6 +155,58 @@ def assemble_args(cmd):
         else:
             l += ' ' + s
     return l.strip()
+
+#-------------------------------------------------------------------------------
+# Update command line arguments with no associated value
+#-------------------------------------------------------------------------------
+
+def update_command_no_value(args, options, present):
+    """
+    Adds, updates, or removes parts of a command to pass a given option.
+    The command is provided as a list, and options defining a value may be
+    defined as a tuple (to allow for multiple variants).
+
+    If no option was previously present and a value is added, the first
+    syntax of the options tuple will be used.
+    """
+
+    # Update first occurence
+
+    count = 0
+    target = 0
+    if present:
+        target = 1
+
+    for opt in options:
+        j = 0
+        while j < len(args):
+            if args[j] == opt:
+                count += 1
+                if count > target:
+                    args.pop(j)       # option
+                else:
+                    j += 1
+            else:
+                j += 1
+
+    if count < target:
+        args.append(options[0])
+
+    # Special cases at end
+
+    i = 0
+    args_tail = []
+    while i < len(args):
+        if args[i][0] == '$' or args[i] == '&':
+             a = args.pop(i)
+             args_tail.append(a)
+        else:
+             i = i+1
+    args += args_tail
+
+    # Return updated list
+
+    return args
 
 #-------------------------------------------------------------------------------
 # Update command line arguments for a given value
@@ -1936,7 +1991,7 @@ class exec_environment:
 
 if __name__ == '__main__':
 
-    import cs_package
+    from code_saturne import cs_package
     pkg = cs_package.package()
     e = exec_environment(pkg)
 

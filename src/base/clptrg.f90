@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -136,7 +136,7 @@ use field
 use lagran
 use turbomachinery
 use cs_c_bindings
-use atincl, only: itotwt, iliqwt, modsedi, moddep
+use atincl, only: iymw, iliqwt, modsedi, moddep
 
 !===============================================================================
 
@@ -201,7 +201,7 @@ double precision, dimension(:,:), pointer :: cvar_rij
 double precision, dimension(:), pointer :: cvara_nusa
 
 double precision, dimension(:), pointer :: cvar_totwt, cvar_t, cpro_liqwt
-double precision, dimension(:), pointer :: cpro_rugt
+double precision, dimension(:), pointer :: cpro_rugd, cpro_rugt
 double precision, dimension(:), pointer :: cpro_diff_lim_k
 double precision, dimension(:), pointer :: cpro_diff_lim_eps
 double precision, dimension(:), pointer :: cpro_diff_lim_rij
@@ -620,10 +620,11 @@ cpro_rugt => null()
 if (ippmod(iatmos).ge.1) then
   call field_get_val_s(ivarfl(isca(iscalt)), cvar_t)
   if (ippmod(iatmos).eq.2) then
-    call field_get_val_s(ivarfl(isca(itotwt)), cvar_totwt)
+    call field_get_val_s(ivarfl(isca(iymw)), cvar_totwt)
     call field_get_val_s(iliqwt, cpro_liqwt)
 
     if (modsedi.eq.1.and.moddep.gt.0) then
+      call field_get_val_s_by_name('boundary_roughness', cpro_rugd)
       call field_get_val_s_by_name('boundary_thermal_roughness', cpro_rugt)
     endif
   endif
@@ -763,6 +764,13 @@ do ifac = 1, nfabor
     ! rugd: rugosite de paroi pour les variables dynamiques
     !       seule la valeur stockee pour iu est utilisee
     rugd = rcodcl(ifac,iu,3)
+
+    ! FIXME This is only used for sedimentation velocity computation
+    if (ippmod(iatmos).eq.2) then
+      if (modsedi.eq.1.and.moddep.gt.0) then
+        cpro_rugd(ifac) = rugd
+      endif
+    endif
 
     ! NB: for rough walls, yplus is computed from the roughness and not uk.
     yplus = distbf/rugd
@@ -1782,6 +1790,17 @@ if (ifcvsl .ge. 0) then
 endif
 
 call field_get_key_struct_var_cal_opt(ivarfl(ivar), vcopt)
+
+! If we have no diffusion, no boundary face should have a wall BC type
+! (this is ensured in typecl)
+
+if (vcopt%idiff .eq. 0) then
+  tetmax = 0.d0
+  tetmin = 0.d0
+  tplumx = 0.d0
+  tplumn = 0.d0
+  return
+endif
 
 if (iand(vcopt%idften, ANISOTROPIC_DIFFUSION).ne.0.or.ityturt(iscal).eq.3) then
   if (iturb.ne.32.or.ityturt(iscal).eq.3) then

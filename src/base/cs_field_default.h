@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -52,6 +52,28 @@ BEGIN_C_DECLS
 /*=============================================================================
  * Public function prototypes
  *============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Add a field shared between CDO and legacy schemes. This field is
+ *         related to a general solved variable, with default options.
+ *
+ * \param[in]  name          field name
+ * \param[in]  label         field default label, or empty
+ * \param[in]  location_id   id of associated location
+ * \param[in]  dim           field dimension
+ * \param[in]  has_previous  no if lower than 1
+ *
+ * \return  newly defined field id
+ */
+/*----------------------------------------------------------------------------*/
+
+int
+cs_variable_cdo_field_create(const char  *name,
+                             const char  *label,
+                             int          location_id,
+                             int          dim,
+                             int          has_previous);
 
 /*----------------------------------------------------------------------------*/
 /*!

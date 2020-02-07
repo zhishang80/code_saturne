@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -257,7 +257,6 @@ class XMLinit(BaseXmlInit):
             CoalCombustionModel(self.case).getCoalCombustionModel()
             GasCombustionModel(self.case).getGasCombustionModel()
             ElectricalModel(self.case).getElectricalModel()
-            ThermalRadiationModel(self.case).getRadiativeModel()
             AtmosphericFlowsModel(self.case).getAtmosphericFlowsModel()
             LagrangianModel(self.case).getLagrangianModel()
 
@@ -334,6 +333,10 @@ class XMLinit(BaseXmlInit):
                 self.__backwardCompatibilityFrom_5_2()
             if from_vers[:3] < "6.0.0":
                 self.__backwardCompatibilityFrom_5_3()
+
+        if from_vers[:3] < "7.0.0":
+            if from_vers[:3] < "6.1.0":
+                self.__backwardCompatibilityFrom_6_0()
 
 
     def __backwardCompatibilityBefore_3_0(self):
@@ -663,6 +666,7 @@ class XMLinit(BaseXmlInit):
                     ("Fr_HET_O2",                    "fr_het_o2"),
                     ("Fr_HET_CO2",                   "fr_het_co2"),
                     ("Fr_HET_H2O",                   "fr_het_h2o"),
+                    ("Xc_Ent",                       "x_c_h"),
                     ("FR_HCN",                       "x_c_hcn"),
                     ("FR_NO",                        "x_c_no"),
                     ("FR_NH3",                       "x_c_nh3"),
@@ -1644,10 +1648,45 @@ class XMLinit(BaseXmlInit):
                             node.xmlRemoveNode()
 
 
+    def __backwardCompatibilityFrom_6_0(self):
+        """
+        Change XML in order to ensure backward compatibility.
+        """
+
+        # Update due to Cooling Towers and Atmospheric Flows merge
+        XMLThermoPhysicalModelNode = self.case.xmlGetNode('thermophysical_models')
+        npr = XMLThermoPhysicalModelNode.xmlGetNode('atmospheric_flows')
+        if npr:
+            node = npr.xmlGetNode('variable', name="total_water")
+            if node:
+                node['name'] = "ym_water"
+
+        XMLAnaControl = self.case.xmlGetNode('analysis_control')
+        node_profiles = XMLAnaControl.xmlGetNode('profiles')
+        if node_profiles:
+            for node_profile in node_profiles.xmlGetNodeList('profile'):
+                node = node_profile.xmlGetNode('var_prop', name="total_water")
+                if node:
+                    node['name'] = "ym_water"
+        node_scalar_balances = XMLAnaControl.xmlGetNode('scalar_balances')
+        if node_scalar_balances:
+            for node_scalar_balance in node_scalar_balances.xmlGetNodeList('scalar_balance'):
+                node = node_scalar_balance.xmlGetNode('var_prop', name="total_water")
+                if node:
+                    node['name'] = "ym_water"
+        node_time_averages = XMLAnaControl.xmlGetNode('time_averages')
+        if node_time_averages:
+            for node_time_average in node_time_averages.xmlGetNodeList('time_average'):
+                node = node_time_average.xmlGetNode('var_prop', name="total_water")
+                if node:
+                    node['name'] = "ym_water"
+
+
     def _backwardCompatibilityCurrentVersion(self):
         """
         Change XML in order to ensure backward compatibility.
         """
+
         # Reference values
         XMLThermoPhysicalNode = self.case.xmlInitNode('thermophysical_models')
         nodeRefValues = XMLThermoPhysicalNode.xmlInitNode('reference_values')
@@ -1659,8 +1698,13 @@ class XMLinit(BaseXmlInit):
 
         for ref_str in ['velocity', 'length']:
             value = nodeRefValues.xmlGetDouble(ref_str)
+            if ref_str == 'length':
+                l_choice = nodeRefValues.xmlInitNode('length')['choice']
             if value:
                 nodeTurb.xmlSetData('reference_' + ref_str, value)
+                if ref_str == 'length':
+                    ref_l = nodeTurb.xmlInitNode('reference_length')
+                    ref_l['choice'] = l_choice
                 nodeRefValues.xmlRemoveChild(ref_str)
 
         for ref_str in ['pressure', 'temperature', 'oxydant_temperature', \
@@ -1679,10 +1723,13 @@ class XMLinit(BaseXmlInit):
         XMLFluidPropertiesNode = self.case.xmlInitNode('physical_properties')
         nodeFluidProp = XMLFluidPropertiesNode.xmlInitNode('fluid_properties')
 
+        nodeComp = XMLThermoPhysicalNode.xmlGetNode('compressible_model')
+        comp = nodeComp['model'] and nodeComp['model'] != "off"
+
         for nodep in nodeFluidProp.xmlGetNodeList('property'):
             if nodep['choice'] == 'variable':
                 nodef = nodep.xmlGetNode('formula')
-                if nodef:
+                if nodef and not (nodep['name'] == 'density' and comp):
                     nodep['choice'] = 'user_law'
                 else:
                     nodep['choice'] = 'predefined_law'
@@ -1701,8 +1748,110 @@ class XMLinit(BaseXmlInit):
                 if nf != None:
                     f = n.xmlGetString('formula')
                     for k in porosity_rename.keys():
-                        f = f.replace(k, porosity_rename[k])
-                        nf.xmlSetTextNode(f)
+                        if f.find(porosity_rename[k]) == -1: # not already replaced
+                            f = f.replace(k, porosity_rename[k])
+                            nf.xmlSetTextNode(f)
+
+        # Update 'variable' property tag to 'user_law'
+        scalar_node = self.case.xmlGetNode('additional_scalars')
+        if scalar_node:
+            for node in scalar_node.xmlGetNodeList('variable'):
+                np = node.xmlGetNode("property")
+                if np:
+                    choice = np['choice']
+                    if choice == 'variable':
+                        np['choice'] = 'user_law'
+
+        # Update for ALE using MEG
+        XMLBoundaryNode = self.case.xmlGetNode('boundary_conditions')
+        for node in XMLBoundaryNode.xmlGetNodeList('ale'):
+            for nn in node.xmlGetNodeList('formula'):
+                content = nn.xmlGetTextNode()
+                if content: # node formula can be empty
+                    # Substitute only perfectly matching labels (between '\\b' and '\\b')
+                    pattern = '\\bmesh_velocity_U\\b'
+                    content = re.sub(pattern, 'mesh_velocity[0]', content)
+                    pattern = '\\bmesh_velocity_V\\b'
+                    content = re.sub(pattern, 'mesh_velocity[1]', content)
+                    pattern = '\\bmesh_velocity_W\\b'
+                    content = re.sub(pattern, 'mesh_velocity[2]', content)
+                    pattern = '\\bmesh_x\\b'
+                    content = re.sub(pattern, 'mesh_displacement[0]', content)
+                    pattern = '\\bmesh_y\\b'
+                    content = re.sub(pattern, 'mesh_displacement[1]', content)
+                    pattern = '\\bmesh_z\\b'
+                    content = re.sub(pattern, 'mesh_displacement[2]', content)
+                    nn.xmlSetTextNode(content)
+
+        # Update gradients handling
+
+        node_np = self.case.xmlInitNode('numerical_parameters')
+        node = node_np.xmlGetNode('gradient_reconstruction')
+        if node:
+            if node['choice'] in ('0', '1', '2', '3', '4', '5', '6'):
+                c = int(node['choice'])
+                if c == 0:
+                    node['choice'] = 'green_iter'
+                elif c in (1, 2, 3):
+                    node['choice'] = 'lsq'
+                elif c in (4, 5, 6):
+                    node['choice'] = 'green_lsq'
+                if c > 0:
+                    node = node_np.xmlInitNode('extended_neighborhood', 'choice')
+                    if c in (1, 4):
+                        node['choice'] = 'none'
+                    elif c in (2, 5):
+                        node['choice'] = 'complete'
+                    else:
+                        node['choice'] = 'non_ortho_max'
+
+        # Remove "extrag" setting
+
+        node = node_np.xmlGetNode('wall_pressure_extrapolation')
+        if node:
+            node.xmlRemoveNode()
+
+        # Fix some Lagrangian names
+
+        XMLLagrangianNode = self.case.xmlGetNode('lagrangian')
+        if XMLLagrangianNode:
+            stats_node = XMLLagrangianNode.xmlGetNode('statistics')
+            if stats_node:
+                vol_node = stats_node.xmlGetNode('volume')
+                if vol_node:
+                    rename = {"Part_statis_weight": "particle_cumulative_weight",
+                              "Part_vol_frac": "mean_particle_volume_fraction",
+                              "Part_velocity": "mean_particle_velocity",
+                              "Part_resid_time": "mean_particle_residence_time"}
+                    for attr in list(rename.keys()):
+                        node = vol_node.xmlGetNode('property', name=attr)
+                        if node:
+                            node['name'] = rename[attr]
+
+                bdy_node = stats_node.xmlGetNode('boundary')
+                if bdy_node:
+                    rename = {"Part_bndy_mass_flux": "particle_mass_flux",
+                              "Part_impact_number": "particle_events_weight",
+                              "Part_impact_angle": "mean_particle_impact_angle",
+                              "Part_impact_velocity": "mean_particle_impact_velocity",
+                              "Part_fouled_impact_number": "particle_fouling_events_weight",
+                              "Part_fouled_mass_flux": "particle_fouling_mass_flux",
+                              "Part_fouled_diam": "mean_particle_fouling_diameter",
+                              "Part_fouled_Xck": "mean_particle_fouling_coke_fraction"}
+                    for attr in list(rename.keys()):
+                        node = bdy_node.xmlGetNode('property', name=attr)
+                        if node:
+                            node['name'] = rename[attr]
+                            node['support'] = 'boundary'
+
+        # Probes update to allow renaming
+        XMLAnaControl = self.case.xmlGetNode('analysis_control')
+        XMLOutput     = XMLAnaControl.xmlGetNode('output')
+
+        if XMLOutput.xmlGetNodeList('probe') != None:
+            for node in XMLOutput.xmlGetNodeList('probe'):
+                if node['id'] == None:
+                    node['id'] = node['name']
 
 
 #-------------------------------------------------------------------------------

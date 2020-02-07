@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -39,25 +39,10 @@
 #include <string.h>
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_error.h"
-#include "bft_mem.h"
-#include "bft_printf.h"
-
-#include "cs_base.h"
-#include "cs_mesh.h"
-#include "cs_mesh_quantities.h"
-#include "cs_post.h"
-#include "cs_restart.h"
-#include "cs_time_plot.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -161,7 +146,7 @@ cs_user_solver(const cs_mesh_t             *mesh,
   /* Restart */
   /* ------- */
 
-  restart = cs_restart_create("main",                 /* file name */
+  restart = cs_restart_create("main.csc",             /* file name */
                               NULL,                   /* force directory */
                               CS_RESTART_MODE_READ);  /* read mode */
 
@@ -242,7 +227,7 @@ cs_user_solver(const cs_mesh_t             *mesh,
   /* Chekpoint */
   /* --------- */
 
-  checkpoint = cs_restart_create("main",                  /* file name */
+  checkpoint = cs_restart_create("main.csc",              /* file name */
                                  NULL,                    /* force directory */
                                  CS_RESTART_MODE_WRITE);  /* write mode */
 

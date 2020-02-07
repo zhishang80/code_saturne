@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -86,24 +86,38 @@ BEGIN_C_DECLS
 
   \var  cs_turb_model_t::iturb
         turbulence model
-        - 0: no turbulence model (laminar flow)
-        - 10: mixing length model
-        - 20: standard \f$ k-\varepsilon \f$ model
-        - 21: \f$ k-\varepsilon \f$ model with Linear Production (LP) correction
-        - 22: Launder-Sharma \f$ k-\varepsilon \f$ model
-        - 23: Baglietto et al. quadratic \f$ k-\varepsilon \f$ model
-        - 30: \f$ R_{ij}-\epsilon \f$ (LRR)
-        - 31: \f$ R_{ij}-\epsilon \f$ (SSG)
-        - 32: \f$ R_{ij}-\epsilon \f$ (EBRSM)
-        - 40: LES (constant Smagorinsky model)
-        - 41: LES ("classical" dynamic Smagorisky model)
-        - 42: LES (WALE)
-        - 50: v2f phi-model
-        - 51: v2f \f$ BL-v^2-k \f$
-        - 60: \f$ k-\omega \f$ SST
-        - 70: Spalart-Allmaras model
+        - CS_TURB_NONE: no turbulence model (laminar flow)
+        - CS_TURB_MIXING_LENGTH: mixing length model
+        - CS_TURB_K_EPSILON: standard \f$ k-\varepsilon \f$ model
+        - CS_TURB_K_EPSILON_LIN_PROD: \f$ k-\varepsilon \f$ model with Linear Production (LP) correction
+        - CS_TURB_K_EPSILON_LS: Launder-Sharma \f$ k-\varepsilon \f$ model
+        - CS_TURB_K_EPSILON_QUAD: Baglietto et al. quadratic \f$ k-\varepsilon \f$ model
+        - CS_TURB_RIJ_EPSILON_LRR: \f$ R_{ij}-\epsilon \f$ (LRR)
+        - CS_TURB_RIJ_EPSILON_SSG: \f$ R_{ij}-\epsilon \f$ (SSG)
+        - CS_TURB_RIJ_EPSILON_EBRSM: \f$ R_{ij}-\epsilon \f$ (EBRSM)
+        - CS_TURB_LES_SMAGO_CONST: LES (constant Smagorinsky model)
+        - CS_TURB_LES_SMAGO_DYN: LES ("classical" dynamic Smagorisky model)
+        - CS_TURB_LES_WALE: LES (WALE)
+        - CS_TURB_V2F_PHI: v2f phi-model
+        - CS_TURB_V2F_BL_V2K: v2f \f$ BL-v^2-k \f$
+        - CS_TURB_K_OMEGA: \f$ k-\omega \f$ SST
+        - CS_TURB_SPALART_ALLMARAS: Spalart-Allmaras model
   \var  cs_turb_model_t::itytur
-        class of turbulence model (integer value iturb/10)
+        class of turbulence model (integer value iturb/10, deprecated)
+  \var  cs_turb_model_t::hybrid_turb
+        Type of hybrid turbulence model
+        - 0: No model
+        - 1: Detached Eddy Simulation
+        - 2: Delayed Detached Eddy Simulation
+        - 3: Scale Adaptive Model (Menter et al.)
+  \var  cs_turb_model_t::type
+        Type of modelling
+        - CS_TURB_NONE: No model
+        - CS_TURB_RANS: RANS
+        - CS_TURB_LES: LES
+        - CS_TURB_HYBRID: Hybrid RANS LES
+
+
 */
 /*----------------------------------------------------------------------------*/
 
@@ -188,10 +202,6 @@ BEGIN_C_DECLS
         coupled solving of Rij
         - 1: true (default)
         - 0: false
-  \var  cs_turb_rans_model_t::iddes
-        delayed detached eddy simulation
-        - 1: true
-        - 0: false (default)
   \var  cs_turb_rans_model_t::irijnu
         pseudo eddy viscosity in the matrix of momentum equation to partially
         implicit \f$ \divv \left( \rho \tens{R} \right) \f$
@@ -218,10 +228,12 @@ BEGIN_C_DECLS
         LRR).\n It is not recommended to take these terms into account:
         they have an influence only near the walls, their expression is hardly
         justifiable according to some authors and, in the configurations
-        studied with Code_Saturne, they did not bring any improvement in the results.\n
+        studied with Code_Saturne, they did not bring any improvement in the
+        results.\n
         In addition, their use induces an increase in the calculation time.\n
         The wall echo terms imply the calculation of the distance to the wall
-        for every cell in the domain. See \ref optcal::icdpar "icdpar" for potential
+        for every cell in the domain. See \ref optcal::icdpar "icdpar" for
+        potential
         restrictions due to this.
   \var  cs_turb_rans_model_t::idifre
         whole treatment of the diagonal part of the diffusion tensor of \f$
@@ -293,6 +305,8 @@ BEGIN_C_DECLS
         This keyword requires the completion of the routine  \ref usvort
 */
 
+/*----------------------------------------------------------------------------*/
+
 /*! \cond DOXYGEN_SHOULD_SKIP_THIS */
 
 /*=============================================================================
@@ -308,10 +322,13 @@ BEGIN_C_DECLS
 static cs_turb_model_t  _turb_model =
 {
   .iturb  = -999,
-  .itytur = -999
+  .itytur = -999,
+  .hybrid_turb = 0,
+  .type = -1,
+  .order = -1
 };
 
-const cs_turb_model_t  *cs_glob_turb_model = &_turb_model;
+const cs_turb_model_t  *cs_glob_turb_model = NULL;
 
 /* Reference values for turbulence structure and associated pointer */
 
@@ -339,7 +356,6 @@ _turb_rans_model =
   .ikecou     =    0,
   .reinit_turb=    1,
   .irijco     =    1, /* Coupled version of DRSM models */
-  .iddes      =    0,
   .irijnu     =    0,
   .irijrb     =    0,
   .irijec     =    0,
@@ -959,7 +975,8 @@ const double cs_turb_cthdfm = 0.31;
 
 void
 cs_f_turb_model_get_pointers(int     **iturb,
-                             int     **itytur);
+                             int     **itytur,
+                             int     **hybrid_turb);
 
 void
 cs_f_turb_rans_model_get_pointers(int     **irccor,
@@ -972,7 +989,6 @@ cs_f_turb_rans_model_get_pointers(int     **irccor,
                                   int     **ikecou,
                                   int     **reinit_turb,
                                   int     **irijco,
-                                  int     **iddes,
                                   int     **irijnu,
                                   int     **irijrb,
                                   int     **irijec,
@@ -992,7 +1008,9 @@ cs_f_turb_reference_values(double  **almax,
 void
 cs_f_turb_model_constants_get_pointers(double  **sigmae,
                                        double  **cmu,
-                                       double  **cmu025);
+                                       double  **cmu025,
+                                       double **crij1,
+                                       double **crij2);
 
 /*============================================================================
  * Private function definitions
@@ -1011,14 +1029,17 @@ cs_f_turb_model_constants_get_pointers(double  **sigmae,
  * parameters:
  *   iturb  --> pointer to cs_glob_turb_model->iturb
  *   itytur --> pointer to cs_glob_turb_model->itytur
+ *   hybrid_turb --> pointer to cs_glob_turb_model->hybrid_turb
  *----------------------------------------------------------------------------*/
 
 void
 cs_f_turb_model_get_pointers(int     **iturb,
-                             int     **itytur)
+                             int     **itytur,
+                             int     **hybrid_turb)
 {
   *iturb  = &(_turb_model.iturb);
   *itytur = &(_turb_model.itytur);
+  *hybrid_turb = &(_turb_model.hybrid_turb);
 }
 
 /*----------------------------------------------------------------------------
@@ -1038,7 +1059,6 @@ cs_f_turb_model_get_pointers(int     **iturb,
  *   ikecou --> pointer to cs_glob_turb_rans_model->ikecou
  *   reinit_turb --> pointer to cs_glob_turb_rans_model->reinit_turb
  *   irijco --> pointer to cs_glob_turb_rans_model->irijco
- *   iddes  --> pointer to cs_glob_turb_rans_model->iddes
  *   irijnu --> pointer to cs_glob_turb_rans_model->irijnu
  *   irijrb --> pointer to cs_glob_turb_rans_model->irijrb
  *   irijec --> pointer to cs_glob_turb_rans_model->irijec
@@ -1058,7 +1078,6 @@ cs_f_turb_rans_model_get_pointers(int     **irccor,
                                   int     **ikecou,
                                   int     **reinit_turb,
                                   int     **irijco,
-                                  int     **iddes,
                                   int     **irijnu,
                                   int     **irijrb,
                                   int     **irijec,
@@ -1076,7 +1095,6 @@ cs_f_turb_rans_model_get_pointers(int     **irccor,
   *ikecou = &(_turb_rans_model.ikecou);
   *reinit_turb= &(_turb_rans_model.reinit_turb);
   *irijco = &(_turb_rans_model.irijco);
-  *iddes  = &(_turb_rans_model.iddes);
   *irijnu = &(_turb_rans_model.irijnu);
   *irijrb = &(_turb_rans_model.irijrb);
   *irijec = &(_turb_rans_model.irijec);
@@ -1141,11 +1159,15 @@ cs_f_turb_reference_values(double  **almax,
 void
 cs_f_turb_model_constants_get_pointers(double  **sigmae,
                                        double  **cmu,
-                                       double  **cmu025)
+                                       double  **cmu025,
+                                       double **crij1,
+                                       double **crij2)
 {
   *sigmae = &cs_turb_sigmae;
   *cmu    = &cs_turb_cmu;
   *cmu025 = &cs_turb_cmu025;
+  *crij1 = &cs_turb_crij1;
+  *crij2 = &cs_turb_crij2;
 }
 
 /*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
@@ -1154,12 +1176,62 @@ cs_f_turb_model_constants_get_pointers(double  **sigmae,
  * Public function definitions
  *============================================================================*/
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Initialize turbulence model structures
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_turb_model_init(void) {
+
+  /* set global pointer to turbulence model */
+  cs_set_glob_turb_model();
+
+}
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Provide access to global turbulence model structure cs_glob_turb_model
- *
- * It is needed to initialize structure with GUI.
+ * \brief Initialize type and order members of turbulence model structure
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_set_type_order_turbulence_model(void)
+{
+  _turb_model.type = CS_TURB_NONE;
+  if (_turb_model.iturb == CS_TURB_MIXING_LENGTH) {
+     _turb_model.type = CS_TURB_RANS;
+     _turb_model.order = CS_TURB_ALGEBRAIC;
+  }
+  else if (_turb_model.iturb == CS_TURB_K_EPSILON
+      ||   _turb_model.iturb == CS_TURB_K_EPSILON_LIN_PROD
+      ||   _turb_model.iturb == CS_TURB_K_EPSILON_LS
+      ||   _turb_model.iturb == CS_TURB_K_EPSILON_QUAD
+      ||   _turb_model.iturb == CS_TURB_V2F_PHI
+      ||   _turb_model.iturb == CS_TURB_V2F_BL_V2K
+      ||   _turb_model.iturb == CS_TURB_K_OMEGA
+      ||   _turb_model.iturb == CS_TURB_SPALART_ALLMARAS) {
+     _turb_model.type = CS_TURB_RANS;
+     _turb_model.order = CS_TURB_FIRST_ORDER;
+  }
+  else if (_turb_model.iturb == CS_TURB_RIJ_EPSILON_LRR
+      ||   _turb_model.iturb == CS_TURB_RIJ_EPSILON_SSG
+      ||   _turb_model.iturb == CS_TURB_RIJ_EPSILON_EBRSM) {
+     _turb_model.type = CS_TURB_RANS;
+     _turb_model.order = CS_TURB_SECOND_ORDER;
+  }
+  else if (_turb_model.iturb == CS_TURB_LES_SMAGO_CONST
+      ||   _turb_model.iturb == CS_TURB_LES_SMAGO_DYN
+      ||   _turb_model.iturb == CS_TURB_LES_WALE) {
+     _turb_model.type = CS_TURB_LES;
+     _turb_model.order = CS_TURB_ALGEBRAIC;
+  }
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Provide write access to turbulence model structure
  */
 /*----------------------------------------------------------------------------*/
 
@@ -1167,6 +1239,22 @@ cs_turb_model_t *
 cs_get_glob_turb_model(void)
 {
   return &_turb_model;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Set global pointer to turbulence model structure
+ *
+ * This global pointer provides a read-only access to the structure.
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_set_glob_turb_model(void)
+{
+  /* If not set yet, points to the locally defined structure */
+  if (cs_glob_turb_model == NULL)
+    cs_glob_turb_model = &_turb_model;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1183,7 +1271,6 @@ cs_turb_compute_constants(void)
   cs_turb_cmu025 = pow(cs_turb_cmu,0.25);
   cs_turb_cstlog_alpha = exp(-cs_turb_xkappa
                              * (cs_turb_cstlog_rough - cs_turb_cstlog));
-
 
   if (   cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_LRR
       || cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_SSG)
@@ -1215,7 +1302,7 @@ cs_turb_compute_constants(void)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Provide acces to cs_glob_turb_ref_values
+ * \brief Provide access to cs_glob_turb_ref_values
  *
  * needed to initialize structure with GUI
  */
@@ -1229,7 +1316,7 @@ cs_get_glob_turb_ref_values(void)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Provide acces to cs_glob_turb_rans_model
+ * \brief Provide access to cs_glob_turb_rans_model
  *
  * needed to initialize structure with GUI
  */
@@ -1243,7 +1330,7 @@ cs_get_glob_turb_rans_model(void)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Provide acces to cs_glob_turb_les_model
+ * \brief Provide access to cs_glob_turb_les_model
  *
  * needed to initialize structure with GUI
  */
@@ -1264,19 +1351,35 @@ cs_get_glob_turb_les_model(void)
 void
 cs_turb_model_log_setup(void)
 {
+  if (cs_glob_turb_model == NULL)
+    return;
+
   cs_var_cal_opt_t var_cal_opt;
   int key_cal_opt_id = cs_field_key_id("var_cal_opt");
 
-  cs_log_printf
-    (CS_LOG_SETUP,
-     _("\n"
-       "Turbulence model options\n"
-       "------------------------\n\n"));
+  cs_log_printf(CS_LOG_SETUP, _("\n"
+                                "Turbulence model options\n"
+                                "------------------------\n\n"
+                                "  Continuous phase:\n\n"));
 
-  cs_log_printf
-    (CS_LOG_SETUP,
-     _("  Continuous phase:\n\n"
-       "    iturb :      %14d (Turbulence model)\n"
+  if (cs_glob_turb_model->type == CS_TURB_RANS)
+    cs_log_printf(CS_LOG_SETUP,
+       _("    RANS modeling               (type = CS_TURB_RANS)\n"));
+  else if (cs_glob_turb_model->type == CS_TURB_LES)
+    cs_log_printf(CS_LOG_SETUP,
+       _("   LES modeling                 (type = CS_TURB_LES)\n"));
+  else if (cs_glob_turb_model->order == CS_TURB_ALGEBRAIC)
+    cs_log_printf(CS_LOG_SETUP,
+       _("   Algebraic model              (order = CS_TURB_ALGEBRAIC)\n"));
+  else if (cs_glob_turb_model->order == CS_TURB_FIRST_ORDER)
+    cs_log_printf(CS_LOG_SETUP,
+       _("   First order model            (order = CS_TURB_FIRST_ORDER)\n"));
+  else if (cs_glob_turb_model->order == CS_TURB_SECOND_ORDER)
+    cs_log_printf(CS_LOG_SETUP,
+       _("   Second order model           (order = CS_TURB_SECOND_ORDER)\n"));
+
+  cs_log_printf(CS_LOG_SETUP,
+     _("    iturb :      %14d (Turbulence model)\n"
        "    iwallf:      %14d (wall function)\n"
        "                                (0: disabled)\n"
        "                                (1: one scale power law\n"
@@ -1298,14 +1401,16 @@ cs_turb_model_log_setup(void)
        cs_glob_turb_rans_model->igrhok);
 
   if (cs_glob_turb_model->iturb == CS_TURB_MIXING_LENGTH) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+    cs_log_printf(CS_LOG_SETUP,
        _("   Mixing length       (iturb = CS_TURB_MIXING_LENGTH)\n"
          "    xlomlg:      %14.5e (Characteristic length)\n"),
          cs_glob_turb_rans_model->xlomlg);
-  } else if (cs_glob_turb_model->iturb == CS_TURB_K_EPSILON) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_K_EPSILON) {
+
+    cs_log_printf(CS_LOG_SETUP,
        _("   k-epsilon           (iturb = CS_TURB_K_EPSILON)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1330,12 +1435,14 @@ cs_turb_model_log_setup(void)
          _("    relaxv:      %14.5e for k (Relaxation)\n"
            "    relaxv:      %14.5e for epsilon (Relaxation)\n"),
            relaxvk, relaxve);
-    } else {
-      cs_log_printf(CS_LOG_SETUP,_("\n"));
     }
-  } else if (cs_glob_turb_model->iturb == CS_TURB_K_EPSILON_LIN_PROD) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+    else
+      cs_log_printf(CS_LOG_SETUP,_("\n"));
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_K_EPSILON_LIN_PROD) {
+
+    cs_log_printf(CS_LOG_SETUP,
        _("   Linear production k-epsilon (iturb = CS_TURB_K_EPSILON_LIN_PROD)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1350,22 +1457,24 @@ cs_turb_model_log_setup(void)
 
     if (cs_glob_turb_rans_model->ikecou == 0 &&
         cs_glob_time_step_options->idtvar >= 0) {
+
       cs_real_t relaxvk, relaxve;
+
       cs_field_get_key_struct(CS_F_(k), key_cal_opt_id, &var_cal_opt);
       relaxvk = var_cal_opt.relaxv;
       cs_field_get_key_struct(CS_F_(eps), key_cal_opt_id, &var_cal_opt);
       relaxve = var_cal_opt.relaxv;
-      cs_log_printf
-        (CS_LOG_SETUP,
+      cs_log_printf(CS_LOG_SETUP,
          _("    relaxv:      %14.5e for k (Relaxation)\n"
            "    relaxv:      %14.5e for epsilon (Relaxation)\n"),
            relaxvk, relaxve);
-    } else {
-      cs_log_printf(CS_LOG_SETUP,_("\n"));
     }
-  } else if (cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_LRR) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+    else
+      cs_log_printf(CS_LOG_SETUP,_("\n"));
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_LRR) {
+    cs_log_printf(CS_LOG_SETUP,
        _("   Rij-epsilon LRR     (iturb = CS_TURB_RIJ_EPSILON_LRR)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1387,9 +1496,10 @@ cs_turb_model_log_setup(void)
          cs_glob_turb_rans_model->igrari,
          cs_glob_turb_rans_model->iclsyr,
          cs_glob_turb_rans_model->iclptr);
-  } else if (cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_SSG) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_SSG) {
+    cs_log_printf(CS_LOG_SETUP,
        _("   Rij-epsilon SSG    (iturb = CS_TURB_RIJ_EPSILON_SSG)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1407,9 +1517,10 @@ cs_turb_model_log_setup(void)
          cs_glob_turb_rans_model->igrari,
          cs_glob_turb_rans_model->iclsyr,
          cs_glob_turb_rans_model->iclptr);
-  } else if (cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_EBRSM) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_RIJ_EPSILON_EBRSM) {
+    cs_log_printf(CS_LOG_SETUP,
        _("   Rij-epsilon EBRSM     (iturb = CS_TURB_RIJ_EPSILON_EBRSM)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1430,9 +1541,10 @@ cs_turb_model_log_setup(void)
          cs_glob_turb_rans_model->igrari,
          cs_glob_turb_rans_model->iclsyr,
          cs_glob_turb_rans_model->iclptr);
-  } else if (cs_glob_turb_model->itytur == 4) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  }
+  else if (cs_glob_turb_model->type == CS_TURB_LES) {
+    cs_log_printf(CS_LOG_SETUP,
        _("   LES                 (iturb = CS_TURB_LES_SMAGO_CONST,\n"
          "                                CS_TURB_LES_SMAGO_DYN,\n"
          "                                CS_TURB_LES_WALE)\n"
@@ -1458,9 +1570,10 @@ cs_turb_model_log_setup(void)
          cs_turb_cdries, cs_turb_xlesfd, cs_turb_smagmx,
          cs_glob_turb_les_model->ivrtex);
 
-  } else if (cs_glob_turb_model->iturb == CS_TURB_V2F_PHI) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_V2F_PHI) {
+
+    cs_log_printf(CS_LOG_SETUP,
        _("   v2f phi-model       (iturb = CS_TURB_V2F_PHI)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1472,8 +1585,10 @@ cs_turb_model_log_setup(void)
          cs_glob_turb_rans_model->iclkep,
          cs_glob_turb_rans_model->ikecou,
          cs_glob_turb_rans_model->igrake);
+
     if (cs_glob_turb_rans_model->ikecou == 0 &&
         cs_glob_time_step_options->idtvar >= 0) {
+
       cs_real_t relaxvk, relaxve;
       cs_field_get_key_struct(CS_F_(k), key_cal_opt_id, &var_cal_opt);
       relaxvk = var_cal_opt.relaxv;
@@ -1484,12 +1599,15 @@ cs_turb_model_log_setup(void)
          _("    relaxv:      %14.5e for k (Relaxation)\n"
            "    relaxv:      %14.5e for epsilon (Relaxation)\n"),
            relaxvk, relaxve);
-    } else {
-      cs_log_printf(CS_LOG_SETUP,_("\n"));
+
     }
-  } else if (cs_glob_turb_model->iturb == CS_TURB_V2F_BL_V2K) {
-    cs_log_printf
-     (CS_LOG_SETUP,
+    else
+      cs_log_printf(CS_LOG_SETUP,_("\n"));
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_V2F_BL_V2K) {
+
+    cs_log_printf(CS_LOG_SETUP,
       _("   v2f BL-v2/k         (iturb = CS_TURB_V2F_BL_V2K)\n"
         "    almax:       %14.5e (Characteristic length)\n"
         "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1501,54 +1619,65 @@ cs_turb_model_log_setup(void)
         cs_glob_turb_rans_model->iclkep,
         cs_glob_turb_rans_model->ikecou,
         cs_glob_turb_rans_model->igrake);
+
     if (cs_glob_turb_rans_model->ikecou == 0 &&
         cs_glob_time_step_options->idtvar >= 0) {
+
       cs_real_t relaxvk, relaxve;
       cs_field_get_key_struct(CS_F_(k), key_cal_opt_id, &var_cal_opt);
       relaxvk = var_cal_opt.relaxv;
       cs_field_get_key_struct(CS_F_(eps), key_cal_opt_id, &var_cal_opt);
       relaxve = var_cal_opt.relaxv;
-      cs_log_printf
-        (CS_LOG_SETUP,
+      cs_log_printf(CS_LOG_SETUP,
          _("    relaxv:      %14.5e for k (Relaxation)\n"
            "    relaxv:      %14.5e for epsilon (Relaxation)\n"),
            relaxvk, relaxve);
-    } else {
-      cs_log_printf(CS_LOG_SETUP,_("\n"));
+
     }
-  } else if (cs_glob_turb_model->iturb == CS_TURB_K_OMEGA) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+    else
+      cs_log_printf(CS_LOG_SETUP,_("\n"));
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_K_OMEGA) {
+
+    cs_log_printf(CS_LOG_SETUP,
        _("   k-omega SST         (iturb = CS_TURB_K_OMEGA)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
          "    ikecou:      %14d (k-epsilon coupling mode)\n"
-         "    iddes :      %14d (1: DDES mode)\n"
+         "    hybrid_turb :%14d (RANS-LES hybrid modelling mode)\n"
+         "                            (0 No model)\n"
+         "                            (1 DES)\n"
+         "                            (2 DDES)\n"
+         "                            (3 Scale Adaptive Model)\n"
          "    igrake:      %14d (Account for gravity)\n"),
          cs_glob_turb_ref_values->almax,
          cs_glob_turb_ref_values->uref,
          cs_glob_turb_rans_model->ikecou,
-         cs_glob_turb_rans_model->iddes,
+         cs_glob_turb_model->hybrid_turb,
          cs_glob_turb_rans_model->igrake);
+
     if (cs_glob_turb_rans_model->ikecou == 0 &&
         cs_glob_time_step_options->idtvar >= 0) {
+
       cs_real_t relaxvk, relaxvo;
       cs_field_get_key_struct(CS_F_(k), key_cal_opt_id, &var_cal_opt);
       relaxvk = var_cal_opt.relaxv;
       cs_field_get_key_struct(CS_F_(omg), key_cal_opt_id, &var_cal_opt);
       relaxvo = var_cal_opt.relaxv;
-      cs_log_printf
-        (CS_LOG_SETUP,
+      cs_log_printf(CS_LOG_SETUP,
          _("    relaxv:      %14.5e for k (Relaxation)\n"
            "    relaxv:      %14.5e for omega (Relaxation)\n"),
            relaxvk, relaxvo);
-    } else {
-      cs_log_printf(CS_LOG_SETUP,_("\n"));
     }
-  } else if (cs_glob_turb_model->iturb == CS_TURB_SPALART_ALLMARAS) {
+    else
+      cs_log_printf(CS_LOG_SETUP,_("\n"));
+
+  }
+  else if (cs_glob_turb_model->iturb == CS_TURB_SPALART_ALLMARAS) {
+
     cs_field_get_key_struct(CS_F_(nusa), key_cal_opt_id, &var_cal_opt);
-    cs_log_printf
-      (CS_LOG_SETUP,
+    cs_log_printf(CS_LOG_SETUP,
        _("   Spalart-Allmaras    (iturb = CS_TURB_SPALART_ALLMARAS)\n"
          "    almax:       %14.5e (Characteristic length)\n"
          "    uref:        %14.5e (Characteristic velocity)\n"
@@ -1556,19 +1685,17 @@ cs_turb_model_log_setup(void)
          cs_glob_turb_ref_values->almax,
          cs_glob_turb_ref_values->uref,
          var_cal_opt.relaxv);
+
   }
 
-  if (cs_glob_turb_model->itytur == 2
-   || cs_glob_turb_model->itytur == 5
-   || cs_glob_turb_model->iturb == CS_TURB_K_OMEGA
-   || cs_glob_turb_model->iturb == CS_TURB_SPALART_ALLMARAS) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+  if (cs_glob_turb_model->type == CS_TURB_RANS &&
+      cs_glob_turb_model->order == CS_TURB_FIRST_ORDER)
+    cs_log_printf(CS_LOG_SETUP,
        _("   Rotation/curvature correction\n"
          "    irccor:      %14d (0: desactivated)\n"
          "                                (1: activated)\n"),
          cs_glob_turb_rans_model->irccor);
-  }
+
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1580,8 +1707,10 @@ cs_turb_model_log_setup(void)
 void
 cs_turb_constants_log_setup(void)
 {
-  cs_log_printf
-    (CS_LOG_SETUP,
+  if (cs_glob_turb_model == NULL)
+    return;
+
+  cs_log_printf(CS_LOG_SETUP,
      _("\nConstants\n\n"
        "    xkappa:      %14.5e (Von Karman constant)\n"
        "    cstlog:      %14.5e (U+=Log(y+)/kappa +cstlog)\n"
@@ -1589,9 +1718,8 @@ cs_turb_constants_log_setup(void)
        "    bpow:        %14.5e (U+=apow (y+)**bpow (W&W law))\n\n"),
        cs_turb_xkappa, cs_turb_cstlog, cs_turb_apow, cs_turb_bpow);
 
-  if (cs_glob_turb_model->iturb == 20) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+  if (cs_glob_turb_model->iturb == 20)
+    cs_log_printf(CS_LOG_SETUP,
        _("   k-epsilon           (iturb = 20)\n"
          "    ce1:         %14.5e (Cepsilon 1: production coef.)\n"
          "    ce2:         %14.5e (Cepsilon 2: dissipat.  coef.)\n"
@@ -1600,9 +1728,9 @@ cs_turb_constants_log_setup(void)
          "    cmu:         %14.5e (Cmu constant)\n"),
          cs_turb_ce1, cs_turb_ce2, cs_turb_sigmak,
          cs_turb_sigmae, cs_turb_cmu);
-  } else if (cs_glob_turb_model->iturb == 21) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  else if (cs_glob_turb_model->iturb == 21)
+    cs_log_printf(CS_LOG_SETUP,
        _("   Linear production k-epsilon (iturb = 21)\n"
          "    ce1:         %14.5e (Cepsilon 1: production coef.)\n"
          "    ce2:         %14.5e (Cepsilon 2: dissipat.  coef.)\n"
@@ -1611,9 +1739,9 @@ cs_turb_constants_log_setup(void)
          "    cmu:         %14.5e (Cmu constant)\n"),
          cs_turb_ce1, cs_turb_ce2, cs_turb_sigmak,
          cs_turb_sigmae, cs_turb_cmu);
-  } else if (cs_glob_turb_model->iturb == 30) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  else if (cs_glob_turb_model->iturb == 30)
+    cs_log_printf(CS_LOG_SETUP,
        _("   Rij-epsilon         (iturb = 30)\n"
          "    ce1:         %14.5e (Cepsilon 1: production coef.)\n"
          "    ce2:         %14.5e (Cepsilon 2: dissipat.  coef.)\n"
@@ -1628,9 +1756,9 @@ cs_turb_constants_log_setup(void)
          cs_turb_ce1, cs_turb_ce2, cs_turb_crij1, cs_turb_crij2,
          cs_turb_crij3, cs_turb_sigmae, cs_turb_csrij, cs_turb_crijp1,
          cs_turb_crijp2, cs_turb_cmu);
-  } else if (cs_glob_turb_model->iturb == 31) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  else if (cs_glob_turb_model->iturb == 31)
+    cs_log_printf(CS_LOG_SETUP,
        _("   SSG Rij-epsilon     (iturb = 31)\n"
          "    cssgs1:      %14.5e (Cs1 coeff.)\n"
          "    cssgs2:      %14.5e (Cs2 coeff.)\n"
@@ -1650,10 +1778,11 @@ cs_turb_constants_log_setup(void)
          cs_turb_cssgr5, cs_turb_csrij, cs_turb_crij3,
          cs_turb_ce1, cs_turb_cssge2, cs_turb_sigmae,
          cs_turb_cmu);
-  } else if (cs_glob_turb_model->iturb == 32) {
+
+  else if (cs_glob_turb_model->iturb == 32) {
+
     cs_turb_crij3 = 0.6;
-    cs_log_printf
-      (CS_LOG_SETUP,
+    cs_log_printf(CS_LOG_SETUP,
        _("   EBRSM Rij-epsilon     (iturb = 32)\n"
          "    cebms1:      %14.5e (Cs1 coeff.)\n"
          "    cebmr1:      %14.5e (Cr1 coeff.)\n"
@@ -1675,9 +1804,10 @@ cs_turb_constants_log_setup(void)
          cs_turb_csrij, cs_turb_crij3,  cs_turb_cebme2,
          cs_turb_ce1, cs_turb_sigmae, cs_turb_xa1,
          cs_turb_sigmak, cs_turb_xceta, cs_turb_xct);
-  } else if (cs_glob_turb_model->iturb == 50) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  }
+  else if (cs_glob_turb_model->iturb == 50)
+    cs_log_printf(CS_LOG_SETUP,
        _("   v2f phi-model       (iturb = 50)\n"
          "    cv2fa1:      %14.5e (a1 to calculate Cepsilon1)\n"
          "    cv2fe2:      %14.5e (Cepsilon 2: dissip. coeff.)\n"
@@ -1693,9 +1823,9 @@ cs_turb_constants_log_setup(void)
          cs_turb_sigmae, cs_turb_cv2fmu, cs_turb_cv2fct,
          cs_turb_cv2fcl, cs_turb_cv2fet, cs_turb_cv2fc1,
          cs_turb_cv2fc2);
-  } else if (cs_glob_turb_model->iturb == 51) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  else if (cs_glob_turb_model->iturb == 51)
+    cs_log_printf(CS_LOG_SETUP,
        _("   v2f BL-v2/k         (iturb = 51)\n"
          "    cpale1:      %14.5e (Cepsilon 1 : Prod. coeff.)\n"
          "    cpale2:      %14.5e (Cepsilon 2 : Diss. coeff.)\n"
@@ -1713,9 +1843,9 @@ cs_turb_constants_log_setup(void)
          cs_turb_cpale4, cs_turb_sigmak, cs_turb_cpalse,
          cs_turb_cpalmu, cs_turb_cpalct, cs_turb_cpalcl,
          cs_turb_cpalet, cs_turb_cpalc1, cs_turb_cpalc2);
-  } else if (cs_glob_turb_model->iturb == 60) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  else if (cs_glob_turb_model->iturb == 60)
+    cs_log_printf(CS_LOG_SETUP,
        _("   k-omega SST         (iturb = 60)\n"
          "    ckwsk1:      %14.5e (sigma_k1 constant)\n"
          "    ckwsk2:      %14.5e (sigma_k2 constant)\n"
@@ -1733,9 +1863,9 @@ cs_turb_constants_log_setup(void)
          cs_turb_ckwsw2, cs_turb_ckwbt1, cs_turb_ckwbt2,
          cs_turb_ckwgm1, cs_turb_ckwgm2, cs_turb_ckwa1,
          cs_turb_ckwc1, cs_turb_cmu);
-  } else if (cs_glob_turb_model->iturb == 70) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+
+  else if (cs_glob_turb_model->iturb == 70)
+    cs_log_printf(CS_LOG_SETUP,
        _("   Spalart-Allmaras    (iturb = 70)\n"
          "    csab1:        %14.5e (b1 constant)\n"
          "    csab2:        %14.5e (b2 constant)\n"
@@ -1747,20 +1877,20 @@ cs_turb_constants_log_setup(void)
          cs_turb_csab1, cs_turb_csab2, cs_turb_csasig,
          cs_turb_csav1, cs_turb_csaw1, cs_turb_csaw2,
          cs_turb_csaw3);
-  }
 
   int iokss = 0, iokcaz = 0;
 
-  if (cs_glob_turb_rans_model->irccor == 1) {
-    if (cs_glob_turb_rans_model->itycor == 1)
-      iokcaz = 1;
-    else if (cs_glob_turb_rans_model->itycor == 2)
-      iokss = 1;
+  if (cs_glob_turb_rans_model != NULL) {
+    if (cs_glob_turb_rans_model->irccor == 1) {
+      if (cs_glob_turb_rans_model->itycor == 1)
+        iokcaz = 1;
+      else if (cs_glob_turb_rans_model->itycor == 2)
+        iokss = 1;
+    }
   }
 
-  if (iokcaz > 0) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+  if (iokcaz > 0)
+    cs_log_printf(CS_LOG_SETUP,
        _("   Rotation/curvature correction (Cazalbou)\n"
          "    ccaze2:       %14.5e (Coef Ce2^0)\n"
          "    ccazsc:       %14.5e (Coef Csc)\n"
@@ -1770,17 +1900,14 @@ cs_turb_constants_log_setup(void)
          "    ccazd:        %14.5e (Coef d)\n"),
          cs_turb_ccaze2, cs_turb_ccazsc, cs_turb_ccaza,
          cs_turb_ccazb, cs_turb_ccazc, cs_turb_ccazd);
-  }
 
-  if (iokss > 0) {
-    cs_log_printf
-      (CS_LOG_SETUP,
+  if (iokss > 0)
+    cs_log_printf(CS_LOG_SETUP,
        _("   Rotation/curvature correction (Spalart-Shur)\n"
          "    cssr1:       %14.5e (Coef c_r1)\n"
          "    cssr2:       %14.5e (Coef c_r2)\n"
          "    cssr3:       %14.5e (Coef c_r3)\n"),
          cs_turb_cssr1, cs_turb_cssr2, cs_turb_cssr3);
-  }
 }
 
 /*----------------------------------------------------------------------------*/

@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -57,7 +57,7 @@ BEGIN_C_DECLS
 
 typedef enum {
 
-  CS_WALL_F_DISABLED,
+  CS_WALL_F_DISABLED = 0,
   CS_WALL_F_1SCALE_POWER,
   CS_WALL_F_1SCALE_LOG,
   CS_WALL_F_2SCALES_LOG,
@@ -70,7 +70,7 @@ typedef enum {
 
 typedef enum {
 
-  CS_WALL_F_S_ARPACI_LARSEN,
+  CS_WALL_F_S_ARPACI_LARSEN = 0,
   CS_WALL_F_S_VDRIEST,
 
 } cs_wall_f_s_type_t;
@@ -422,11 +422,12 @@ cs_wall_functions_2scales_continuous(cs_real_t   rnnb,
     /* Turbulent viscocity is modified for RSM so that its expression
      * remain valid down to the wall, according to Durbin :
      * nu_t = 0.22 * v'2 * k / eps */
-    if (cs_glob_turb_model->itytur == 3) {
-      t_visc_durb = t_visc / (kinetic_en * cs_turb_cmu ) * rnnb * 0.22 ;
-    } else {
-      t_visc_durb = t_visc ;
-    }
+    const cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
+    assert(turb_model != NULL);
+    if (turb_model->itytur == 3)
+      t_visc_durb = t_visc / (kinetic_en * cs_turb_cmu ) * rnnb * 0.22;
+    else
+      t_visc_durb = t_visc;
 
     *cofimp     = 1. - *ypup * (2.0 * sqrt( l_visc / t_visc_durb * dup1 * (1.0 - dup1) ) -  dup2) ;
 
@@ -802,9 +803,13 @@ cs_wall_functions_2scales_vdriest(cs_real_t   rnnb,
  *
  * \f$ u^+ \f$ is computed as follows:
  *   \f[ u^+ = \dfrac{1}{\kappa}
- *             \ln \left(\dfrac{(y+\xi) u_k}{\nu + \alpha \xi u_k} \right)
+ *             \ln \left(\dfrac{(y+y_0) u_k}{\nu + \alpha \xi u_k} \right)
  *            + Cst_{smooth} \f]
- * with \f$ \alpha = \exp \left(- \kappa(Cst_{rough}-Cst_{smooth})\right) \f$.
+ * with \f$ \alpha = \exp \left(- \kappa(Cst_{rough}-Cst_{smooth})\right)
+ *                 \simeq 0.26 \f$
+ * and \f$ y_0 = \alpha \xi \exp \left(-\kappa Cst_{smooth} \right)
+ *             = \xi \exp \left(-\kappa Cst_{rough} \right)
+ *             \simeq \dfrac{\xi}{33}\f$.
  *
  * \param[in]     l_visc        kinematic viscosity
  * \param[in]     t_visc        turbulent kinematic viscosity
@@ -856,7 +861,13 @@ cs_wall_functions_2scales_smooth_rough(cs_real_t   l_visc,
    *
    * ln((y+y0)/y0) = ln((y+y0)/alpha xi) + kappa * 5.2
    *
-   * y0 =  roughness * exp(-kappa * 8.5)
+   * y0 =  xi * exp(-kappa * 8.5)
+   * where xi is the roughness here
+   * y0 = alpha * xi * exp(-kappa * 5.2)
+   *
+   * so:
+   *  alpha = exp(-kappa * (8.5 - 5.2)) = 0.26
+   *
    */
   double y0 = roughness*exp(-cs_turb_xkappa*cs_turb_cstlog_rough);
 
@@ -1183,7 +1194,7 @@ void CS_PROCF (hturbp, HTURBP)
  *============================================================================*/
 
 /*----------------------------------------------------------------------------
- *! \brief Provide acces to cs_glob_wall_functions
+ *! \brief Provide access to cs_glob_wall_functions
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/

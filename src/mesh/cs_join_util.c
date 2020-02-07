@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -1073,7 +1073,7 @@ _add_s_edge(cs_lnum_t        vertex_tag[],
 
   if (vertex_tag[v1_id] > 0 && vertex_tag[v2_id] > 0) {
 
-    _Bool  is_found = false;
+    bool  is_found = false;
 
     cs_lnum_t  tmp_size = *p_tmp_size;
     cs_lnum_t  max_size = *p_max_size;

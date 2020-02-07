@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -77,10 +77,6 @@ if (     imrgrl.eq.2 .or. imrgrl.eq.3 &
     .or. imrgrl.eq.8 .or. imrgrl.eq.9) then
   ivoset = 1
 endif
-
-if (iturb.eq.41) ivoset = 1
-
-if (ippmod(iaeros).ge.0) ivoset = 1
 
 if (ippmod(iatmos).ge.0) then
   ivoset = max(ivoset, cs_at_opt_interp_is_p1_proj_needed())

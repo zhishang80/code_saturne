@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -80,7 +80,7 @@ BEGIN_C_DECLS
         -  CS_EOS_STIFFENED_GAS: stiffened gas
         -  CS_EOS_GAS_MIX: mix of ideal gas
         -  CS_EOS_HOMOGENEOUS_TWO_PHASE: two-phase homogeneous model only,
-           each phase is an ideal gas
+           each phase follows a stiffened gas law.
 
   \var  cs_cf_model_t::ithvar
         indicator for thermodynamic variables initialization

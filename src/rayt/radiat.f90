@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -127,15 +127,15 @@ module radiat
 
     ! Interface to C function handling resolution
 
-    subroutine cs_rad_transfer_solve(bc_type, nclacp, nclafu,         &
-                                     dt, cp2fol, cp2ch, ichcor)       &
+    subroutine cs_rad_transfer_solve(verbosity, bc_type,     &
+                                     cp2fol, cp2ch, ichcor)  &
       bind(C, name='cs_rad_transfer_solve')
       use, intrinsic :: iso_c_binding
       implicit none
-      integer(kind=c_int), value :: nclacp, nclafu
+      integer(kind=c_int), value :: verbosity
       integer(kind=c_int), dimension(*) :: bc_type, ichcor
       real(kind=c_double), value :: cp2fol
-      real(kind=c_double), dimension(*) :: dt, cp2ch
+      real(kind=c_double), dimension(*) :: cp2ch
     end subroutine cs_rad_transfer_solve
 
     !---------------------------------------------------------------------------

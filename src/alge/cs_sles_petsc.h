@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -42,6 +42,7 @@
 #include "cs_halo_perio.h"
 #include "cs_matrix.h"
 #include "cs_time_plot.h"
+#include "cs_sles.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -61,7 +62,7 @@ BEGIN_C_DECLS
  * This function is called the end of the setup stage for a KSP solver.
  *
  * Note that using the advanced KSPSetPostSolve and KSPSetPreSolve functions,
- * this also allows setting furthur function pointers for pre and post-solve
+ * this also allows setting further function pointers for pre and post-solve
  * operations (see the PETSc documentation).
  *
  * Note: if the context pointer is non-NULL, it must point to valid data
@@ -97,7 +98,7 @@ typedef struct _cs_sles_petsc_t  cs_sles_petsc_t;
  * This function is called the end of the setup stage for a KSP solver.
  *
  * Note that using the advanced KSPSetPostSolve and KSPSetPreSolve functions,
- * this also allows setting furthur function pointers for pre and post-solve
+ * this also allows setting further function pointers for pre and post-solve
  * operations (see the PETSc documentation).
  *
  * Note: if the context pointer is non-NULL, it must point to valid data

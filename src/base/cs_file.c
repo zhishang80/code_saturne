@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -150,9 +150,9 @@ BEGIN_C_DECLS
   \var CS_FILE_MPI_COLLECTIVE
        Collective MPI-IO
 
-  \enum cs_file_mpi_positionning_t
+  \enum cs_file_mpi_positioning_t
 
-  \brief MPI-IO positionning methods
+  \brief MPI-IO positioning methods
   \details It is not always known whether a performance or robustness
           difference is to be expected using explicit file offsets
           or individual file pointers. Perusal of a sampling of ROMIO
@@ -161,9 +161,9 @@ BEGIN_C_DECLS
           or file systems, so an advanced setting is made possible.
 
   \var CS_FILE_MPI_EXPLICIT_OFFSETS
-       Use explicit offsets positionning with MPI-IO
+       Use explicit offsets positioning with MPI-IO
   \var CS_FILE_MPI_INDIVIDUAL_POINTERS
-       Use individual file pointer positionning with MPI-IO
+       Use individual file pointer positioning with MPI-IO
 */
 
 /*! \cond DOXYGEN_SHOULD_SKIP_THIS */
@@ -188,7 +188,7 @@ struct _cs_file_t {
   cs_file_access_t   method;       /* File access method */
   int                rank;         /* MPI rank */
   int                n_ranks;      /* MPI rank */
-  _Bool              swap_endian;  /* Swap big-endian and little-endian ? */
+  bool               swap_endian;  /* Swap big-endian and little-endian ? */
 
   FILE              *sh;           /* Serial file handle */
 
@@ -248,8 +248,8 @@ struct _cs_file_serializer_t {
 
 /* Default access */
 
-static cs_file_mpi_positionning_t
-  _mpi_io_positionning = CS_FILE_MPI_EXPLICIT_OFFSETS;
+static cs_file_mpi_positioning_t
+  _mpi_io_positioning = CS_FILE_MPI_EXPLICIT_OFFSETS;
 
 static cs_file_access_t _default_access_r = CS_FILE_DEFAULT;
 static cs_file_access_t _default_access_w = CS_FILE_DEFAULT;
@@ -284,11 +284,11 @@ const char  *cs_file_access_name[]
      N_("non-collective MPI-IO, collective file open/close"),
      N_("collective MPI-IO")};
 
-/* names associated with MPI-IO positionning */
+/* names associated with MPI-IO positioning */
 
 #if defined(HAVE_MPI_IO)
-const char *cs_file_mpi_positionning_name[] = {N_("explicit offsets"),
-                                               N_("individual file pointers")};
+const char *cs_file_mpi_positioning_name[] = {N_("explicit offsets"),
+                                              N_("individual file pointers")};
 #endif
 
 /*! \cond DOXYGEN_SHOULD_SKIP_THIS */
@@ -1192,7 +1192,7 @@ _mpi_io_error_message
  *
  * parameters:
  *   f     <-- pointer to file handler
- *   mode  <-- file acces mode: read, write, or append
+ *   mode  <-- file access mode: read, write, or append
  *
  * returns:
  *   MPI_SUCCESS in case of success, MPI error code in case of failure
@@ -1376,7 +1376,7 @@ _mpi_file_read_block_noncoll(cs_file_t  *f,
 
     if (errcode == MPI_SUCCESS) {
 
-      if (_mpi_io_positionning == CS_FILE_MPI_EXPLICIT_OFFSETS)
+      if (_mpi_io_positioning == CS_FILE_MPI_EXPLICIT_OFFSETS)
         errcode = MPI_File_read_at(f->fh, disp, buf, count, ent_type, &status);
 
       else {
@@ -1575,7 +1575,7 @@ _mpi_file_write_block_noncoll(cs_file_t  *f,
 
     if (errcode == MPI_SUCCESS) {
 
-      if (_mpi_io_positionning == CS_FILE_MPI_EXPLICIT_OFFSETS)
+      if (_mpi_io_positioning == CS_FILE_MPI_EXPLICIT_OFFSETS)
         errcode = MPI_File_write_at(f->fh, disp, buf, count, ent_type, &status);
 
       else {
@@ -1772,7 +1772,7 @@ _cs_file_compare_names(const void  *a,
  * modified by cs_file_set_swap_endian().
  *
  * \param[in]  name    file name
- * \param[in]  mode    file acces mode: read, write, or append
+ * \param[in]  mode    file access mode: read, write, or append
  * \param[in]  method  file access method (currently only C standard-IO when
  *                     built without MPI)
  *
@@ -1896,7 +1896,7 @@ cs_file_open(const char        *name,
  * modified by cs_file_set_swap_endian().
  *
  * \param[in]  name   file name
- * \param[in]  mode   file acces mode: read, write, or append
+ * \param[in]  mode   file access mode: read, write, or append
  *
  * \return pointer to cs_file_t file descriptor (NULL in case of failure);
  *   currently, errors are fatal.
@@ -1950,7 +1950,7 @@ cs_file_open_default(const char      *name,
  * modified by cs_file_set_swap_endian().
  *
  * \param[in]  name   file name
- * \param[in]  mode   file acces mode: read, write, or append
+ * \param[in]  mode   file access mode: read, write, or append
  *
  * \return pointer to cs_file_t file descriptor (NULL in case of failure);
  *   currently, errors are fatal.
@@ -2130,7 +2130,7 @@ cs_file_read_global(cs_file_t  *f,
     MPI_Status status;
     int errcode = MPI_SUCCESS, count = 0;
 
-    if (_mpi_io_positionning == CS_FILE_MPI_EXPLICIT_OFFSETS) {
+    if (_mpi_io_positioning == CS_FILE_MPI_EXPLICIT_OFFSETS) {
       if (f->rank == 0) {
         errcode = MPI_File_read_at(f->fh,
                                    f->offset,
@@ -2250,7 +2250,7 @@ cs_file_write_global(cs_file_t   *f,
     MPI_Status status;
     int errcode = MPI_SUCCESS, count = 0;
 
-    if (_mpi_io_positionning == CS_FILE_MPI_EXPLICIT_OFFSETS) {
+    if (_mpi_io_positioning == CS_FILE_MPI_EXPLICIT_OFFSETS) {
       if (f->rank == 0) {
         errcode = MPI_File_write_at(f->fh,
                                     f->offset,
@@ -2384,7 +2384,7 @@ cs_file_read_block(cs_file_t  *f,
 
   case CS_FILE_MPI_COLLECTIVE:
 
-    if (_mpi_io_positionning == CS_FILE_MPI_EXPLICIT_OFFSETS)
+    if (_mpi_io_positioning == CS_FILE_MPI_EXPLICIT_OFFSETS)
       retval = _mpi_file_read_block_eo(f,
                                        buf,
                                        size,
@@ -2607,7 +2607,7 @@ cs_file_write_block_buffer(cs_file_t  *f,
       break;
 
   case CS_FILE_MPI_COLLECTIVE:
-    if (_mpi_io_positionning == CS_FILE_MPI_EXPLICIT_OFFSETS)
+    if (_mpi_io_positioning == CS_FILE_MPI_EXPLICIT_OFFSETS)
       retval = _mpi_file_write_block_eo(f,
                                         buf,
                                         size,
@@ -2717,7 +2717,7 @@ cs_file_seek(cs_file_t       *f,
 #if defined(HAVE_MPI_IO)
 
   else if (   f->fh != MPI_FILE_NULL
-           && _mpi_io_positionning == CS_FILE_MPI_INDIVIDUAL_POINTERS) {
+           && _mpi_io_positioning == CS_FILE_MPI_INDIVIDUAL_POINTERS) {
 
     retval = MPI_File_seek(f->fh, f->offset, MPI_SEEK_SET);
 
@@ -2840,7 +2840,7 @@ cs_file_dump(const cs_file_t  *f)
 void
 cs_file_free_defaults(void)
 {
-  _mpi_io_positionning = CS_FILE_MPI_EXPLICIT_OFFSETS;
+  _mpi_io_positioning = CS_FILE_MPI_EXPLICIT_OFFSETS;
 
   _default_access_r = CS_FILE_DEFAULT;
   _default_access_w = CS_FILE_DEFAULT;
@@ -3224,23 +3224,23 @@ cs_file_block_comm(int       block_rank_step,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Get the positionning method for MPI-IO
+ * \brief Get the positioning method for MPI-IO
  *
- * For details, see \ref cs_file_set_mpi_io_positionning.
+ * For details, see \ref cs_file_set_mpi_io_positioning.
  *
- * \return  positionning method for MPI-IO
+ * \return  positioning method for MPI-IO
  */
 /*----------------------------------------------------------------------------*/
 
-cs_file_mpi_positionning_t
-cs_file_get_mpi_io_positionning(void)
+cs_file_mpi_positioning_t
+cs_file_get_mpi_io_positioning(void)
 {
-  return _mpi_io_positionning;
+  return _mpi_io_positioning;
 }
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Set the positionning method for MPI-IO
+ * \brief Set the positioning method for MPI-IO
  *
  * It is not always known whether a performance or robustness difference is
  * to be expected using explicit file offsets or individual file pointers.
@@ -3252,14 +3252,14 @@ cs_file_get_mpi_io_positionning(void)
  * done in the future in the unexpected case of performance results
  * showing this would be useful.
  *
- * \param[in]  positionning  chosen positionning method for MPI-IO
+ * \param[in]  positioning  chosen positioning method for MPI-IO
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_file_set_mpi_io_positionning(cs_file_mpi_positionning_t  positionning)
+cs_file_set_mpi_io_positioning(cs_file_mpi_positioning_t  positioning)
 {
-  _mpi_io_positionning = positionning;
+  _mpi_io_positioning = positioning;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -3296,7 +3296,7 @@ cs_file_defaults_info(void)
         cs_log_printf(logs[log_id],
                       _(fmt[mode + 2]),
                       _(cs_file_access_name[method]),
-                      _(cs_file_mpi_positionning_name[_mpi_io_positionning]));
+                      _(cs_file_mpi_positioning_name[_mpi_io_positioning]));
     }
 #endif
     if (method <= CS_FILE_STDIO_PARALLEL) {
@@ -3889,4 +3889,51 @@ cs_file_remove(const char  *path)
 
 /*----------------------------------------------------------------------------*/
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Check if file name/path ends with a specific string
+ *
+ * The function returns an int: 1 if the file name ends with the
+ * given string, 0 otherwise.
+ *
+ * \param[in]  path name of file
+ * \param[in]  end  end string to test
+ *
+ * \return an int. 1 if the path ends with the given string, 0 otherwise.
+ */
+/*----------------------------------------------------------------------------*/
+
+int
+cs_file_endswith(const char *path,
+                 const char *end)
+{
+
+  int retval = 0;
+
+  /* If either pointers is NULL, return 0 */
+  if (path == NULL || end == NULL)
+    retval = 0;
+
+  else {
+
+    const int lpath = strlen(path);
+    const int lext  = strlen(end);
+
+    /* If either strings is empty, or if the path is shorter than the end
+     * string, return 0
+     */
+    if (lpath == 0 || lext == 0)
+      retval = 0;
+
+    else if (lext > lpath)
+      retval = 0;
+
+    else
+      retval = (strcmp(path + (lpath-lext), end) == 0);
+  }
+
+  return retval;
+
+}
+/*----------------------------------------------------------------------------*/
 END_C_DECLS

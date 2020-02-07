@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -78,6 +78,9 @@ typedef struct {
   double        t0;           /* reference temperature */
   double        cp0;          /* reference specific heat */
   double        cv0;          /* reference specific heat */
+  double        r_pg_cnst;    /* Perfect Gas R constant */
+  double        rvsra;        /* ratio gaz constant h2o/ dry air */
+  double        clatev;       /* latent heat of evaporation: */
   double        xmasmr;       /* molar mass of the perfect gas in kg/mol
                                  (if ieos=1) */
   int           ipthrm;       /* Uniform variable thermodynamic pressure for the

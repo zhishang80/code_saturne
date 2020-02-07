@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -55,7 +55,6 @@ use coincl
 use cpincl
 use ppincl
 use radiat
-use ihmpre
 use mesh
 use post
 use field
@@ -406,6 +405,15 @@ if (iporos.ge.1) then
   call field_create(f_name, itycat, ityloc, 1, .false., ipori)
   call field_set_key_int(ipori, keylog, 1)
   call field_set_key_int(ipori, keyvis, pflag)
+
+  f_name = 'cell_f_vol'
+  call field_create(f_name,&
+                    itycat,&
+                    1,& ! location: cell
+                    1,& ! dimension
+                    .false.,&
+                    f_id)
+
   if (iporos.eq.2) then
     f_name = 'tensorial_porosity'
     call field_create(f_name, itycat, ityloc, 6, .false., iporf)
@@ -442,8 +450,56 @@ if (iporos.ge.1) then
                       1,& ! dimension
                       .false.,&
                       f_id)
+    f_name = 'i_f_face_normal'
+    call field_create(f_name,&
+                      itycat,&
+                      2,& ! location: inner faces
+                      3,& ! dimension
+                      .false.,&
+                      f_id)
+
+    f_name = 'i_f_face_surf'
+    call field_create(f_name,&
+                      itycat,&
+                      2,& ! location: inner faces
+                      1,& ! dimension
+                      .false.,&
+                      f_id)
+
+    f_name = 'b_f_face_normal'
+    call field_create(f_name,&
+                      itycat,&
+                      3,& ! location: boundary faces
+                      3,& ! dimension
+                      .false.,&
+                      f_id)
+
+    f_name = 'b_f_face_surf'
+    call field_create(f_name,&
+                      itycat,&
+                      3,& ! location: boundary faces
+                      1,& ! dimension
+                      .false.,&
+                      f_id)
+
+    f_name = 'i_f_face_factor'
+    call field_create(f_name,&
+                      itycat,&
+                      2,& ! location: inner faces
+                      2,& ! dimension: 2 per face
+                      .false.,&
+                      f_id)
+
+    f_name = 'b_f_face_factor'
+    call field_create(f_name,&
+                      itycat,&
+                      3,& ! location: boundary faces
+                      1,& ! dimension
+                      .false.,&
+                      f_id)
 
   endif
+
 endif
 
 !===============================================================================
@@ -1027,21 +1083,19 @@ integer, intent(in) :: f_id
 character(len=64) :: f_name
 
 integer :: type_flag, location_id, st_id, f_dim
-logical :: has_previous
 
 !===============================================================================
 
 type_flag = FIELD_EXTENSIVE + FIELD_PROPERTY
 location_id = 1 ! variables defined on cells
-has_previous = .false.
 
 ! Define asscociated field
 
 call field_get_dim(f_id, f_dim)
 call field_get_name (f_id, f_name)
 
-call field_create(trim(f_name)//'_st', type_flag,               &
-                  location_id, f_dim, has_previous, st_id)
+call field_find_or_create(trim(f_name)//'_st', type_flag,       &
+                            location_id, f_dim, st_id)
 
 call field_set_key_int(f_id, kst, st_id)
 

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -79,6 +79,7 @@ cs_lagr_adh.h \
 cs_lagr_resuspension.h \
 cs_lagr_poisson.h \
 cs_lagr_options.h \
+cs_lagr_orientation.h \
 cs_lagr_gradients.h \
 cs_lagr_particle.h \
 cs_lagr_print.h \
@@ -118,6 +119,7 @@ cs_lagr_gradients.c \
 cs_lagr_head_losses.c \
 cs_lagr_new.c \
 cs_lagr_options.c \
+cs_lagr_orientation.c \
 cs_lagr_particle.c \
 cs_lagr_resuspension.c \
 cs_lagr_precipitation_model.c \

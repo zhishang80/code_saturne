@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -30,20 +30,9 @@ module ihmpre
 
   implicit none
 
-  !=============================================================================
+  ! Ths module is now empty and deprecated, maintained only to avoid breaking
+  ! some older user subroutines.
 
-  !> \defgroup dimens Module for dimensions
-
-  !> \addtogroup ihmpre
-  !> \{
-
-
-  !> indicator of the use of the GUI
-  !> (We could avoid this module by querying a C structure)
-
-  integer, save :: iihmpr
-
-  !> \}
   !=============================================================================
 
 end module ihmpre

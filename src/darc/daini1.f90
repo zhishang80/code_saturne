@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -58,7 +58,6 @@ use cstnum
 use ppppar
 use ppthch
 use ppincl
-use ihmpre
 use darcy_module
 use cs_c_bindings
 
@@ -69,8 +68,6 @@ implicit none
 ! Local variables
 
 type(var_cal_opt) :: vcopt
-integer iscal, key_decay
-double precision decay_rate
 
 !=============================================================================
 
@@ -137,13 +134,11 @@ darcy_unsaturated = 1
 ! Definition of sorption parameters
 call cs_gwf_parameters_define_field_keys
 
-if (iihmpr.eq.1) then
-  call uidai1(darcy_anisotropic_permeability,     &
-              darcy_anisotropic_dispersion,       &
-              darcy_unsteady,                     &
-              darcy_gravity,                      &
-              darcy_unsaturated)
-endif
+call uidai1(darcy_anisotropic_permeability,     &
+            darcy_anisotropic_dispersion,       &
+            darcy_unsteady,                     &
+            darcy_gravity,                      &
+            darcy_unsaturated)
 
 !===============================================================================
 ! 2. Define user settings

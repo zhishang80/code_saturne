@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -454,7 +454,7 @@ class MainFieldsInitializationTestCase(ModelTest):
         """Check whether the MainFieldsInitiaziationModel class could set and get InitialNonCondensable"""
         MainFieldsModel(self.case).addField()
         MainFieldsModel(self.case).addDefinedField("2", "field2", 'dispersed', 'gas', 'on', 'on', 'off', 2)
-        from NonCondensableModel import NonCondensableModel
+        from code_saturne.model.NonCondensableModel import NonCondensableModel
         NonCondensableModel(self.case).addNonCondensable()
         mdl = MainFieldsInitializationModel(self.case)
         mdl.setInitialNonCondensable('1','2','mass_fraction_non_condensable_gas_0',0.23)

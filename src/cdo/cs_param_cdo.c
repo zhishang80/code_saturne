@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -90,6 +90,7 @@ cs_param_hodge_algo_desc[CS_PARAM_N_HODGE_ALGOS][CS_BASE_STRING_LEN] =
     N_("Whitney on the Barycentric Subdivision (WBS)"),
     N_("Orthogonal Consistency/Stabilization (OCS)"),
     N_("Orthogonal Consistency/Sub-Stabilization (OCS2)"),
+    N_("Orthogonal Consistency/Bubble-Stabilization (BUBBLE)"),
     N_("Automatic switch") };
 
 /*============================================================================
@@ -104,32 +105,32 @@ cs_param_hodge_algo_desc[CS_PARAM_N_HODGE_ALGOS][CS_BASE_STRING_LEN] =
 /*!
  * \brief   Get the name of algorithm related to a discrete Hdoge operator
  *
- * \param[in] h_info     cs_param_hodge_t structure
+ * \param[in] hodgep     cs_param_hodge_t structure
  *
  * \return the name of the algorithm
  */
 /*----------------------------------------------------------------------------*/
 
 const char *
-cs_param_hodge_get_algo_name(const cs_param_hodge_t   h_info)
+cs_param_hodge_get_algo_name(const cs_param_hodge_t   hodgep)
 {
-  return cs_param_hodge_algo_desc[h_info.algo];
+  return cs_param_hodge_algo_desc[hodgep.algo];
 }
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Get the type of discrete Hodge operator
  *
- * \param[in] h_info     cs_param_hodge_t structure
+ * \param[in] hodgep     cs_param_hodge_t structure
  *
  * \return the name of the type
  */
 /*----------------------------------------------------------------------------*/
 
 const char *
-cs_param_hodge_get_type_name(const cs_param_hodge_t   h_info)
+cs_param_hodge_get_type_name(const cs_param_hodge_t   hodgep)
 {
-  return cs_param_hodge_type_desc[h_info.type];
+  return cs_param_hodge_type_desc[hodgep.type];
 }
 
 /*----------------------------------------------------------------------------*/
@@ -159,7 +160,8 @@ cs_param_hodge_log(const char               *prefix,
   cs_log_printf(CS_LOG_SETUP, "%s | Property inversion: %s\n",
                 _p, cs_base_strtf(hp.inv_pty));
   if (hp.algo == CS_PARAM_HODGE_ALGO_COST ||
-      hp.algo == CS_PARAM_HODGE_ALGO_OCS2)
+      hp.algo == CS_PARAM_HODGE_ALGO_OCS2 ||
+      hp.algo == CS_PARAM_HODGE_ALGO_BUBBLE)
     cs_log_printf(CS_LOG_SETUP, "%s | Algo.Coef: %.3e\n",
                   _p, hp.coef);
 }

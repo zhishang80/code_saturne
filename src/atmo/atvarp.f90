@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -54,7 +54,6 @@ use cstnum
 use ppppar
 use ppthch
 use ppincl
-use ihmpre
 use atincl
 use atchem
 use field
@@ -104,9 +103,7 @@ call field_get_key_id("max_scalar_clipping", kscmax)
 ! 1. GUI and model information
 !===============================================================================
 
-if (iihmpr.eq.1) then
-  call uiati1 (imeteo, ficmet, len(ficmet))
-endif
+call uiati1 (imeteo, ficmet, len(ficmet))
 
 ! Set base default model parameters and call usati1
 
@@ -143,8 +140,8 @@ if (ippmod(iatmos).eq.2) then
   call field_set_key_double(f_id, kscmin, 200.d0)
 
   ! total water content
-  call add_model_scalar_field('total_water', 'TotWater', itotwt)
-  f_id = ivarfl(isca(itotwt))
+  call add_model_scalar_field('ym_water', 'Ym water', iymw)
+  f_id = ivarfl(isca(iymw))
   call field_set_key_double(f_id, kscmin, 0.d0)
 
   ! total number of droplets
@@ -190,6 +187,7 @@ if (ifilechemistry.ge.1) then
     dmmk(3)=48.d0  ! Molar mass (g/mol) O3
     dmmk(4)=16.d0  ! Molar mass (g/mol) O3P
     chempoint = (/ 4, 3, 2, 1 /)
+
   ! scheme with 20 species and 34 reactions! Note pas de COV
   else if (ifilechemistry.eq.2) then
     nrg = 34
@@ -240,6 +238,7 @@ if (ifilechemistry.ge.1) then
     dmmk(20)=98.08d0   ! Molar mass (g/mol) H2SO4
     chempoint = (/ 20, 19, 16, 17, 2, 15, 14, 3, 18, 7, 8, 9, 4, &
                    10, 1, 12, 11, 13, 5, 6 /)
+
   ! scheme CB05 with 52 species and 155 reactions
   else if (ifilechemistry.eq.3) then
     if (iaerosol.eq.1) then
@@ -402,16 +401,31 @@ if (ifilechemistry.ge.1) then
                      19, 20, 4, 21, 36, 22, 34, 16, 23, 24, 25, 31, 32, 26,&
                      5, 6, 27, 12, 28, 30, 29, 7, 8, 18 /)
     endif
+
   ! User defined chemistry using SPACK file and routines
   else if (ifilechemistry.eq.4) then
 
-    ! This function read the numver of species and reactions
+    ! This function read the number of species, their molar mass
     ! and creates variables
     call cs_atmo_declare_chem_from_spack()
+
+    ! Read the number of reactions
+    call dimensions(ii, nrg, jj)
+
+    ! Verification
+    if (ii.ne.nespg) then
+      write(nfecra,1003)
+      call csexit (1)
+    endif
 
     ! Map isca_chem, dmmk, chempoint and allocate it if needed
     call init_chemistry_pointers()
 
+  endif
+
+  ! Finish initialization of C chemistry when SPACK was not used
+  if (ifilechemistry.ne.4) then
+    call cs_atmo_chem_init_c_chemistry()
   endif
 
 endif
@@ -491,6 +505,20 @@ icp = -1
 
 #if defined(_CS_LANG_FR)
 
+ 1003 format(                                                           &
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/,&
+'@ @@ ATTENTION : ARRET A L''ENTREE DES DONNEES               ',/,&
+'@    =========                                               ',/,&
+'@    CHIMIE ATMOSPHERIQUE SPACK DEMANDEE                     ',/,&
+'@                                                            ',/,&
+'@  Le nombre de composés gaseux lu dans le fichier SPACK     ',/,&
+'@  differe de celui lu dans les sources SPACK                ',/,&
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/)
+
  1004 format(                                                           &
 '@                                                            ',/,&
 '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
@@ -510,6 +538,20 @@ icp = -1
 '@                                                            ',/)
 
 #else
+
+ 1003 format(                                                           &
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/,&
+'@ @@  WARNING:   STOP WHILE READING INPUT DATA               ',/,&
+'@    =========                                               ',/,&
+'@    ATMOSPHERIC CHEMISTRY FROM SPACK                        ',/,&
+'@                                                            ',/,&
+'@  The number of gaseous species read from the SPACK file    ',/,&
+'@  is not equal to the one read in the SPACK source file     ',/,&
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/)
 
  1004 format(                                                           &
 '@                                                            ',/,&

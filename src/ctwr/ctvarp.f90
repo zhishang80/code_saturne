@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -35,11 +35,10 @@
 !______________________________________________________________________________.
 !  mode           name          role                                           !
 !______________________________________________________________________________!
-!> \param[in]     use_atmo      Also use atmospherique module if greater than 0
 !_______________________________________________________________________________
 
 
-subroutine ctvarp(use_atmo)
+subroutine ctvarp
 
 !===============================================================================
 ! Module files
@@ -57,14 +56,13 @@ use ppthch
 use ppincl
 use ctincl
 use field
+use atincl, only : iymw
 
 !===============================================================================
 
 implicit none
 
 ! Arguments
-
-integer          use_atmo
 
 ! Local variables
 
@@ -107,7 +105,13 @@ icp = 0     ! Cp is variable (>=0 means variable, -1 means constant)
             ! irrespective of the values of irovar and ivivar)
 
 ! The thermal transported scalar is the temperature of the bulk.
-call add_model_scalar_field('temperature', 'Temperature humid air', iscalt)
+! If the atmospheric module in switch off, we create the field
+if (ippmod(iatmos).ne.2) then
+
+  call add_model_scalar_field('temperature', 'Temperature humid air', iscalt)
+
+endif
+
 f_id = ivarfl(isca(iscalt))
 
 ifcvsl = 0 ! Set variable diffusivity for the humid air enthalpy
@@ -246,9 +250,16 @@ icla = -1
 
 ! NB: 'c' stands for continuous <> 'p' stands for particles
 
-! Mass fraction of dry air in the bulk, humid air
-call add_model_scalar_field('ym_water', 'Ym water', iymw)
-f_id = ivarfl(isca(iymw))
+! If not using the atmospheric module, we create the fields
+if (ippmod(iatmos).ne.2) then
+
+  ! Total mass fraction water in the bulk, humid air
+  call add_model_scalar_field('ym_water', 'Ym water', iymw)
+  f_id = ivarfl(isca(iymw))
+
+  call field_set_key_double(f_id, kscmin, 0.d0)
+  call field_set_key_double(f_id, kscmax, 1.d0)
+endif
 
 call field_set_key_int(f_id, keyccl, icla)
 

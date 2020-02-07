@@ -10,7 +10,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -43,23 +43,10 @@
 #include <string.h>
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_error.h"
-#include "bft_mem.h"
-#include "bft_printf.h"
-
-#include "cs_base.h"
-#include "cs_mesh.h"
-#include "cs_parall.h"
-#include "cs_turbomachinery.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -166,18 +153,20 @@ cs_user_turbomachinery_rotor(void)
 void
 cs_user_turbomachinery_set_rotation_velocity(void)
 {
+  /*! [user_tbm_set_linear_rotation_velocity] */
+  {
+    /* Linearly increase the rotation velocity from 0 to 1470 rd/min in 0.2 s */
+    /* ---------------------------------------------------------------------- */
 
-  /* Linearly increase the rotation velocity from 0 to 1470 rd/min in 0.2 s */
-  /* ---------------------------------------------------------------------- */
+    int rotor_num = 1;
+    double two_pi = 2. * acos(-1.);
+    double rotation_velocity = -1470. * two_pi / 60.;
+    double rotor_vel = rotation_velocity * CS_MIN(cs_glob_time_step->t_cur / 0.2, 1.);
 
-  int rotor_num = 1;
-  double two_pi = 2. * acos(-1.);
-  double rotation_velocity = -1470. * two_pi / 60.;
-  double rotor_vel = rotation_velocity * CS_MIN(cs_glob_time_step->t_cur / 0.2, 1.);
-
-  cs_turbomachinery_set_rotation_velocity(rotor_num,
-                                          rotor_vel);
-
+    cs_turbomachinery_set_rotation_velocity(rotor_num,
+                                            rotor_vel);
+  }
+  /*! [user_tbm_set_linear_rotation_velocity] */
 }
 
 /*----------------------------------------------------------------------------*/

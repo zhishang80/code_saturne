@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -152,9 +152,6 @@ _sles_default_native(int                f_id,
       sles_it_type = CS_SLES_PCG;
       multigrid = 1;
     }
-    else if (!strcmp(name, "Prhydro")) { /* prehyd.f90 */
-      sles_it_type = CS_SLES_PCG;
-    }
     else if (!strcmp(name, "Pr compress")) { /* resopv.f90 */
       sles_it_type = CS_SLES_P_SYM_GAUSS_SEIDEL;
     }
@@ -214,7 +211,8 @@ _sles_default_native(int                f_id,
 
     /* Multigrid used as preconditioner if possible, as solver otherwise */
 
-    if ((matrix_type == CS_MATRIX_MSR) || (matrix_type == CS_MATRIX_N_TYPES)) {
+    if (   (matrix_type == CS_MATRIX_MSR)
+        || (matrix_type >= CS_MATRIX_N_TYPES)) {
       if (sles_it_type == CS_SLES_PCG && cs_glob_n_threads > 1)
         sles_it_type = CS_SLES_FCG;
       cs_sles_it_t *c = cs_sles_it_define(f_id,
@@ -523,6 +521,8 @@ cs_sles_setup_native_conv_diff(int                  f_id,
     a_diff = _matrix_setup[setup_id][2];
   }
 
+  cs_matrix_default_set_tuned(a);
+
   /* Setup system */
 
   if (strcmp(cs_sles_get_type(sc), "cs_multigrid_t") != 0)
@@ -618,6 +618,8 @@ cs_sles_setup_native_coupling(int               f_id,
     a = _matrix_setup[setup_id][0];
   }
 
+  cs_matrix_default_set_tuned(a);
+
   /* Setup system */
 
   cs_sles_setup(sc, a);
@@ -705,9 +707,17 @@ cs_sles_solve_native(int                  f_id,
        constraints. */
 
     if (cs_sles_get_context(sc) == NULL) {
-      a = cs_matrix_native(symmetric,
-                           diag_block_size,
-                           extra_diag_block_size);
+      int eb_size = 1;
+      if (extra_diag_block_size != NULL)
+        eb_size = extra_diag_block_size[1];
+      if (eb_size > 1)
+        a = cs_matrix_native(symmetric,
+                             diag_block_size,
+                             extra_diag_block_size);
+      else
+        a = cs_matrix_msr(symmetric,
+                          diag_block_size,
+                          extra_diag_block_size);
 
       cs_matrix_set_coefficients(a,
                                  symmetric,
@@ -775,6 +785,8 @@ cs_sles_solve_native(int                  f_id,
                                (const cs_lnum_2_t *)(m->i_face_cells),
                                da,
                                xa);
+
+    cs_matrix_default_set_tuned(a);
 
     _sles_setup[setup_id] = sc;
     _matrix_setup[setup_id][0] = a;
@@ -992,7 +1004,7 @@ cs_sles_default_error(cs_sles_t                    *sles,
 
       bft_printf(_("\n\n"
                    "%s [%s]: divergence\n"
-                   "  fallback from multigrid to %s-preconditionned CG solver\n"
+                   "  fallback from multigrid to %s-preconditioned CG solver\n"
                    "  for re-try and subsequent solves.\n"),
                    "Multigrid", name, "Jacobi");
 

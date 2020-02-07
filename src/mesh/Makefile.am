@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -77,6 +77,7 @@ cs_mesh_location.h \
 cs_mesh_quality.h \
 cs_mesh_quantities.h \
 cs_mesh_refine.h \
+cs_mesh_remove.h \
 cs_mesh_save.h \
 cs_mesh_thinwall.h \
 cs_mesh_to_builder.h \
@@ -118,6 +119,7 @@ cs_mesh_location.c \
 cs_mesh_quality.c \
 cs_mesh_quantities.c \
 cs_mesh_refine.c \
+cs_mesh_remove.c \
 cs_mesh_save.c \
 cs_mesh_thinwall.c \
 cs_mesh_to_builder.c \

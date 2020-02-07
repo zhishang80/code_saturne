@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -47,16 +47,10 @@
 #include <ple_coupling.h>
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
 #include "cs_headers.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -95,6 +89,8 @@ BEGIN_C_DECLS
 void
 cs_user_parameters(cs_domain_t   *domain)
 {
+  CS_UNUSED(domain);
+
   /*
    * We define a fan, which will be handled as an automatic
    * explicit source term. See cs_fan_define() prototype

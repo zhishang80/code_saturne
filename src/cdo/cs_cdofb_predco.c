@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -59,16 +59,18 @@
 #include "cs_cdofb_scaleq.h"
 #include "cs_cdofb_vecteq.h"
 #include "cs_cdofb_navsto.h"
+#if defined(DEBUG) && !defined(NDEBUG)
 #include "cs_dbg.h"
+#endif
 #include "cs_equation_bc.h"
 #include "cs_equation_common.h"
 #include "cs_equation_priv.h"
 #include "cs_evaluate.h"
 #include "cs_log.h"
 #include "cs_math.h"
+#include "cs_navsto_sles.h"
 #include "cs_param.h"
 #include "cs_post.h"
-#include "cs_sles.h"
 #include "cs_source_term.h"
 #include "cs_static_condensation.h"
 #include "cs_timer.h"
@@ -223,7 +225,7 @@ typedef struct {
  * Local Macro definitions and structure definitions
  *============================================================================*/
 
-#define CS_CDOFB_PREDCO_DBG      3
+#define CS_CDOFB_PREDCO_DBG      0
 
 /*============================================================================
  * Private variables
@@ -239,92 +241,6 @@ static const cs_matrix_structure_t  *cs_shared_pre_ms;
 /*============================================================================
  * Private function prototypes
  *============================================================================*/
-
-#if defined(HAVE_PETSC)
-/*----------------------------------------------------------------------------
- * \brief  Function pointer: setup hook for setting PETSc solver and
- *         preconditioner.
- *         Case of additive block preconditioner for a CG
- *
- * \param[in, out] context  pointer to optional (untyped) value or structure
- * \param[in, out] a        pointer to PETSc Matrix context
- * \param[in, out] ksp      pointer to PETSc KSP context
- *----------------------------------------------------------------------------*/
-
-static void
-_amg_block_hook(void     *context,
-                Mat       a,
-                KSP       ksp)
-{
-  cs_equation_param_t  *eqp = (cs_equation_param_t *)context;
-  cs_param_sles_t  slesp = eqp->sles_param;
-
-  KSPSetType(ksp, KSPFCG);
-
-  /* Set KSP tolerances */
-  PetscReal rtol, abstol, dtol;
-  PetscInt  maxit;
-  KSPGetTolerances(ksp, &rtol, &abstol, &dtol, &maxit);
-  KSPSetTolerances(ksp,
-                   slesp.eps,         /* relative convergence tolerance */
-                   abstol,            /* absolute convergence tolerance */
-                   dtol,              /* divergence tolerance */
-                   slesp.n_max_iter); /* max number of iterations */
-
-  /* Try to have "true" norm */
-  KSPSetNormType(ksp, KSP_NORM_UNPRECONDITIONED);
-
-  /* Apply modifications to the KSP structure */
-  PetscInt  id, n_split;
-  KSP  *uvw_subksp, _ksp;
-  PC pc, _pc;
-
-  KSPGetPC(ksp, &pc);
-  PCSetType(pc, PCFIELDSPLIT);
-  PCFieldSplitSetType(pc, PC_COMPOSITE_MULTIPLICATIVE);
-
-  PCFieldSplitSetBlockSize(pc, 3);
-  id = 0;
-  PCFieldSplitSetFields(pc, "u", 1, &id, &id);
-  id = 1;
-  PCFieldSplitSetFields(pc, "v", 1, &id, &id);
-  id = 2;
-  PCFieldSplitSetFields(pc, "w", 1, &id, &id);
-
-  PCSetFromOptions(pc);
-  PCSetUp(pc);
-
-  PCFieldSplitGetSubKSP(pc, &n_split, &uvw_subksp);
-  assert(n_split == 3);
-
-  for (id = 0; id < 3; id++) {
-
-    _ksp = uvw_subksp[id];
-    KSPSetType(_ksp, KSPPREONLY);
-    KSPGetPC(_ksp, &_pc);
-    PCSetType(_pc, PCHYPRE);
-    PCHYPRESetType(_pc, "boomeramg");
-
-    PCSetFromOptions(_pc);
-    PCSetUp(_pc);
-
-  }
-
-  /* User function for additional settings */
-  cs_user_sles_petsc_hook(context, a, ksp);
-
-  KSPSetFromOptions(ksp);
-  KSPSetUp(ksp);
-
-  /* Dump the setup related to PETSc in a specific file */
-  if (!slesp.setup_done) {
-    cs_sles_petsc_log_setup(ksp);
-    slesp.setup_done = true;
-  }
-
-  PetscFree(uvw_subksp);
-}
-#endif
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -370,9 +286,7 @@ _apply_bc_partly(const cs_cdofb_predco_t       *sc,
       const cs_real_t f_prs = pfq.meas * prs_c;
       cs_real_t *f_rhs = csys->rhs + 3*f;
 
-      switch (bf_type[i]) {
-
-      case CS_BOUNDARY_INLET:
+      if (bf_type[i] & CS_BOUNDARY_IMPOSED_VEL) {
         if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_NITSCHE ||
             eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_SYM) {
           sc->apply_velocity_inlet(f, eqp, cm, cb, csys);
@@ -380,42 +294,31 @@ _apply_bc_partly(const cs_cdofb_predco_t       *sc,
           f_rhs[1] -= f_prs * pfq.unitv[1];
           f_rhs[2] -= f_prs * pfq.unitv[2];
         }
-        break;
+      }
 
-      case CS_BOUNDARY_SLIDING_WALL:
+      else if (bf_type[i] & CS_BOUNDARY_WALL) {
         if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_NITSCHE ||
             eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_SYM) {
-          sc->apply_sliding_wall(f, eqp, cm, cb, csys);
+          if (bf_type[i] & CS_BOUNDARY_SLIDING_WALL)
+            sc->apply_sliding_wall(f, eqp, cm, cb, csys);
+          else
+            sc->apply_fixed_wall(f, eqp, cm, cb, csys);
           f_rhs[0] -= f_prs * pfq.unitv[0];
           f_rhs[1] -= f_prs * pfq.unitv[1];
           f_rhs[2] -= f_prs * pfq.unitv[2];
         }
-        break;
+      }
 
-      case CS_BOUNDARY_WALL:
-        if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_NITSCHE ||
-            eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_SYM) {
-          sc->apply_fixed_wall(f, eqp, cm, cb, csys);
-          f_rhs[0] -= f_prs * pfq.unitv[0];
-          f_rhs[1] -= f_prs * pfq.unitv[1];
-          f_rhs[2] -= f_prs * pfq.unitv[2];
-        }
-        break;
-
-      case CS_BOUNDARY_SYMMETRY:
+      else if (bf_type[i] & CS_BOUNDARY_SYMMETRY) {
         /* Always weakly enforce the symmetric constraint on the
            velocity-block */
         sc->apply_symmetry(f, eqp, cm, cb, csys);
         f_rhs[0] -= f_prs * pfq.unitv[0];
         f_rhs[1] -= f_prs * pfq.unitv[1];
         f_rhs[2] -= f_prs * pfq.unitv[2];
-        break;
+      }
 
-      default: /* Nothing to do */
-        /* Remark: Case of a "natural" outlet */
-        break;
-
-      } /* End of switch */
+      /* default: nothing to do (case of a "natural" outlet) */
 
     } /* Loop on boundary faces */
 
@@ -460,44 +363,34 @@ _apply_remaining_bc(const cs_cdofb_predco_t       *sc,
       /* Get the boundary face in the cell numbering */
       const short int  f = csys->_f_ids[i];
 
-      switch (bf_type[i]) {
-
-      case CS_BOUNDARY_INLET:
+      if (bf_type[i] & CS_BOUNDARY_IMPOSED_VEL) {
         /* Enforcement of the velocity for the velocity-block
          * Dirichlet on the three components of the velocity field */
         if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_PENALIZED ||
             eqp->default_enforcement == CS_PARAM_BC_ENFORCE_ALGEBRAIC) {
           sc->apply_velocity_inlet(f, eqp, cm, cb, csys);
         }
-        break;
+      }
 
-      case CS_BOUNDARY_SLIDING_WALL:
+      else if (bf_type[i] & CS_BOUNDARY_WALL) {
         /* Enforcement of the velocity for the velocity-block
          * Dirichlet on the three components of the velocity field */
         if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_PENALIZED ||
             eqp->default_enforcement == CS_PARAM_BC_ENFORCE_ALGEBRAIC) {
-          sc->apply_sliding_wall(f, eqp, cm, cb, csys);
+          if (bf_type[i] & CS_BOUNDARY_SLIDING_WALL)
+            sc->apply_sliding_wall(f, eqp, cm, cb, csys);
+          else
+            sc->apply_fixed_wall(f, eqp, cm, cb, csys);
         }
-        break;
+      }
 
-      case CS_BOUNDARY_WALL:
-        /* Enforcement of the velocity for the velocity-block
-         * Dirichlet on the three components of the velocity field */
-        if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_PENALIZED ||
-            eqp->default_enforcement == CS_PARAM_BC_ENFORCE_ALGEBRAIC) {
-          sc->apply_fixed_wall(f, eqp, cm, cb, csys);
-        }
-        break;
-
-      case CS_BOUNDARY_SYMMETRY:
+#if 0
+      else if (bf_type[i] & CS_BOUNDARY_SYMMETRY) {
         /* Weak-enforcement for the velocity-block (cf. _apply_bc_partly) */
-        break;
+      }
+#endif
 
-      default: /* Nothing to do */
-        /* Remark: Case of a "natural" outlet */
-        break;
-
-      } /* End of switch */
+      /* default: nothing to do (case of a "natural" outlet) */
 
     } /* Loop boundary faces */
 
@@ -737,7 +630,7 @@ _update_variables(const cs_real_t              dt_cur,
                          vel_f);
   }
 
-  /* Update face-related unknows */
+  /* Update face-related unknowns */
 # pragma omp parallel for if (n_faces > CS_THR_MIN)
   for (cs_lnum_t f = 0; f < n_faces; f++) {
 
@@ -878,7 +771,11 @@ cs_cdofb_predco_init_scheme_context(const cs_navsto_param_t    *nsp,
   /* Quick access to the main fields */
   sc->velocity = cs_field_by_name("velocity");
   sc->pressure = cs_field_by_name("pressure");
-  sc->divergence = cs_field_by_name("velocity_divergence");
+
+  if (nsp->post_flag & CS_NAVSTO_POST_VELOCITY_DIVERGENCE)
+    sc->divergence = cs_field_by_name("velocity_divergence");
+  else
+    sc->divergence = NULL;
 
   /* Values of the predicted velocity at faces */
   BFT_MALLOC(sc->predicted_velocity_f, 3*quant->n_faces, cs_real_t);
@@ -899,11 +796,14 @@ cs_cdofb_predco_init_scheme_context(const cs_navsto_param_t    *nsp,
                                           nsp->pressure_bc_defs,
                                           cs_shared_quant->n_b_faces);
 
+  cs_equation_param_t  *mom_eqp = cc->prediction->param;
+  cs_equation_builder_t  *mom_eqb = cc->prediction->builder;
+
+  mom_eqb->bd_msh_flag |= CS_FLAG_COMP_PFC;
+
   /* Set the way to enforce the Dirichlet BC on the velocity
    * "fixed_wall" means a no-slip BC */
   sc->apply_symmetry = cs_cdofb_symmetry;
-
-  cs_equation_param_t *mom_eqp = cc->prediction->param;
 
   switch (mom_eqp->default_enforcement) {
 
@@ -993,34 +893,42 @@ cs_cdofb_predco_set_sles(const cs_navsto_param_t    *nsp,
 
   assert(nsp != NULL && nsc != NULL);
 
+  cs_navsto_param_sles_t  nslesp = nsp->sles_param;
   cs_equation_param_t  *mom_eqp = cs_equation_get_param(nsc->prediction);
   int  field_id = cs_equation_get_field_id(nsc->prediction);
 
-  switch (nsp->sles_strategy) {
+  mom_eqp->sles_param.field_id = field_id;
+
+  switch (nslesp.strategy) {
 
   case CS_NAVSTO_SLES_EQ_WITHOUT_BLOCK: /* "Classical" way to set SLES */
-    cs_equation_param_set_sles(mom_eqp, field_id);
+    cs_equation_param_set_sles(mom_eqp);
     break;
 
-#if defined(HAVE_PETSC)
   case CS_NAVSTO_SLES_BLOCK_MULTIGRID_CG:
+#if defined(HAVE_PETSC)
+    if (mom_eqp->sles_param.amg_type == CS_PARAM_AMG_NONE) {
+#if defined(PETSC_HAVE_HYPRE)
+      mom_eqp->sles_param.amg_type = CS_PARAM_AMG_HYPRE_BOOMER;
+#else
+      mom_eqp->sles_param.amg_type = CS_PARAM_AMG_PETSC_GAMG;
+#endif
+    }
+
     cs_sles_petsc_init();
     cs_sles_petsc_define(field_id,
                          NULL,
                          MATMPIAIJ,
-                         _amg_block_hook,
+                         cs_navsto_sles_amg_block_hook,
                          (void *)mom_eqp);
-    break;
-
 #else
-  case CS_NAVSTO_SLES_BLOCK_MULTIGRID_CG:
     bft_error(__FILE__, __LINE__, 0,
               "%s: Invalid strategy for solving the linear system %s\n"
               " PETSc is required with this option.\n"
               " Please build a version of Code_Saturne with the PETSc support.",
               __func__, mom_eqp->name);
-    break;
 #endif /* HAVE_PETSC */
+    break;
 
   default:
     bft_error(__FILE__, __LINE__, 0,
@@ -1029,8 +937,10 @@ cs_cdofb_predco_set_sles(const cs_navsto_param_t    *nsp,
   }
 
   /* For the correction step, use the generic way to setup the SLES */
-  cs_equation_param_set_sles(cs_equation_get_param(nsc->correction),
-                             cs_equation_get_field_id(nsc->correction));
+  cs_equation_param_t  *corr_eqp = cs_equation_get_param(nsc->correction);
+
+  corr_eqp->sles_param.field_id = cs_equation_get_field_id(nsc->correction);
+  cs_equation_param_set_sles(corr_eqp);
 
 }
 
@@ -1088,10 +998,14 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
 
   cs_timer_t  t_bld = cs_timer_time();
 
-  /* Build an array storing the Dirichlet values at faces.
-     Evaluation should be performed at t_cur + dt_cur */
+  /* Build an array storing the Dirichlet values at faces and ids of DoFs if
+   * an enforcement of (internal) DoFs is requested
+   * Evaluation should be performed at t_cur + dt_cur */
   cs_real_t  *dir_values = NULL;
-  cs_cdofb_vecteq_setup_bc(t_cur + dt_cur, mesh, mom_eqp, mom_eqb, &dir_values);
+  cs_lnum_t  *enforced_ids = NULL;
+
+  cs_cdofb_vecteq_setup(t_cur + dt_cur, mesh, mom_eqp, mom_eqb,
+                        &dir_values, &enforced_ids);
 
   /* Initialize the local system: matrix and rhs */
   cs_matrix_t  *matrix = cs_matrix_create(cs_shared_mom_ms);
@@ -1105,9 +1019,9 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
   cs_matrix_assembler_values_t  *mav =
     cs_matrix_assembler_values_init(matrix, NULL, NULL);
 
-# pragma omp parallel if (quant->n_cells > CS_THR_MIN) default(none)    \
+# pragma omp parallel if (quant->n_cells > CS_THR_MIN)                  \
   shared(quant, connect, mom_eqp, mom_eqb, mom_eqc, rhs, matrix, nsp,   \
-         mav, mom_rs, dir_values, vel_c, pr_c, sc)                      \
+         mav, mom_rs, dir_values, enforced_ids, vel_c, pr_c, sc)        \
   firstprivate(time_eval, inv_dtcur)
   {
 #if defined(HAVE_OPENMP) /* Determine the default number of OpenMP threads */
@@ -1120,7 +1034,6 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
        Get the cell-wise view of the mesh and the algebraic system */
     cs_cell_sys_t  *csys = NULL;
     cs_cell_builder_t  *cb = NULL;
-    cs_face_mesh_t  *fm = cs_cdo_local_get_face_mesh(t_id);
     cs_cell_mesh_t  *cm = cs_cdo_local_get_cell_mesh(t_id);
     cs_cdofb_navsto_builder_t  nsb = cs_cdofb_navsto_create_builder(connect);
     cs_equation_assemble_t  *eqa = cs_equation_assemble_get(t_id);
@@ -1157,7 +1070,8 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
 
       /* Set the local (i.e. cellwise) structures for the current cell */
       cs_cdofb_vecteq_init_cell_system(cell_flag, cm, mom_eqp, mom_eqb, mom_eqc,
-                                       dir_values, vel_c, time_eval,
+                                       dir_values, enforced_ids,
+                                       vel_c, time_eval,
                                        csys, cb);
 
       const short int  n_fc = cm->n_fc, nf_dofs = 3*n_fc;
@@ -1175,9 +1089,7 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
 
       /* 2- VELOCITY (VECTORIAL) EQUATION */
       /* ================================ */
-      cs_cdofb_vecteq_diffusion(time_eval, mom_eqp, mom_eqb, mom_eqc,
-                                cm, fm, csys, cb);
-
+      cs_cdofb_vecteq_diffusion(time_eval, mom_eqp, mom_eqc, cm, csys, cb);
 
 #if defined(DEBUG) && !defined(NDEBUG) && CS_CDOFB_PREDCO_DBG > 1
       if (cs_dbg_cw_test(mom_eqp, cm, csys))
@@ -1186,7 +1098,7 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
 
       /* 3- SOURCE TERM COMPUTATION (for the momentum equation) */
       /* ====================================================== */
-      const _Bool  has_sourceterm = cs_equation_param_has_sourceterm(mom_eqp);
+      const bool  has_sourceterm = cs_equation_param_has_sourceterm(mom_eqp);
       if (has_sourceterm) {
 
         cs_cdofb_vecteq_sourceterm(cm, mom_eqp,
@@ -1271,6 +1183,7 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
 
   /* Free temporary buffers and structures */
   BFT_FREE(dir_values);
+  BFT_FREE(enforced_ids);
   cs_matrix_assembler_values_finalize(&mav);
 
   /* End of the system building */
@@ -1286,17 +1199,23 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
 
   cs_field_current_to_previous(velp_fld);
 
-  /* Now solve the system */
   cs_real_t  *velp_c = velp_fld->val;
-  cs_real_t *velp_f = sc->predicted_velocity_f;
-  cs_sles_t *sles = cs_sles_find_or_add(mom_eq->field_id, NULL);
+  cs_real_t  *velp_f = sc->predicted_velocity_f;
 
-  cs_cdofb_vecteq_solve_system(sles, matrix, mom_eqp, velp_f, rhs);
+  /* Solve the linear system (treated as a scalar-valued system
+   * with 3 times more DoFs) */
+  cs_real_t  normalization = 1.0; /* TODO */
+  cs_sles_t  *sles = cs_sles_find_or_add(mom_eqp->sles_param.field_id, NULL);
 
-#if defined(DEBUG) && !defined(NDEBUG) && CS_CDOFB_PREDCO_DBG > 2
-  cs_dbg_fprintf_system(mom_eqp->name, ts->nt_cur, CS_CDOFB_PREDCO_DBG,
-                        velp_f, rhs, 3*n_faces);
-#endif
+  cs_equation_solve_scalar_system(3*n_faces,
+                                  mom_eqp,
+                                  matrix,
+                                  mom_rs,
+                                  normalization,
+                                  true, /* rhs_redux */
+                                  sles,
+                                  velp_f,
+                                  rhs);
 
   /* Update pressure, velocity and divergence fields */
   cs_timer_t  t_upd = cs_timer_time();
@@ -1309,8 +1228,8 @@ cs_cdofb_predco_compute_implicit(const cs_mesh_t              *mesh,
                                         velp_f, velp_c);
 
   /* Frees */
-  cs_sles_free(sles);
   BFT_FREE(rhs);
+  cs_sles_free(sles);
   cs_matrix_destroy(&matrix);
 
   t_tmp = cs_timer_time();

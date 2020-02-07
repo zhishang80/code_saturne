@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -41,6 +41,7 @@ use entsor
 use cstnum
 use cstphy
 use ppppar
+use optcal
 use atincl
 
 !===============================================================================
@@ -53,7 +54,6 @@ integer           imode
 
 ! a function used in the routine
 ! for the diagnostic of liquid water content
-double precision qsatliq
 
 ! Local variables
 
@@ -318,6 +318,19 @@ else
 
 endif
 
+! For Boussinesq approximation, initialize p0, rho0 and theta0 at the first level
+if (imode.eq.1.and.idilat.eq.0.and.itp.eq.1) then
+  p0 = pmer(itp)
+  t0 = (ttmet(1,itp)+tkelvi)*(ps/p0)**rscp ! theta0
+  ! Humid atmosphere
+  if (ippmod(iatmos).eq.2) then
+    rhum = rair*(1.d0+(rvsra-1.d0)*qvmet(1,itp)*ih2o)
+  else
+    rhum = rair
+  endif
+  ro0 = p0 / (ttmet(1,itp) + tkelvi)/rhum
+endif
+
 !===============================================================================
 ! 6. Compute hydro pressure profile  (Laplace integration)
 !===============================================================================
@@ -337,10 +350,10 @@ if (imode.eq.1) then
       tmoy = 0.5d0*(ttmet(k-1,itp) + ttmet(k,itp)) + tkelvi
 
       if(ippmod(iatmos).eq.2) then ! take liquid water into account
-        q0 = min( qvmet(k-1,itp), qsatliq( ttmet(k-1,itp) &
-            + tkelvi, phmet(k-1,itp)))
-        q1 = min( qvmet(k  ,itp), qsatliq( ttmet(k  ,itp) &
-            + tkelvi, phmet(k-1,itp)))
+        q0 = min( qvmet(k-1,itp), cs_air_yw_sat( ttmet(k-1,itp) &
+            , phmet(k-1,itp)))
+        q1 = min( qvmet(k  ,itp), cs_air_yw_sat( ttmet(k  ,itp) &
+            , phmet(k-1,itp)))
         !in q1=.. phmet(k-1,itp) is not a mistake: we can not use phmet(k,itp)
         !since this is what we want to estimate.
       else
@@ -360,8 +373,8 @@ if (imode.eq.1) then
       tmoy = 0.5d0*(ttmet(k+1,itp) + ttmet(k,itp)) + tkelvi
 
       if(ippmod(iatmos).eq.2) then ! take liquid water into account
-        q0 = min( qvmet(k,itp), qsatliq( ttmet(k,itp)+tkelvi, phmet(k+1,itp)))
-        q1 = min( qvmet(k+1  ,itp), qsatliq( ttmet(k+1,itp)+tkelvi, phmet(k+1,itp)))
+        q0 = min( qvmet(k,itp), cs_air_yw_sat( ttmet(k,itp), phmet(k+1,itp)))
+        q1 = min( qvmet(k+1  ,itp), cs_air_yw_sat( ttmet(k+1,itp), phmet(k+1,itp)))
         !in q0=.. phmet(k+1,itp) is not a mistake: we can not use phmet(k,itp)
         !since this is what we want to estimate.
       else
@@ -479,7 +492,7 @@ if (imode.eq.1) then
       write(nfecra,7999)                                            &
            ztmet(ii), ttmet(ii,itp), tpmet(ii,itp),              &
            rmet(ii,itp), phmet(ii,itp), qvmet(ii,itp),           &
-           qsatliq(ttmet(ii,itp)+tkelvi , phmet(ii,itp)),         &
+           cs_air_yw_sat(ttmet(ii,itp) , phmet(ii,itp)),         &
            ncmet(ii,itp)
 7999  format(1x, 3f8.2,f8.4,f12.3,e10.3,e10.3,e12.5)
     enddo

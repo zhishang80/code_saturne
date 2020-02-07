@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -164,8 +164,8 @@ _update_saturated_iso_soil(const cs_real_t              t_eval,
 
   const  double  iso_satval = law->saturated_permeability[0][0];
 
-# pragma omp parallel for if (zone->n_elts > CS_THR_MIN) default(none)     \
-  shared(zone, law, permeability_values, moisture_values)                  \
+# pragma omp parallel for if (zone->n_elts > CS_THR_MIN)                \
+  shared(zone, law, permeability_values, moisture_values)               \
   firstprivate(iso_satval)
   for (cs_lnum_t i = 0; i < zone->n_elts; i++) {
 
@@ -222,7 +222,7 @@ _update_saturated_aniso_soil(const cs_real_t              t_eval,
   const cs_gwf_soil_saturated_param_t  *law =
     (cs_gwf_soil_saturated_param_t *)input;
 
-# pragma omp parallel for if (zone->n_elts > CS_THR_MIN) default(none)     \
+# pragma omp parallel for if (zone->n_elts > CS_THR_MIN)        \
   shared(zone, law, permeability_values, moisture_values)
   for (cs_lnum_t id = 0; id < zone->n_elts; id++) {
 
@@ -309,9 +309,9 @@ _update_genuchten_iso_soil(const cs_real_t              t_eval,
   const  double  delta_moisture =
     law->saturated_moisture - law->residual_moisture;
 
-# pragma omp parallel for if (zone->n_elts > CS_THR_MIN) default(none)     \
-  shared(head_values, zone, law, permeability_values, moisture_values,     \
-         capacity_values)                                                  \
+# pragma omp parallel for if (zone->n_elts > CS_THR_MIN)                \
+  shared(head_values, zone, law, permeability_values, moisture_values,  \
+         capacity_values)                                               \
   firstprivate(iso_satval, delta_moisture)
   for (cs_lnum_t i = 0; i < zone->n_elts; i++) {
 
@@ -406,31 +406,26 @@ cs_gwf_soil_add(const char                      *z_name,
 
   case CS_GWF_SOIL_SATURATED:
 
-    switch (permeability->type) {
-    case CS_PROPERTY_ISO:
+    if (permeability->type & CS_PROPERTY_ISO)
       soil->update_properties = _update_saturated_iso_soil;
-      break;
-    case CS_PROPERTY_ANISO:
+    else if (permeability->type & CS_PROPERTY_ANISO)
       soil->update_properties = _update_saturated_aniso_soil;
-      break;
-    default:
+    else
       bft_error(__FILE__, __LINE__, 0,
-                " Invalid type of property for the permeability.\n"
-                " Please check your settings.");
-    }
+                "%s: Invalid type of property for the permeability.\n"
+                " Please check your settings.", __func__);
+
     soil->free_input = _free_saturated_soil;
     break;
 
   case CS_GWF_SOIL_GENUCHTEN:
-    switch (permeability->type) {
-    case CS_PROPERTY_ISO:
+
+    if (permeability->type & CS_PROPERTY_ISO)
       soil->update_properties = _update_genuchten_iso_soil;
-      break;
-    default:
+    else
       bft_error(__FILE__, __LINE__, 0,
-                " Invalid type of property for the permeability.\n"
-                " Please check your settings.");
-    }
+                "%s: Invalid type of property for the permeability.\n"
+                " Please check your settings.", __func__);
     soil->free_input = _free_genuchten_soil;
     break;
 
@@ -826,35 +821,28 @@ cs_gwf_soil_set_all_saturated(cs_property_t         *permeability,
       (cs_gwf_soil_saturated_param_t  *)soil->input;
 
     /* Set the permeability */
-    switch (permeability->type) {
-    case CS_PROPERTY_ISO:
+    if (permeability->type & CS_PROPERTY_ISO) {
       cs_property_def_iso_by_value(permeability,
                                    z->name,
                                    param->saturated_permeability[0][0]);
-      break;
+    }
+    else if (permeability->type & CS_PROPERTY_ORTHO) {
 
-    case CS_PROPERTY_ORTHO:
-      {
-        cs_real_3_t  val = {param->saturated_permeability[0][0],
-                            param->saturated_permeability[1][1],
-                            param->saturated_permeability[2][2]};
+      cs_real_3_t  val = {param->saturated_permeability[0][0],
+                          param->saturated_permeability[1][1],
+                          param->saturated_permeability[2][2]};
 
-        cs_property_def_ortho_by_value(permeability,
-                                       z->name,
-                                       val);
-      }
-      break;
+      cs_property_def_ortho_by_value(permeability, z->name, val);
 
-    case CS_PROPERTY_ANISO:
+    }
+    else if (permeability->type & CS_PROPERTY_ANISO) {
       cs_property_def_aniso_by_value(permeability,
                                      z->name,
                       (double (*)[3])param->saturated_permeability);
-      break;
-
-    default:
+    }
+    else
       bft_error(__FILE__, __LINE__, 0,
                 " %s: Invalid type of property.\n", __func__);
-    }
 
     /* Set the moisture content */
     cs_property_def_iso_by_value(moisture_content,

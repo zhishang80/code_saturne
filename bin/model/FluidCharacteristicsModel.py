@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -53,13 +53,83 @@ from code_saturne.model.NotebookModel import NotebookModel
 # EOS
 #-------------------------------------------------------------------------------
 
-EOS = 1
+EOS = 0
 try:
    import eosAva
-except:
-   EOS = 0
-else :
-   import eosAva
+   EOS = 1
+except Exception:
+   pass
+
+# Perfect gases to exclude from EOS choices
+
+eos_excl = ["Argon", "Nitrogen", "Hydrogen", "Oxygen", "Helium", "Air"]
+
+#-------------------------------------------------------------------------------
+# Coolprop
+#-------------------------------------------------------------------------------
+
+from code_saturne import cs_config
+
+coolprop_fluids = []
+coolprop_warn = False
+
+if cs_config.config().libs['coolprop'].have != "no" and not coolprop_fluids:
+
+   try:
+      import sys
+      sys.path.insert(0, cs_config.config().libs['coolprop'].flags['pythonpath'])
+      import CoolProp
+      sys.path.pop(0)
+      self.coolprop_fluids = []
+      for f in CoolProp.__fluids__:
+         coolprop_fluids.append(f)
+      coolprop_fluids.sort()
+
+   except Exception:  # CoolProp might be available but not its Python bindings
+
+      if cs_config.config().libs['coolprop'].have != "gui_only":
+         """
+         import traceback
+         exc_info = sys.exc_info()
+         bt = traceback.format_exception(*exc_info)
+         for l in bt:
+            print(l)
+         del exc_info
+         print("Warning: CoolProp Python bindings not available or usable")
+         print("         list of fluids based on CoolProp 5.1.1")
+         """
+         pass
+      else:
+         coolprop_warn = True
+
+      coolprop_fluids = ['1-Butene', 'Acetone', 'Air', 'Ammonia', 'Argon',
+                         'Benzene', 'CarbonDioxide', 'CarbonMonoxide',
+                         'CarbonylSulfide', 'CycloHexane', 'CycloPropane',
+                         'Cyclopentane', 'D4', 'D5', 'D6', 'Deuterium',
+                         'DimethylCarbonate', 'DimethylEther', 'Ethane',
+                         'Ethanol', 'EthylBenzene', 'Ethylene', 'Fluorine',
+                         'HFE143m', 'HeavyWater', 'Helium', 'Hydrogen',
+                         'HydrogenSulfide', 'IsoButane', 'IsoButene',
+                         'Isohexane', 'Isopentane', 'Krypton', 'MD2M', 'MD3M',
+                         'MD4M', 'MDM', 'MM', 'Methane', 'Methanol',
+                         'MethylLinoleate', 'MethylLinolenate', 'MethylOleate',
+                         'MethylPalmitate', 'MethylStearate', 'Neon',
+                         'Neopentane', 'Nitrogen', 'NitrousOxide', 'Novec649',
+                         'OrthoDeuterium', 'OrthoHydrogen', 'Oxygen',
+                         'ParaDeuterium', 'ParaHydrogen', 'Propylene',
+                         'Propyne', 'R11', 'R113', 'R114', 'R115', 'R116',
+                         'R12', 'R123', 'R1233zd(E)', 'R1234yf', 'R1234ze(E)',
+                         'R1234ze(Z)', 'R124', 'R125', 'R13', 'R134a', 'R13I1',
+                         'R14', 'R141b', 'R142b', 'R143a', 'R152A', 'R161',
+                         'R21', 'R218', 'R22', 'R227EA', 'R23', 'R236EA',
+                         'R236FA', 'R245fa', 'R32', 'R365MFC', 'R404A',
+                         'R407C', 'R41', 'R410A', 'R507A', 'RC318', 'SES36',
+                         'SulfurDioxide', 'SulfurHexafluoride', 'Toluene',
+                         'Water', 'Xenon', 'cis-2-Butene', 'm-Xylene',
+                         'n-Butane', 'n-Decane', 'n-Dodecane', 'n-Heptane',
+                         'n-Hexane', 'n-Nonane', 'n-Octane', 'n-Pentane',
+                         'n-Propane', 'n-Undecane', 'o-Xylene', 'p-Xylene',
+                         'trans-2-Butene']
 
 #-------------------------------------------------------------------------------
 # Model class
@@ -78,6 +148,51 @@ class FluidCharacteristicsModel(Variables, Model):
         self.node_comp   = self.node_models.xmlInitNode('compressible_model', 'model')
         self.node_gas    = self.node_models.xmlInitNode('gas_combustion',     'model')
         self.node_coal   = self.node_models.xmlInitNode('solid_fuels',        'model')
+
+        # Info on available libraries
+
+        self.mask_builtin   = 1 << 0
+        self.mask_CoolProp  = 1 << 1
+        self.mask_EOS       = 1 << 2
+        self.mask_freesteam = 1 << 3
+
+        self.tables = 0
+
+        from code_saturne import cs_config
+        cfg = cs_config.config()
+
+        self.lib_properties = {}
+        self.lib_properties['user_material'] = self.mask_builtin
+
+        if EOS == 1:
+            self.tables += self.mask_EOS
+            self.ava = eosAva.EosAvailable()
+            # suppress perfect gas
+            fls = self.ava.whichFluids()
+            for fli in fls:
+                if fli in eos_excl:
+                    continue
+                if fli not in self.lib_properties.keys():
+                    self.lib_properties[fli] = self.mask_EOS
+                else:
+                    self.lib_properties[fli] += self.mask_EOS
+
+        if cfg.libs['freesteam'].have != "no":
+            self.tables += self.mask_freesteam
+            fli = 'Water'
+            if fli not in self.lib_properties.keys():
+                self.lib_properties[fli] = self.mask_freesteam
+            else:
+                self.lib_properties[fli] += self.mask_freesteam
+
+        if coolprop_fluids:
+            if cfg.libs['coolprop'].have != "no":
+                self.tables += self.mask_CoolProp
+        for fli in coolprop_fluids:
+            if fli not in self.lib_properties.keys():
+                self.lib_properties[fli] = self.mask_CoolProp
+            else:
+                self.lib_properties[fli] += self.mask_CoolProp
 
         # Base model needs density and molecular viscosity
 
@@ -141,18 +256,6 @@ class FluidCharacteristicsModel(Variables, Model):
         for s in self.m_sca.getUserScalarNameList():
             self.list_scalars.append((s, self.tr("Additional scalar")))
 
-        # Look for thermo tables
-
-        import code_saturne.cs_config as cs_config
-        cfg = cs_config.config()
-        self.freesteam = 0
-        if cfg.libs['freesteam'].have != "no":
-            self.freesteam = 1
-
-        self.coolprop = 0
-        if cfg.libs['coolprop'].have != "no":
-            self.coolprop = 1
-
         # Notebook
 
         self.notebook = NotebookModel(self.case)
@@ -167,12 +270,59 @@ class FluidCharacteristicsModel(Variables, Model):
                 return node
 
 
+    def getLibPropertiesDict(self):
+       """
+       Return dictionnary with available properties and matching flags
+       """
+       return self.lib_properties
+
+
+    def getLibPropertyMethods(self, material):
+        """
+        Return list of methods for a given library and material.
+        Values are returned as a tuple: (name, available)
+        """
+        methods = []
+
+        if material not in self.lib_properties.keys():
+            methods = [('unknown', False)]
+            return methods
+
+        material_flags = self.lib_properties[material]
+
+        if material_flags & self.mask_builtin:
+            methods.append(('user_properties', True))
+
+        if material_flags & self.mask_EOS:
+            if material not in eos_excl:
+                self.ava.setMethods(material)
+                fls = self.ava.whichMethods()
+                for fli in fls:
+                    if fli != 'PerfectGas':
+                        methods.append((fli, True))
+
+        if material_flags & self.mask_freesteam:
+            avail = self.tables & self.mask_freesteam != 0
+            methods.append(("freesteam", avail))
+
+        if material_flags & self.mask_CoolProp:
+            avail = self.tables & self.mask_CoolProp != 0
+            avail = False
+            methods.append(("CoolProp", avail))
+
+        return methods
+
+
     def defaultFluidCharacteristicsValues(self):
         """
         Return in a dictionnary which contains default values.
         (also called by CoalCombustionModel)
         """
         default = {}
+
+        # Particular default values init. taking into account chosen model
+        mdl_atmo, mdl_joule, mdl_thermal, mdl_gas, mdl_coal, mdl_comp, mdl_hgn=\
+            self.getThermoPhysicalModel()
 
         default['reference_pressure']    = 1.01325e+5
 
@@ -181,23 +331,30 @@ class FluidCharacteristicsModel(Variables, Model):
         else:
            default['reference_temperature'] = 293.15
 
-        default['fuel_temperature']      = 436.
-        default['oxydant_temperature']   = 353.
+        default['reference_fuel_temperature']      = 436.
+        default['reference_oxydant_temperature']   = 353.
         # molar mass for dry air
         default['reference_molar_mass'] = 28.966e-3
 
-        #Initial values for properties: 20 Celsius degrees air at atmospheric
-        #pressure
+        # Initial values for properties: 20 Celsius degrees air at atmospheric
+        # pressure except for VoF
 
-        default['density']              = 1.17862
-        default['molecular_viscosity']  = 1.83e-05
-        default['specific_heat']        = 1017.24
-        default['thermal_conductivity'] = 0.02495
-        default['dynamic_diffusion']    = 0.01
-        default['volume_viscosity']     = 0.
-        default['material']             = "user_material"
-        default['method']               = "user_properties"
-        default['phas']                 = "liquid"
+        default['density']                = 1.17862
+        default['density_0']              = 1000.
+        default['density_1']              = 1.
+        default['molecular_viscosity']    = 1.83e-05
+        default['molecular_viscosity_0']  = 1.e-03
+        default['molecular_viscosity_1']  = 1.e-05
+        if mdl_hgn != "off":
+           default['density']             = default['density_1']
+           default['molecular_viscosity'] = default['molecular_viscosity_1']
+        default['specific_heat']          = 1017.24
+        default['thermal_conductivity']   = 0.02495
+        default['dynamic_diffusion']      = 0.01
+        default['volume_viscosity']       = 0.
+        default['material']               = "user_material"
+        default['method']                 = "user_properties"
+        default['reference']              = None
 
         return default
 
@@ -207,7 +364,7 @@ class FluidCharacteristicsModel(Variables, Model):
         Set value of reference pressure into xml file.
         """
         self.isGreaterOrEqual(value, 0.0)
-        self.node_fluid.xmlSetData('reference_pressure',value)
+        self.node_fluid.xmlSetData('reference_pressure', value)
 
 
     @Variables.noUndo
@@ -322,7 +479,7 @@ class FluidCharacteristicsModel(Variables, Model):
 
         for mdl in ['atmospheric_flows', 'compressible_model',
                     'gas_combustion', 'joule_effect', 'solid_fuels',
-                    'thermal_scalar']:
+                    'thermal_scalar', 'hgn_model']:
             d[mdl] = 'off'
 
             node = self.node_models.xmlGetNode(mdl, 'model')
@@ -338,7 +495,8 @@ class FluidCharacteristicsModel(Variables, Model):
                d['thermal_scalar'],    \
                d['gas_combustion'],    \
                d['solid_fuels'],       \
-               d['compressible_model']
+               d['compressible_model'],\
+               d['hgn_model']
 
 
     @Variables.noUndo
@@ -377,12 +535,11 @@ class FluidCharacteristicsModel(Variables, Model):
     @Variables.noUndo
     def getMethod(self):
         """
-        get the nature of materials
+        get the method used to compute properties
         """
         nodem = self.node_fluid.xmlGetNode('method')
         if nodem == None:
-            method = self.defaultFluidCharacteristicsValues()['method']
-            self.setMethod(method)
+            method = self.updateMethod("")
             nodem = self.node_fluid.xmlGetNode('method')
         method = nodem['choice']
         return method
@@ -397,10 +554,14 @@ class FluidCharacteristicsModel(Variables, Model):
         childNode.xmlSetAttribute(choice = method)
         self.getReference()
 
-        # suppress phas choice if not EOS
-        if method == self.defaultFluidCharacteristicsValues()['method'] or \
-           method == "freesteam" or method == "CoolProp":
-            nodem = self.node_fluid.xmlGetNode('phas')
+        # suppress phase choice (not used)
+        nodem = self.node_fluid.xmlGetNode('phas')
+        if nodem:
+            nodem.xmlRemoveNode()
+
+        # suppress reference choice if not EOS
+        if method in ("user_properties", "freesteam", "CoolProp"):
+            nodem = childNode.xmlGetNode('reference')
             if nodem:
                 nodem.xmlRemoveNode()
 
@@ -411,23 +572,57 @@ class FluidCharacteristicsModel(Variables, Model):
         update reference value for EOS
         """
         material = self.getMaterials()
-        if oldMaterial != material:
-            if material == self.defaultFluidCharacteristicsValues()['material'] :
-               self.setMethod(self.defaultFluidCharacteristicsValues()['method'])
-            elif EOS == 1:
-               self.ava = eosAva.EosAvailable()
-               self.ava.setMethods(material)
-               self.setMethod(self.ava.whichMethods()[0])
-            elif self.coolprop == 1:
-                self.setMethod("CoolProp")
-            else:
-                self.setMethod("freesteam")
-            # suppress phas choice if not EOS
-            if self.getMethod() == self.defaultFluidCharacteristicsValues()['method'] or \
-               self.getMethod() == "freesteam" or self.getMethod() == "CoolProp":
-                nodem = self.node_fluid.xmlGetNode('phas')
-                if nodem:
-                   nodem.xmlRemoveNode()
+        if oldMaterial == material:
+            return
+
+        old_method = self.getMethod
+
+        # If fluid not known, do no change anything (error may be caught at
+        # computation time, or the GUI may simply be incomplete)
+        if material not in self.lib_properties.keys():
+            return
+
+        material_flags = self.lib_properties[material]
+        methods = []
+
+        if material_flags & self.mask_builtin:
+            methods.append('user_properties')
+
+        if material_flags & self.mask_EOS:
+            self.ava.setMethods(material)
+            fls = self.ava.whichMethods()
+            for fli in fls:
+                methods.append(fli)
+
+        if material_flags & self.mask_CoolProp:
+            methods.append("CoolProp")
+
+        if material_flags & self.mask_freesteam:
+            methods.append("freesteam")
+
+        if old_method not in methods and methods:
+            methods.append("unknown")
+            self.setMethod(methods[0])
+
+        reference = self.getReference() # to force update
+
+
+    @Variables.noUndo
+    def getAvailReferences(self, material, method):
+        """
+        return available reference value for EOS
+        """
+        if method in ("user_properties", "freesteam", "CoolProp"):
+            return None
+
+        references = []
+
+        if EOS:
+            self.ava = eosAva.EosAvailable()
+            self.ava.setMethods(material)
+            self.ava.setReferences(material, self.getMethod())
+            references = self.ava.whichReferences()
+        return references
 
 
     @Variables.noUndo
@@ -438,56 +633,37 @@ class FluidCharacteristicsModel(Variables, Model):
         reference = ""
         material = self.getMaterials()
         method = self.getMethod()
-        if material == "user_material":
-            reference = material
-        else:
-            if self.freesteam == 1:
-                if self.getMethod() == "freesteam":
-                    reference = "freesteam"
-            if self.coolprop == 1:
-                if self.getMethod() == "CoolProp":
-                    reference = "CoolProp"
-            if EOS == 1:
-                if self.getMethod() != "freesteam" and self.getMethod() != "CoolProp":
-                    phas = self.getFieldNature()
-                    self.ava = eosAva.EosAvailable()
-                    self.ava.setMethods(material)
-                    self.ava.setReferences(material, self.getMethod())
-                    ref = self.ava.whichReferences()
+        if method in ("user_properties", "freesteam", "CoolProp"):
+            return None
 
-                    if phas == "liquid":
-                        reference = ref[0]
-                    elif phas == "gas":
-                        reference = ref[1]
-        # update XML
-        childNode = self.node_fluid.xmlInitChildNode('reference')
-        childNode.xmlSetAttribute(choice = reference)
+        nodem = self.node_fluid.xmlGetChildNode('method')
+        reference = nodem.xmlGetString('reference')
+
+        if not reference and self.lib_properties[material] & self.mask_EOS and EOS:
+            self.ava = eosAva.EosAvailable()
+            self.ava.setMethods(material)
+            self.ava.setReferences(material, self.getMethod())
+            ref = self.ava.whichReferences()
+            if ref:
+                reference = ref[0]
+
+            # update XML
+            self.setReference('reference')
 
         return reference
 
 
     @Variables.noUndo
-    def getFieldNature(self):
+    def setReference(self, reference):
         """
-        get field nature for EOS
+        set reference value for EOS
         """
-        nodem = self.node_fluid.xmlGetNode('phas')
-        if nodem == None:
-            nature = self.defaultFluidCharacteristicsValues()['phas']
-            self.setFieldNature(nature)
-            nodem = self.node_fluid.xmlGetNode('phas')
-        nature = nodem['choice']
-        return nature
-
-
-    @Variables.noUndo
-    def setFieldNature(self, nature):
-        """
-        set field nature for EOS
-        """
-        self.isInList(nature, ('liquid', 'gas'))
-        childNode = self.node_fluid.xmlInitChildNode('phas')
-        childNode.xmlSetAttribute(choice = nature)
+        nodem = self.node_fluid.xmlInitChildNode('method')
+        if not reference:
+            if nodem.xmlGetNode('reference'):
+                node.xmlRemoveChild('reference')
+        else:
+            nodem.xmlSetData('reference', reference)
 
 
     @Variables.noUndo
@@ -507,10 +683,25 @@ class FluidCharacteristicsModel(Variables, Model):
         return pp
 
 
+    @Variables.noUndo
+    def getValue(self, f_id, tag):
+        """
+        Return value of the markup tag : 'density', or
+        'molecular_viscosity' for fluid of id f_id
+        """
+        self.isInList(tag, ('density', 'molecular_viscosity'))
+        node = self.node_fluid.xmlGetNode('property', name=tag)
+        pp = node.xmlGetDouble('value' + '_' + str(f_id))
+        if pp == None:
+            pp = self.defaultFluidCharacteristicsValues()[tag+'_'+str(f_id)]
+            self.setValue(f_id, tag, pp)
+        return pp
+
+
     @Variables.undoLocal
     def setInitialValue(self, tag, val):
         """
-        Put initial value for the markup tag : 'density', or
+        Set initial value for the markup tag : 'density', or
         'molecular_viscosity', or 'specific_heat'or 'thermal_conductivity'
         """
         self.isInList(tag, ('density', 'molecular_viscosity',
@@ -524,10 +715,27 @@ class FluidCharacteristicsModel(Variables, Model):
         node.xmlSetData('initial_value', val)
 
 
+    @Variables.undoLocal
+    def setValue(self, f_id, tag, val):
+        """
+        Set initial value for the markup tag : 'density', or
+        'molecular_viscosity'
+        """
+        self.isInList(tag, ('density', 'molecular_viscosity'))
+        node = self.node_fluid.xmlGetNode('property', name=tag)
+        node.xmlSetData('value'+'_'+str(f_id), val)
+
+
     @Variables.noUndo
     def getInitialValueDensity(self):
         """Return initial value of density"""
         return self.getInitialValue('density')
+
+
+    @Variables.noUndo
+    def getVofValueDensity(self, f_id):
+        """Return value of density of fluid of id f_id"""
+        return self.getValue(f_id, 'density')
 
 
     @Variables.undoLocal
@@ -536,16 +744,34 @@ class FluidCharacteristicsModel(Variables, Model):
         self.setInitialValue('density', val)
 
 
+    @Variables.undoLocal
+    def setVofValueDensity(self, f_id, val):
+        """Set value for density of fluid of id f_id"""
+        self.setValue(f_id, 'density', val)
+
+
     @Variables.noUndo
     def getInitialValueViscosity(self):
         """Return initial value of viscosity"""
         return self.getInitialValue('molecular_viscosity')
 
 
+    @Variables.noUndo
+    def getVofValueViscosity(self, f_id):
+        """Return value of viscosity of fluid of id f_id"""
+        return self.getValue(f_id, 'molecular_viscosity')
+
+
     @Variables.undoLocal
     def setInitialValueViscosity(self, val):
         """Put initial value for viscosity"""
         self.setInitialValue('molecular_viscosity', val)
+
+
+    @Variables.undoLocal
+    def setVofValueViscosity(self, f_id, val):
+        """Set value for viscosity of fluid of id f_id"""
+        self.setValue(f_id, 'molecular_viscosity', val)
 
 
     @Variables.noUndo
@@ -723,6 +949,8 @@ class FluidCharacteristicsModel(Variables, Model):
         ref_pressure = self.getPressure()
         symbols.append(('p0', 'Reference pressure = ' + str(ref_pressure)))
 
+        symbols.append(('volume', 'Zone volume'))
+
         for (nme, val) in self.notebook.getNotebookList():
             symbols.append((nme, 'value (notebook) = ' + str(val)))
 
@@ -751,6 +979,8 @@ class FluidCharacteristicsModel(Variables, Model):
         symbols.append(('p0', 'Reference pressure = ' + str(ref_pressure)))
 
         symbols.append(('rho', 'Density'))
+
+        symbols.append(('volume', 'Zone volume'))
 
         from code_saturne.model.CompressibleModel import CompressibleModel
         if CompressibleModel(self.case).getCompressibleModel() == 'on':
@@ -781,6 +1011,8 @@ class FluidCharacteristicsModel(Variables, Model):
         ref_pressure = self.getPressure()
         symbols.append(('p0', 'Reference pressure = ' + str(ref_pressure)))
 
+        symbols.append(('volume', 'Zone volume'))
+
         for (nme, val) in self.notebook.getNotebookList():
             symbols.append((nme, 'value (notebook) = ' + str(val)))
 
@@ -806,6 +1038,8 @@ class FluidCharacteristicsModel(Variables, Model):
         symbols.append(('t0', 'Reference temperature (K) = '+str(ref_temperature)))
         symbols.append(('T', 'Temperature'))
 
+        symbols.append(('volume', 'Zone volume'))
+
         for (nme, val) in self.notebook.getNotebookList():
             symbols.append((nme, 'value (notebook) = ' + str(val)))
 
@@ -828,6 +1062,8 @@ class FluidCharacteristicsModel(Variables, Model):
         symbols.append(('lambda0', 'Thermal conductivity (reference value) = ' + str(lambda0_value)))
         symbols.append(('p0', 'Reference pressure = ' + str(ref_pressure)))
 
+        symbols.append(('volume', 'Zone volume'))
+
         for (nme, val) in self.notebook.getNotebookList():
             symbols.append((nme, 'value (notebook) = ' + str(val)))
 
@@ -847,6 +1083,8 @@ class FluidCharacteristicsModel(Variables, Model):
         sym.append((str(scalar),str(scalar)))
         diff0_value = self.m_sca.getScalarDiffusivityInitialValue(scalar)
         sym.append((str(name)+'_ref', str(scalar)+' diffusion coefficient (reference value, m^2/s) = '+str(diff0_value)))
+
+        sym.append(('volume', 'Zone volume'))
 
         for (nme, val) in self.notebook.getNotebookList():
             sym.append((nme, 'value (notebook) = ' + str(val)))
@@ -886,7 +1124,7 @@ class FluidCharacteristicsModelTestCase(ModelTest):
         from code_saturne.model.ThermalScalarModel import ThermalScalarModel
         ThermalScalarModel(self.case).setThermalModel('temperature_celsius')
         del ThermalScalarModel
-        assert mdl.getThermoPhysicalModel() == ('off', 'off', 'temperature_celsius', 'off', 'off', 'off'),\
+        assert mdl.getThermoPhysicalModel() == ('off', 'off', 'temperature_celsius', 'off', 'off', 'off', 'off'),\
         'Could not get thermophysical models in FluidCaracteristicsModel'
 
     def checkSetandGetInitialValue(self):

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -27,11 +27,12 @@
 !> \file distyp.f90
 !>
 !> \brief This subroutine computes the dimensionless distance to the wall
-!> solving a transport equation.
+!> solving a steady transport equation.
 !>
-!> This function solves the following transport equation on \f$ \varia \f$:
+!> This function solves the following steady pure convection equation on
+!> \f$ \varia \f$:
 !> \f[
-!> \dfrac{\partial \varia}{\partial t} + \divs \left( \varia \vect{V} \right)
+!> \divs \left( \varia \vect{V} \right)
 !>     - \divs \left( \vect{V} \right) \varia = 0
 !> \f]
 !> where the vector field \f$ \vect{V} \f$ is defined by:
@@ -51,9 +52,6 @@
 !>  y^+ = y \varia
 !> \f]
 !>
-!>
-!> Remarks:
-!> - a steady state is looked for.
 !>
 !> Then, Imposition of an amortization of Van Driest type for the LES.
 !>        \f$ \nu_T \f$ is absorbed by \f$ (1-\exp(\dfrac{-y^+}{d^+}))^2 \f$
@@ -111,7 +109,7 @@ integer          iphydp
 integer          ifac  , iel   , init
 integer          inc   , iccocg, isweep
 integer          imucpp, idftnp
-integer          nswrgp, nswrsp
+integer          imrgrp, nswrgp, nswrsp
 integer          icvflb, iescap, imligp, ircflp, iswdyp, isstpp, ischcp, iwarnp
 integer          iflmas, iflmab
 
@@ -323,6 +321,7 @@ inc    = 1
 iccocg = 1
 iphydp = 0
 
+imrgrp = vcopt%imrgra
 epsrgp = vcopt%epsrgr
 extrap = vcopt%extrag
 climgp = vcopt%climgr
@@ -349,7 +348,7 @@ endif
 ! Compute convective mass flux
 ! here -div(1 grad(y))
 call itrmas &
- ( f_id   , init   , inc    , imrgra , iccocg , nswrgp , imligp , iphydp ,     &
+ ( f_id   , init   , inc    , imrgrp , iccocg , nswrgp , imligp , iphydp ,     &
    0      , iwarnp ,                                                           &
    epsrgp , climgp , extrap ,                                                  &
    rvoid  ,                                                                    &
@@ -473,6 +472,7 @@ iconvp = vcopt%iconv
 idiffp = vcopt%idiff
 idftnp = vcopt%idften
 nswrsp = vcopt%nswrsm
+imrgrp = vcopt%imrgra
 nswrgp = vcopt%nswrgr
 imligp = vcopt%imligr
 ircflp = vcopt%ircflu
@@ -506,7 +506,7 @@ isweep = -1
 
 call codits &
  ( idtva0 , isweep , f_id_yplus, iconvp , idiffp , ndircp ,       &
-   imrgra , nswrsp , nswrgp , imligp , ircflp ,                   &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp ,                   &
    ischcp , isstpp , iescap , imucpp , idftnp , iswdyp ,          &
    iwarnp , xnorm0 ,                                              &
    blencp , epsilp , epsrsp , epsrgp , climgp , extrap ,          &

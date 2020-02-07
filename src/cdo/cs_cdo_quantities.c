@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -126,11 +126,65 @@ cs_cdo_quantities_algo_ccenter_t  cs_cdo_quantities_cc_algo =
  * Private function prototypes
  *============================================================================*/
 
-/*----------------------------------------------------------------------------
- * Several private functions for volume and centroid computation
- * ---------------------------------------------------------------------------*/
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Allocate and initialize a \ref cs_mesh_quantities_t structure
+ *
+ * \return  a pointer to the newly allocated structure
+ */
+/*----------------------------------------------------------------------------*/
+
+static cs_cdo_quantities_t *
+_create_cdo_quantities(void)
+{
+  cs_cdo_quantities_t  *cdoq = NULL;
+
+  /* Build cs_cdo_quantities_t structure */
+  BFT_MALLOC(cdoq, 1, cs_cdo_quantities_t);
+
+  cdoq->vol_tot = 0.;
+
+  /* Cell-based quantities */
+  cdoq->cell_info.h_min = cdoq->cell_info.meas_min =  DBL_MAX;
+  cdoq->cell_info.h_max = cdoq->cell_info.meas_max = -DBL_MAX;
+
+  cdoq->n_cells = 0;
+  cdoq->n_g_cells = 0;
+  cdoq->cell_centers = NULL;
+  cdoq->cell_vol = NULL;
+
+  /* Face-based quantities */
+  cdoq->face_info.h_min = cdoq->face_info.meas_min = DBL_MAX;
+  cdoq->face_info.h_max = cdoq->face_info.meas_max = -DBL_MAX;
+
+  cdoq->n_faces = cdoq->n_i_faces = cdoq->n_b_faces = 0;
+  cdoq->n_g_faces = 0;
+  cdoq->dedge_vector = NULL;
+  cdoq->pvol_fc = NULL;
+
+  /* Edge-based quantities */
+  cdoq->edge_info.h_min = cdoq->edge_info.meas_min = DBL_MAX;
+  cdoq->edge_info.h_max = cdoq->edge_info.meas_max = -DBL_MAX;
+
+  cdoq->n_edges = 0;
+  cdoq->n_g_edges = 0;
+  cdoq->edge_vector = NULL;
+  cdoq->pvol_ec = NULL;
+  cdoq->dface_normal = NULL;
+
+  /* Vertex-based quantities */
+  cdoq->n_vertices = 0;
+  cdoq->n_g_vertices = 0;
+  cdoq->dcell_vol = NULL;
+
+  /* Shared pointers are not initialized at this stage */
+
+  return cdoq;
+}
 
 /*----------------------------------------------------------------------------
+ * Function related to the Mirtich algorithm
+ *
  * Define an unitary normal to the current face
  * Compute omega = - <n, P> where P belongs to the face
  * Choose projection axis in order to maximize the projected area
@@ -225,6 +279,8 @@ _get_fspec(cs_lnum_t                    f_id,
 }
 
 /* ---------------------------------------------------------------------------*
+ * Function related to the Mirtich algorithm
+ *
  * Compute projected integrals and quantities
  * ---------------------------------------------------------------------------*/
 
@@ -300,7 +356,9 @@ _get_proj_quantities(cs_lnum_t                f_id,
   return  projq;
 }
 
-/* ---------------------------------------------------------------------------*/
+/* --------------------------------------------------------------------------
+ * Function related to the Mirtich algorithm
+ * -------------------------------------------------------------------------- */
 
 static _cdo_fsubq_t
 _get_fsub_quantities(cs_lnum_t                 f_id,
@@ -346,6 +404,66 @@ _get_fsub_quantities(cs_lnum_t                 f_id,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Compute additional quantities related to faces
+ *         - Dual edges (segment between x_f and x_c and scanned with c2f
+ *           adjacency
+ *
+ * \param[in]      topo              pointer to a cs_cdo_connect_t structure
+ * \param[in, out] cdoq              pointer to cs_cdo_quantities_t structure
+ * \param[in]      eb_scheme_flag    metadata for Edge-based schemes
+ * \param[in]      fb_scheme_flag    metadata for Face-based schemes
+ * \param[in]      vb_scheme_flag    metadata for Vertex-based schemes
+ * \param[in]      vcb_scheme_flag   metadata for Vertex+Cell-based schemes
+ * \param[in]      hho_scheme_flag   metadata for HHO schemes
+ */
+/*----------------------------------------------------------------------------*/
+
+static void
+_compute_face_based_quantities(const cs_cdo_connect_t  *topo,
+                               cs_cdo_quantities_t     *cdoq,
+                               cs_flag_t                eb_scheme_flag,
+                               cs_flag_t                fb_scheme_flag,
+                               cs_flag_t                vb_scheme_flag,
+                               cs_flag_t                vcb_scheme_flag,
+                               cs_flag_t                hho_scheme_flag)
+{
+  /* Parameters not used up to now */
+  CS_UNUSED(eb_scheme_flag);
+  CS_UNUSED(vb_scheme_flag);
+
+  /* Compute dual edge quantities */
+  const cs_lnum_t  n_cells = cdoq->n_cells;
+  const cs_adjacency_t  *c2f = topo->c2f;
+
+  BFT_MALLOC(cdoq->dedge_vector, 3*c2f->idx[n_cells], cs_real_t);
+
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
+  for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+
+    const cs_real_t  *xc = cdoq->cell_centers + 3*c_id;
+
+    for (cs_lnum_t i = c2f->idx[c_id]; i < c2f->idx[c_id+1]; i++) {
+
+      const cs_lnum_t  f_id = c2f->ids[i];
+      const short int  sgn = c2f->sgn[i];
+      const cs_real_t  *xf = (f_id < cdoq->n_i_faces) ?
+        cdoq->i_face_center + 3*f_id :
+        cdoq->b_face_center + 3*(f_id - cdoq->n_i_faces);
+
+      for (int k = 0; k < 3; k++)
+        cdoq->dedge_vector[3*i+k] = sgn * (xf[k] - xc[k]);
+
+    } /* Loop on cell faces */
+
+  } /* End of loop on cells */
+
+  /* Compute the volume of the pyramid */
+  if (fb_scheme_flag > 0 || hho_scheme_flag > 0 || vcb_scheme_flag > 0)
+    cs_cdo_quantities_compute_pvol_fc(cdoq, topo->c2f, &(cdoq->pvol_fc));
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief  Compute dual face normals (face crossed by primal edges).
  *         Given a cell c and an edge e, there are two faces attached to the
  *         couple (c, e)
@@ -353,27 +471,44 @@ _get_fsub_quantities(cs_lnum_t                 f_id,
  *         The dual face is the union of these two triangles.
  *         Storage is based on the c2e connectivity
  *
- * \param[in]      topo     pointer to a cs_cdo_connect_t structure
- * \param[in, out] quant    pointer to cs_cdo_quantities_t structure
+ * \param[in]      topo             pointer to a cs_cdo_connect_t structure
+ * \param[in, out] quant            pointer to cs_cdo_quantities_t structure
+ * \param[in]      eb_scheme_flag   metadata for Edge-based schemes
+ * \param[in]      fb_scheme_flag   metadata for Face-based schemes
+ * \param[in]      vb_scheme_flag   metadata for Vertex-based schemes
+ * \param[in]      vcb_scheme_flag  metadata for Vertex+Cell-based schemes
+ * \param[in]      hho_scheme_flag  metadata for HHO schemes
  */
 /*----------------------------------------------------------------------------*/
 
 static void
 _compute_edge_based_quantities(const cs_cdo_connect_t  *topo,
-                               cs_cdo_quantities_t     *quant)
+                               cs_cdo_quantities_t     *quant,
+                               cs_flag_t                eb_scheme_flag,
+                               cs_flag_t                fb_scheme_flag,
+                               cs_flag_t                vb_scheme_flag,
+                               cs_flag_t                vcb_scheme_flag,
+                               cs_flag_t                hho_scheme_flag)
+
 {
-  const int n_edges = quant->n_edges;
+  /* Unused parameters up to now */
+  CS_UNUSED(fb_scheme_flag);
+  CS_UNUSED(hho_scheme_flag);
 
   /* Sanity check */
   assert(topo->e2v != NULL);
   assert(topo->f2e != NULL && topo->f2c != NULL && topo->c2e != NULL);
 
+  const cs_lnum_t  n_cells = quant->n_cells;
+  const cs_lnum_t  n_edges = quant->n_edges;
+
   cs_real_t  *edge_center = NULL;
 
   /* Build edge centers and edge vectors */
-  BFT_MALLOC(quant->edge_vector, 3*n_edges, cs_real_t);
   BFT_MALLOC(edge_center, 3*n_edges, cs_real_t);
+  BFT_MALLOC(quant->edge_vector, 3*n_edges, cs_real_t);
 
+# pragma omp parallel for if (n_edges > CS_THR_MIN)
   for (cs_lnum_t e_id = 0; e_id < n_edges; e_id++) {
 
     /* Get the two vertex ids related to the current edge */
@@ -387,7 +522,7 @@ _compute_edge_based_quantities(const cs_cdo_connect_t  *topo,
 
       for (int k = 0; k < 3; k++) {
         vect[k] = xb[k] - xa[k];
-        xe[k] = 0.5* ( xb[k] + xa[k]) ;
+        xe[k] = 0.5* (xb[k] + xa[k]) ;
       }
 
     }
@@ -395,7 +530,7 @@ _compute_edge_based_quantities(const cs_cdo_connect_t  *topo,
 
       for (int k = 0; k < 3; k++) {
         vect[k] = xa[k] - xb[k];
-        xe[k] = 0.5* ( xb[k] + xa[k]) ;
+        xe[k] = 0.5* (xb[k] + xa[k]) ;
       }
 
     }
@@ -403,128 +538,98 @@ _compute_edge_based_quantities(const cs_cdo_connect_t  *topo,
   } /* End of loop on edges */
 
   /* Allocate and initialize array */
-  BFT_MALLOC(quant->sface_normal, 6*topo->c2e->idx[quant->n_cells], cs_real_t);
+  if (eb_scheme_flag > 0 || vb_scheme_flag > 0 || vcb_scheme_flag > 0) {
 
-  /* Manage openMP cache */
-  short int  **parent_thread_array = NULL;
-  BFT_MALLOC(parent_thread_array, cs_glob_n_threads, short int *);
-  for (int i = 0; i < cs_glob_n_threads; i++)
-    parent_thread_array[i] = NULL;
+    /* a) Compute the two vector areas composing each dual face
+     * b) Compute the volume associated to eachedge in a cell
+     */
+    BFT_MALLOC(quant->pvol_ec, topo->c2e->idx[n_cells], cs_real_t);
+    BFT_MALLOC(quant->dface_normal, 3*topo->c2e->idx[n_cells], cs_real_t);
 
-# pragma omp parallel default(none) \
-  shared(quant, topo, parent_thread_array, edge_center, cs_glob_n_threads)
-  { // OMP Block
-    const cs_adjacency_t  *c2f = topo->c2f, *f2e = topo->f2e;
+# pragma omp parallel shared(quant, topo, edge_center)
+    { /* OMP Block */
 
-#if defined(HAVE_OPENMP) /* Determine default number of OpenMP threads */
-    int t_id = omp_get_thread_num();
-#else
-    int t_id = 0;
-#endif
+      const cs_adjacency_t  *c2f = topo->c2f, *f2e = topo->f2e;
 
-    short int  *parent = parent_thread_array[t_id];
-    BFT_MALLOC(parent, topo->n_max_ebyc, short int);
+#     pragma omp for CS_CDO_OMP_SCHEDULE
+      for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
 
-#   pragma omp for CS_CDO_OMP_SCHEDULE
-    for (cs_lnum_t c_id = 0; c_id < quant->n_cells; c_id++) {
+        const cs_lnum_t  *c2e_idx = topo->c2e->idx + c_id;
+        const cs_lnum_t  *c2e_ids = topo->c2e->ids + c2e_idx[0];
+        const short int  n_ec = c2e_idx[1] - c2e_idx[0];
 
-      const cs_lnum_t  *c2e_idx = topo->c2e->idx + c_id;
-      const cs_lnum_t  *c2e_ids = topo->c2e->ids + c2e_idx[0];
-      const short int  n_ec = c2e_idx[1] - c2e_idx[0];
+        /* Initialize sface */
+        cs_real_t  *cell_dface = quant->dface_normal + 3*c2e_idx[0];
+        memset(cell_dface, 0, 3*n_ec*sizeof(cs_real_t));
 
-      /* Get cell center */
-      const cs_real_t  *xc = quant->cell_centers + 3*c_id;
+        /* Get cell center */
+        const cs_real_t  *xc = quant->cell_centers + 3*c_id;
 
-      /* Initialize parent array */
-      for (short int e = 0; e < n_ec; e++) parent[e] = 0;
+        for (cs_lnum_t i = c2f->idx[c_id]; i < c2f->idx[c_id+1]; i++) {
 
-      for (cs_lnum_t i = c2f->idx[c_id]; i < c2f->idx[c_id+1]; i++) {
+          const cs_lnum_t  f_id = c2f->ids[i];
 
-        const cs_lnum_t  f_id = c2f->ids[i];
+          /* Compute xf -> xc */
+          const cs_real_t  *xf = (f_id < quant->n_i_faces) ?
+            quant->i_face_center + 3* f_id :
+            quant->b_face_center + 3*(f_id - quant->n_i_faces);
+          const cs_real_3_t  xfxc = { xf[0] - xc[0],
+                                      xf[1] - xc[1],
+                                      xf[2] - xc[2] };
 
-        /* Compute xf -> xc */
-        cs_real_3_t  xfxc;
+          for (cs_lnum_t j = f2e->idx[f_id]; j < f2e->idx[f_id+1]; j++) {
 
-        if (f_id < quant->n_i_faces) {
-          for (int k = 0; k < 3; k++)
-            xfxc[k] = quant->i_face_center[3*f_id+k] - xc[k];
-        }
-        else {
-          const cs_lnum_t  bf_id = f_id - quant->n_i_faces;
-          CS_CDO_OMP_ASSERT(bf_id > -1);
-          for (int k = 0; k < 3; k++)
-            xfxc[k] = quant->b_face_center[3*bf_id+k] - xc[k];
-        }
+            const cs_lnum_t  e_id = topo->f2e->ids[j];
+            const cs_real_t  *xe = edge_center + 3*e_id;
 
-        for (cs_lnum_t j = f2e->idx[f_id]; j < f2e->idx[f_id+1]; j++) {
+            /* Compute the vectorial area for the triangle : xc, xf, xe */
+            cs_real_3_t  tria_vect, xexc;
+            for (int k = 0; k < 3; k++)
+              xexc[k] = xc[k] - xe[k];
+            cs_math_3_cross_product(xfxc, xexc, tria_vect);
 
-          const cs_lnum_t  e_id = topo->f2e->ids[j];
-          const cs_real_t  *xe = edge_center + 3*e_id;
-
-          /* Compute the vectorial area for the triangle : xc, xf, xe */
-          cs_real_3_t  tria_vect, xexc;
-          for (int k = 0; k < 3; k++)
-            xexc[k] = xc[k] - xe[k];
-          cs_math_3_cross_product(xfxc, xexc, tria_vect);
-
-          cs_nvec3_t  tria;
-          cs_nvec3(tria_vect, &tria);
-          cs_nvec3_t  edge = cs_quant_set_edge_nvec(e_id, quant);
-
-          /* Find the corresponding local cell edge */
-          short int e = n_ec;
-          for (short int _e = 0; _e < n_ec; _e++) {
-            if (c2e_ids[_e] == e_id) {
-              e = _e;
-              break;
+            /* Find the corresponding local cell edge */
+            short int e = n_ec;
+            for (short int _e = 0; _e < n_ec; _e++) {
+              if (c2e_ids[_e] == e_id) {
+                e = _e;
+                break;
+              }
             }
-          }
-          CS_CDO_OMP_ASSERT(e < n_ec);
+            CS_CDO_OMP_ASSERT(e < n_ec);
 
-          /* Portion of dual faces to consider */
-          cs_real_t  *sface = quant->sface_normal + 6*(c2e_idx[0]+e);
+            /* One should have (normal_tria, tangent_e) > 0 */
+            cs_nvec3_t  edge = cs_quant_set_edge_nvec(e_id, quant);
+            cs_nvec3_t  tria;
+            cs_nvec3(tria_vect, &tria);
+            const double  orient = _dp3(tria.unitv, edge.unitv);
+            CS_CDO_OMP_ASSERT(fabs(orient) > 0);
 
-          /* One should have (normal_tria, tangent_e) > 0 */
-          const double  orient = _dp3(tria.unitv, edge.unitv);
-          CS_CDO_OMP_ASSERT(fabs(orient) > 0);
+            /* Store the computed data */
+            cs_real_t  *_dface = cell_dface + 3*e;
+            if (orient < 0)
+              for (int k = 0; k < 3; k++) _dface[k] -= 0.5 * tria_vect[k];
+            else
+              for (int k = 0; k < 3; k++) _dface[k] += 0.5 * tria_vect[k];
 
-          /* Store the computed data */
-          if (orient < 0) {
-            for (int k = 0; k < 3; k++)
-              sface[3*parent[e] + k] = -0.5 * tria_vect[k];
-          }
-          else {
-            for (int k = 0; k < 3; k++)
-              sface[3*parent[e] + k] =  0.5 * tria_vect[k];
-          }
+          } /* Loop on face edges */
 
-#if defined(DEBUG) && !defined(NDEBUG)
-          cs_nvec3_t  df_nvec;
-          cs_nvec3(sface + 3*parent[e], &df_nvec);
-          CS_CDO_OMP_ASSERT(fabs(_dp3(df_nvec.unitv, edge.unitv)) > 0);
-#endif
-          parent[e] += 1;
+        } /* Loop on cell faces */
 
-        } /* Loop on face edges */
+        /* Compute pvol_ec */
+        cs_real_t  *_pvol = quant->pvol_ec + c2e_idx[0];
+        for (short int e = 0; e < n_ec; e++) {
+          _pvol[e] = cs_math_1ov3 * _dp3(cell_dface + 3*e,
+                                         quant->edge_vector + 3*c2e_ids[e]);
+          CS_CDO_OMP_ASSERT(_pvol[e] > 0);
+        }
 
-      } /* Loop on cell faces */
+      } /* End of loop on cells */
 
-#if defined(DEBUG) && !defined(NDEBUG)
-      for (short int e = 0; e < n_ec; e++)
-        if (parent[e] != 2)
-          bft_error(__FILE__, __LINE__, 0,
-                    " Connectivity error detected while building dual face"
-                    " quantity for cell %d\n"
-                    " Each edge should have 2 adjacent faces in a cell.\n"
-                    " Here, there is (are) %d face(s).", c_id, parent[e]);
-#endif
-    } /* End of loop on cells */
+    } /* End of OpenMP block */
 
-    BFT_FREE(parent);
+  } /* Test scheme flag */
 
-  } // End of OpenMP block
-
-  BFT_FREE(parent_thread_array);
   BFT_FREE(edge_center);
 }
 
@@ -550,7 +655,7 @@ _compute_dcell_quantities(const cs_cdo_connect_t  *topo,
   /* Allocate and initialize arrays */
   BFT_MALLOC(quant->dcell_vol, topo->c2v->idx[quant->n_cells], double);
 
-# pragma omp parallel for default(none) shared(quant, topo, c2f, f2e)   \
+# pragma omp parallel for shared(quant, topo, c2f, f2e) \
   CS_CDO_OMP_SCHEDULE
   for (cs_lnum_t c_id = 0; c_id < quant->n_cells; c_id++) {
 
@@ -595,28 +700,32 @@ _compute_dcell_quantities(const cs_cdo_connect_t  *topo,
         vol_vc[_v1] += pvol;
         vol_vc[_v2] += pvol;
 
-      } // Loop on face edges
+      } /* Loop on face edges */
 
-    } // Loop on cell faces
+    } /* Loop on cell faces */
 
-  }  // Loop on cells
+  } /* Loop on cells */
 
 }
 
-/*----------------------------------------------------------------------------
- * Define the cs_quant_info_t structures related to cells, faces and edges
- * ---------------------------------------------------------------------------*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Define the cs_quant_info_t structures related to cells, faces and
+ *        edges. For edges, it depends on scheme flags
+ *
+ * \param[in, out] quant      pointer to a cs_cdo_quantities_t structure
+ */
+/*----------------------------------------------------------------------------*/
 
 static void
-_compute_quant_info(cs_cdo_quantities_t     *quant)    /* In/out */
+_compute_quant_info(cs_cdo_quantities_t     *quant)
 {
-  assert(quant != NULL); // Sanity check
+  if (quant == NULL)
+    return;
 
-  /* Cell info (set default values) */
-  quant->cell_info.h_min = quant->cell_info.meas_min = DBL_MAX;
-  quant->cell_info.h_max = quant->cell_info.meas_max = -DBL_MAX;
-
-  for (cs_lnum_t  c_id = 0; c_id < quant->n_cells; c_id++) {
+  /* Cell info */
+  for (cs_lnum_t c_id = 0; c_id < quant->n_cells; c_id++) {
 
     const double  meas = quant->cell_vol[c_id];
 
@@ -629,12 +738,9 @@ _compute_quant_info(cs_cdo_quantities_t     *quant)    /* In/out */
       quant->cell_info.h_min = cbrt(meas);
     }
 
-  } // Loop on cells
+  } /* Loop on cells */
 
-  /* Face info (set default values) */
-  quant->face_info.h_min = quant->face_info.meas_min = DBL_MAX;
-  quant->face_info.h_max = quant->face_info.meas_max = -DBL_MAX;
-
+  /* Face info */
   for (cs_lnum_t  f_id = 0; f_id < quant->n_i_faces; f_id++) {
 
     const cs_real_t  meas = quant->i_face_surf[f_id];
@@ -648,7 +754,7 @@ _compute_quant_info(cs_cdo_quantities_t     *quant)    /* In/out */
       quant->face_info.h_min = sqrt(meas);
     }
 
-  } // Loop on faces
+  } /* Loop on interior faces */
 
   for (cs_lnum_t  f_id = 0; f_id < quant->n_b_faces; f_id++) {
 
@@ -663,27 +769,54 @@ _compute_quant_info(cs_cdo_quantities_t     *quant)    /* In/out */
       quant->face_info.h_min = sqrt(meas);
     }
 
-  } // Loop on faces
+  } /* Loop on border faces */
 
-  /* Edge info (set default values) */
-  quant->edge_info.h_min = quant->edge_info.meas_min = DBL_MAX;
-  quant->edge_info.h_max = quant->edge_info.meas_max = -DBL_MAX;
+  /* Edge info */
+  if (quant->edge_vector != NULL) {
 
-  for (cs_lnum_t  e_id = 0; e_id < quant->n_edges; e_id++) {
+    for (cs_lnum_t  e_id = 0; e_id < quant->n_edges; e_id++) {
 
-    cs_nvec3_t  edge = cs_quant_set_edge_nvec(e_id, quant);
+      cs_nvec3_t  edge = cs_quant_set_edge_nvec(e_id, quant);
 
-    if (edge.meas > quant->edge_info.meas_max) {
-      quant->edge_info.meas_max = edge.meas;
-      quant->edge_info.h_max = edge.meas;
-    }
-    if (edge.meas < quant->edge_info.meas_min) {
-      quant->edge_info.meas_min = edge.meas;
-      quant->edge_info.h_min = edge.meas;
-    }
+      if (edge.meas > quant->edge_info.meas_max) {
+        quant->edge_info.meas_max = edge.meas;
+        quant->edge_info.h_max = edge.meas;
+      }
+      if (edge.meas < quant->edge_info.meas_min) {
+        quant->edge_info.meas_min = edge.meas;
+        quant->edge_info.h_min = edge.meas;
+      }
 
-  } // Loop on edges
+    } /* Loop on edges */
 
+  }
+
+  if (cs_glob_n_ranks > 1) { /* Synchronization across ranks */
+
+    double  buf[12] =
+      {  quant->cell_info.meas_max,  quant->cell_info.h_max,
+        -quant->cell_info.meas_min, -quant->cell_info.h_min,
+         quant->face_info.meas_max,  quant->face_info.h_max,
+        -quant->face_info.meas_min, -quant->face_info.h_min,
+         quant->edge_info.meas_max,  quant->edge_info.h_max,
+        -quant->edge_info.meas_min, -quant->edge_info.h_min };
+
+    cs_parall_max(12, CS_DOUBLE, buf);
+
+    quant->cell_info.meas_max =  buf[0];
+    quant->cell_info.h_max    =  buf[1];
+    quant->cell_info.meas_min = -buf[2];
+    quant->cell_info.h_min    = -buf[3];
+    quant->face_info.meas_max =  buf[4];
+    quant->face_info.h_max    =  buf[5];
+    quant->face_info.meas_min = -buf[6];
+    quant->face_info.h_min    = -buf[7];
+    quant->edge_info.meas_max =  buf[8];
+    quant->edge_info.h_max    =  buf[9];
+    quant->edge_info.meas_min = -buf[10];
+    quant->edge_info.h_min    = -buf[11];
+
+  } /* Synchronization */
 }
 
 /*----------------------------------------------------------------------------
@@ -720,12 +853,12 @@ _vtx_algorithm(const cs_cdo_connect_t      *connect,
       xc[1] += xv[1];
       xc[2] += xv[2];
 
-    } // Loop on cell vertices
+    } /* Loop on cell vertices */
 
     const double  coef = 1./(ve-vs);
     for (int k = 0; k < 3; k++) xc[k] *= coef;
 
-  } // Loop on cells
+  } /* Loop on cells */
 
 }
 
@@ -751,12 +884,9 @@ _mirtich_algorithm(const cs_mesh_t             *mesh,
   assert(connect->f2c != NULL);
   assert(connect->c2f != NULL);
 
-# pragma omp parallel for if (n_cells > CS_THR_MIN)
-  for (cs_lnum_t i = 0; i < n_cells; i++) {
-    quant->cell_vol[i] = 0.0;
-    for (int k = 0; k < 3; k++)
-      quant->cell_centers[3*i+k] = 0.0;
-  }
+# pragma omp parallel for if (3*n_cells > CS_THR_MIN)
+  for (cs_lnum_t i = 0; i < 3*n_cells; i++)
+    quant->cell_centers[i] = 0.0;
 
   for (cs_lnum_t f_id = 0; f_id < n_faces; f_id++) {   /* Loop on faces */
 
@@ -771,8 +901,7 @@ _mirtich_algorithm(const cs_mesh_t             *mesh,
     cs_lnum_t  C = fspec.XYZ[Z];
 
     _cdo_fsubq_t  fsubq = _get_fsub_quantities(f_id,
-                                               connect,
-                                               quant->vtx_coord,
+                                               connect, quant->vtx_coord,
                                                fspec);
 
     /* Update cell quantities */
@@ -781,10 +910,7 @@ _mirtich_algorithm(const cs_mesh_t             *mesh,
 
       const cs_lnum_t  c_id = f2c->ids[i];
       const short int  sgn = f2c->sgn[i];
-      const double Fvol = ( (fspec.XYZ[X] == 0) ? fsubq.Fa :
-                            ( (fspec.XYZ[Y] == 0) ? fsubq.Fb : fsubq.Fc) );
 
-      quant->cell_vol[c_id] += sgn * fspec.q.unitv[0] * Fvol;
       quant->cell_centers[3*c_id + A] += sgn * fspec.q.unitv[A] * fsubq.Fa2;
       quant->cell_centers[3*c_id + B] += sgn * fspec.q.unitv[B] * fsubq.Fb2;
       quant->cell_centers[3*c_id + C] += sgn * fspec.q.unitv[C] * fsubq.Fc2;
@@ -800,53 +926,6 @@ _mirtich_algorithm(const cs_mesh_t             *mesh,
     for (int k = 0; k < 3; k++)
       quant->cell_centers[3*i+k] *= inv_2vol;
   }
-
-}
-
-/*----------------------------------------------------------------------------
- * Compute dual face normals (face crossed by primal edges).
- * Given a cell and an edge, there are two faces attached to the
- * couple (cell, edge)
- * The triplet (edge, face, cell) induces an elementary triangle s(e,f,c)
- * The dual face is the union of these two triangles.
- * Storage based on c2e connectivity
- * ---------------------------------------------------------------------------*/
-
-static void
-_define_cell_flag(const cs_cdo_connect_t  *topo,
-                  cs_cdo_quantities_t     *cdoq)
-{
-  assert(topo->cell_type != NULL); /* Sanity check */
-
-  const double  ortho_threshold = 1e-10;
-
-  /* Allocate flag related to each cell */
-  BFT_MALLOC(cdoq->cell_flag, cdoq->n_cells, cs_flag_t);
-  for (cs_lnum_t i = 0; i < cdoq->n_cells; i++)
-    cdoq->cell_flag[i] = 0;
-
-  for (cs_lnum_t c_id = 0; c_id < cdoq->n_cells; c_id++) {
-
-    if (topo->cell_type[c_id] == FVM_CELL_HEXA) { // Check if orthogonal
-
-      double  ortho_crit = 0.;
-      for (cs_lnum_t i = topo->c2f->idx[c_id]; i < topo->c2f->idx[c_id+1];
-           i++) {
-
-        const cs_lnum_t  f_id = topo->c2f->ids[i];
-        const cs_nvec3_t  de_nv = cs_quant_set_dedge_nvec(i, cdoq);
-        const cs_nvec3_t  pf_nv = cs_quant_set_face_nvec(f_id, cdoq);
-
-        ortho_crit += fabs(1 - _dp3(de_nv.unitv, pf_nv.unitv));
-
-      } // Loop on cell faces
-
-      if (ortho_crit < ortho_threshold)
-        cdoq->cell_flag[c_id] |= CS_CDO_ORTHO;
-
-    } // Hexahedron
-
-  } // Loop on cells
 
 }
 
@@ -872,39 +951,48 @@ cs_cdo_quantities_set_algo_ccenter(cs_cdo_quantities_algo_ccenter_t   algo)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Build a cs_cdo_quantities_t structure
+ * \brief Build a cs_cdo_quantities_t structure. Some quantities are shared
+ *        with the \ref cs_mesh_quantities_t structure and other are not
+ *        built according to the given scheme flags.
  *
- * \param[in]  m           pointer to a cs_mesh_t structure
- * \param[in]  mq          pointer to a cs_mesh_quantities_t structure
- * \param[in]  topo        pointer to a cs_cdo_connect_t structure
+ * \param[in]  m                 pointer to a cs_mesh_t structure
+ * \param[in]  mq                pointer to a cs_mesh_quantities_t structure
+ * \param[in]  topo              pointer to a cs_cdo_connect_t structure
+ * \param[in]  eb_scheme_flag    metadata for Edge-based schemes
+ * \param[in]  fb_scheme_flag    metadata for Face-based schemes
+ * \param[in]  vb_scheme_flag    metadata for Vertex-based schemes
+ * \param[in]  vcb_scheme_flag   metadata for Vertex+Cell-based schemes
+ * \param[in]  hho_scheme_flag   metadata for HHO schemes
  *
  * \return  a new allocated pointer to a cs_cdo_quantities_t structure
  */
 /*----------------------------------------------------------------------------*/
 
 cs_cdo_quantities_t *
-cs_cdo_quantities_build(const cs_mesh_t              *m,
-                        const cs_mesh_quantities_t   *mq,
-                        const cs_cdo_connect_t       *topo)
+cs_cdo_quantities_build(const cs_mesh_t             *m,
+                        const cs_mesh_quantities_t  *mq,
+                        const cs_cdo_connect_t      *topo,
+                        cs_flag_t                    eb_scheme_flag,
+                        cs_flag_t                    fb_scheme_flag,
+                        cs_flag_t                    vb_scheme_flag,
+                        cs_flag_t                    vcb_scheme_flag,
+                        cs_flag_t                    hho_scheme_flag)
 {
   cs_timer_t t0 = cs_timer_time();
 
-  cs_cdo_quantities_t  *cdoq = NULL;
-
   /* Sanity checks */
-  assert(topo != NULL);
-  assert(topo->c2f != NULL);
+  assert(topo != NULL && topo->c2f != NULL);
 
-  /* Build cs_cdo_quantities_t structure */
-  BFT_MALLOC(cdoq, 1, cs_cdo_quantities_t);
-
-  /* Dimension of each type of entities */
-  const cs_lnum_t  n_cells = m->n_cells;
-  cdoq->n_cells = n_cells;
-  cdoq->n_g_cells = m->n_g_cells;
+  cs_cdo_quantities_t  *cdoq = _create_cdo_quantities();
 
   /* Compute the volume of the whole domain */
   cdoq->vol_tot = mq->tot_vol;
+
+  /* 1) Initialize shared quantities */
+  /*    ============================ */
+
+  /* Face-related quantities */
+  /* ----------------------- */
 
   /* Shared quantities related to faces (interior and border) */
   cdoq->n_i_faces = m->n_i_faces;
@@ -920,34 +1008,48 @@ cs_cdo_quantities_build(const cs_mesh_t              *m,
   cdoq->n_faces = m->n_i_faces + m->n_b_faces;
   cdoq->n_g_faces = m->n_g_i_faces + m->n_g_b_faces;
 
+  /* Vertex-related quantities */
+  /* ------------------------- */
+
   cdoq->n_vertices = m->n_vertices;
   cdoq->n_g_vertices = m->n_g_vertices;
   cdoq->vtx_coord = m->vtx_coord;
 
-  /* Compute cell centers and cell volumes */
-  BFT_MALLOC(cdoq->cell_centers, 3*n_cells, cs_real_t);
-  BFT_MALLOC(cdoq->cell_vol, n_cells, cs_real_t);
+  /* Edge-related quantities */
+  /* ----------------------- */
 
+  cdoq->n_edges = topo->n_edges;
+  cdoq->n_g_edges = topo->n_g_edges;
+
+  /* Cell-related quantities */
+  /* ----------------------- */
+
+  const cs_lnum_t  n_cells = m->n_cells;
+
+  cdoq->n_cells = n_cells;
+  cdoq->n_g_cells = m->n_g_cells;
+  cdoq->cell_vol = mq->cell_vol;
+
+  /* 2) Define quantities available for all schemes */
+  /*    =========================================== */
+
+  /* Compute the cell centers */
   switch (cs_cdo_quantities_cc_algo) {
 
   case CS_CDO_QUANTITIES_MEANV_CENTER:
-    /* Copy cell volumes */
-    memcpy(cdoq->cell_vol, mq->cell_vol, n_cells*sizeof(cs_real_t));
-
-    /* Compute the cell center */
+    BFT_MALLOC(cdoq->cell_centers, 3*n_cells, cs_real_t);
     _vtx_algorithm(topo, cdoq);
     break;
 
   case CS_CDO_QUANTITIES_BARYC_CENTER:
+    BFT_MALLOC(cdoq->cell_centers, 3*n_cells, cs_real_t);
     /* Compute (real) the barycentric centers and cell volumes */
     _mirtich_algorithm(m, mq, topo, cdoq);
     break;
 
-
   case CS_CDO_QUANTITIES_SATURNE_CENTER:
-    /* Copy cell volumes and cell centers */
-    memcpy(cdoq->cell_centers, mq->cell_cen, 3*n_cells*sizeof(cs_real_t));
-    memcpy(cdoq->cell_vol, mq->cell_vol, n_cells*sizeof(cs_real_t));
+    /* Copy cell centers */
+    cdoq->cell_centers = mq->cell_cen;
     break;
 
   default:
@@ -957,121 +1059,43 @@ cs_cdo_quantities_build(const cs_mesh_t              *m,
 
   } /* switch according to cs_cdo_quantities_cc_algo */
 
-  if (topo->e2v != NULL) {
-    cdoq->n_edges = topo->n_edges;
+  /* Face-related quantities */
+  /* ----------------------- */
 
-    if (cs_glob_n_ranks == 1)
-      cdoq->n_g_edges = cdoq->n_edges;
+  _compute_face_based_quantities(topo,
+                                 cdoq,
+                                 eb_scheme_flag,
+                                 fb_scheme_flag,
+                                 vb_scheme_flag,
+                                 vcb_scheme_flag,
+                                 hho_scheme_flag);
 
-    else { /* Compute the global number of edges */
+  /* 3) Define specific quantities */
+  /*    ========================== */
 
-      const cs_lnum_t  *e2v_ids = topo->e2v->ids;
-
-      cs_gnum_t  *e2v_gnum = NULL;
-      BFT_MALLOC(e2v_gnum, 2*cdoq->n_edges, cs_gnum_t);
-
-#     pragma omp parallel for if (cdoq->n_edges > CS_THR_MIN)
-      for (cs_lnum_t e = 0; e < cdoq->n_edges; e++) {
-
-        const cs_lnum_t  ee = 2*e;
-        const cs_lnum_t  *_e2v = e2v_ids + ee;
-        const cs_gnum_t  gv1 = m->global_vtx_num[_e2v[0]];
-        const cs_gnum_t  gv2 = m->global_vtx_num[_e2v[1]];
-        cs_gnum_t  *_e2v_gnum = e2v_gnum + ee;
-        assert(gv1 > 0 && gv2 > 0);
-        if (gv1 < gv2)
-          _e2v_gnum[0] = gv1, _e2v_gnum[1] = gv2;
-        else
-          _e2v_gnum[1] = gv2, _e2v_gnum[0] = gv1;
-
-      }
-
-      cs_lnum_t  *order = NULL;
-      BFT_MALLOC(order, cdoq->n_edges, cs_lnum_t);
-      cs_order_gnum_allocated_s(NULL, e2v_gnum, 2, order, cdoq->n_edges);
-
-      cs_gnum_t  *order_couples = NULL;
-      BFT_MALLOC(order_couples, 2*cdoq->n_edges, cs_gnum_t);
-#     pragma omp parallel for if (cdoq->n_edges > CS_THR_MIN)
-      for (cs_lnum_t e = 0; e < cdoq->n_edges; e++) {
-        const cs_lnum_t  o_id = 2*order[e];
-        order_couples[2*e] = e2v_gnum[o_id];
-        order_couples[2*e+1] = e2v_gnum[o_id+1];
-      }
-
-      fvm_io_num_t *edge_io_num
-        = fvm_io_num_create_from_adj_s(NULL, order_couples, cdoq->n_edges, 2);
-
-      cdoq->n_g_edges = fvm_io_num_get_global_count(edge_io_num);
-
-      /* Free memory */
-      BFT_FREE(order);
-      BFT_FREE(e2v_gnum);
-      BFT_FREE(order_couples);
-      fvm_io_num_destroy(edge_io_num);
-
-    } /* parallel run */
-
-  }
-  else /* Not used by the numerical scheme */
-    cdoq->n_edges = cdoq->n_g_edges = -1;
-
-  /* Vertex-based schemes */
-  cdoq->dedge_vector = NULL;
-
-  /* Compute dual edge quantities */
-  /* ---------------------------- */
-
-  const cs_lnum_t  idx_size = topo->c2f->idx[n_cells];
-  const cs_adjacency_t  *c2f = topo->c2f;
-
-  BFT_MALLOC(cdoq->dedge_vector, 3*idx_size, cs_real_t);
-
-# pragma omp parallel for if (n_cells > CS_THR_MIN)
-  for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
-
-    const cs_real_t  *xc = cdoq->cell_centers + 3*c_id;
-
-    for (cs_lnum_t i = c2f->idx[c_id]; i < c2f->idx[c_id+1]; i++) {
-
-      const cs_lnum_t  f_id = c2f->ids[i];
-      const short int  sgn = c2f->sgn[i];
-      const cs_lnum_t  bf_id = f_id - cdoq->n_i_faces;
-      if (bf_id > -1) {
-
-        const cs_real_t  *xf = cdoq->b_face_center + 3*bf_id;
-        for (int k = 0; k < 3; k++)
-          cdoq->dedge_vector[3*i+k] = sgn * (xf[k] - xc[k]);
-
-      }
-      else {
-
-        const cs_real_t  *xf = cdoq->i_face_center + 3*f_id;
-        for (int k = 0; k < 3; k++)
-          cdoq->dedge_vector[3*i+k] = sgn * (xf[k] - xc[k]);
-
-      }
-
-    } // Loop on cell faces
-
-  } /* End of loop on cells */
-
-  /* Compute edge-related quantities if needed */
-  cdoq->edge_vector = NULL;
-  cdoq->sface_normal = NULL;
-
-  if (cdoq->n_edges > 0)
-    _compute_edge_based_quantities(topo, cdoq);
+  /* Vertex-related quantities */
+  /* ----------------------- */
 
   /* Compute dual cell volume attached to each vertex in a cell */
-  cdoq->dcell_vol = NULL;
-  _compute_dcell_quantities(topo, cdoq);
+  if (vb_scheme_flag > 0 || vcb_scheme_flag > 0)
+    _compute_dcell_quantities(topo, cdoq);
+
+  /* Edge-related quantities */
+  /* ----------------------- */
+
+  _compute_edge_based_quantities(topo,
+                                 cdoq,
+                                 eb_scheme_flag,
+                                 fb_scheme_flag,
+                                 vb_scheme_flag,
+                                 vcb_scheme_flag,
+                                 hho_scheme_flag);
+
+  /* 4) Define metadata */
+  /*    =============== */
 
   /* Define cs_quant_info_t structure */
   _compute_quant_info(cdoq);
-
-  /* Define a flag for each cell */
-  _define_cell_flag(topo, cdoq);
 
   /* Monitoring */
   cs_timer_t  t1 = cs_timer_time();
@@ -1086,36 +1110,36 @@ cs_cdo_quantities_build(const cs_mesh_t              *m,
 /*!
  * \brief Destroy a cs_cdo_quantities_t structure
  *
- * \param[in]  q        pointer to the cs_cdo_quantities_t struct. to free
+ * \param[in]  cdoq      pointer to the cs_cdo_quantities_t struct. to free
  *
  * \return a NULL pointer
  */
 /*----------------------------------------------------------------------------*/
 
 cs_cdo_quantities_t *
-cs_cdo_quantities_free(cs_cdo_quantities_t   *q)
+cs_cdo_quantities_free(cs_cdo_quantities_t   *cdoq)
 {
-  if (q == NULL)
-    return q;
+  if (cdoq == NULL)
+    return cdoq;
 
   /* Cell-related quantities */
-  BFT_FREE(q->cell_centers);
-  BFT_FREE(q->cell_vol);
-  BFT_FREE(q->cell_flag);
+  if (cs_cdo_quantities_cc_algo != CS_CDO_QUANTITIES_SATURNE_CENTER)
+    BFT_FREE(cdoq->cell_centers);
 
   /* Face-related quantities */
-  BFT_FREE(q->dedge_vector);
+  BFT_FREE(cdoq->dedge_vector);
+  BFT_FREE(cdoq->pvol_fc);
 
   /* Edge-related quantities */
-  BFT_FREE(q->edge_vector);
-  BFT_FREE(q->sface_normal);
+  BFT_FREE(cdoq->edge_vector);
+  BFT_FREE(cdoq->dface_normal);
+  BFT_FREE(cdoq->pvol_ec);
 
   /* Vertex-related quantities */
-  BFT_FREE(q->dcell_vol);
+  BFT_FREE(cdoq->dcell_vol);
 
   /* vtx_coord is free when the structure cs_mesh_t is destroyed */
-
-  BFT_FREE(q);
+  BFT_FREE(cdoq);
 
   return NULL;
 }
@@ -1152,37 +1176,20 @@ cs_cdo_quantities_summary(const cs_cdo_quantities_t  *quant)
     break;
   } /* switch according to cs_cdo_quantities_cc_algo */
 
-  cs_log_printf(CS_LOG_DEFAULT, "\n CDO mesh quantities information:\n");
-
-  /* Information about activated flags */
-  cs_gnum_t  n_ortho_cells = 0;
-  for (cs_lnum_t c_id = 0; c_id < quant->n_cells; c_id++)
-    if (quant->cell_flag[c_id] & CS_CDO_ORTHO)
-      n_ortho_cells += 1;
-  if (cs_glob_n_ranks > 1)
-    cs_parall_sum(1, CS_GNUM_TYPE, &n_ortho_cells);
-
-  cs_log_printf(CS_LOG_DEFAULT,
-                " --cdo-- n_ortho_cells  %9lu\n", n_ortho_cells);
-
   /* Output */
-  double  h_min[3] = {quant->cell_info.h_min,
-                      quant->face_info.h_min,
-                      quant->edge_info.h_min};
-  double  h_max[3] = {quant->cell_info.h_max,
-                      quant->face_info.h_max,
-                      quant->edge_info.h_max};
-
-  if (cs_glob_n_ranks > 1) {
-    cs_parall_min(3, CS_DOUBLE, h_min);
-    cs_parall_max(3, CS_DOUBLE, h_max);
-  }
-
+  cs_log_printf(CS_LOG_DEFAULT, "\n CDO mesh quantities information:\n");
   cs_log_printf(CS_LOG_DEFAULT,
                 " --cdo-- h_cell  %6.4e %6.4e (min/max)\n"
-                " --cdo-- h_face  %6.4e %6.4e (min/max)\n"
-                " --cdo-- h_edge  %6.4e %6.4e (min/max)\n\n",
-                h_min[0], h_max[0], h_min[1], h_max[1], h_min[2], h_max[2]);
+                " --cdo-- h_face  %6.4e %6.4e (min/max)\n",
+                quant->cell_info.h_min, quant->cell_info.h_max,
+                quant->face_info.h_min, quant->face_info.h_max);
+
+  if (quant->edge_vector != NULL)
+    cs_log_printf(CS_LOG_DEFAULT,
+                  " --cdo-- h_edge  %6.4e %6.4e (min/max)\n",
+                  quant->edge_info.h_min, quant->edge_info.h_max);
+  else
+    cs_log_printf(CS_LOG_DEFAULT, "\n");
 
 #if CS_CDO_QUANTITIES_DBG > 0 && defined(DEBUG) && !defined(NDEBUG)
   cs_cdo_quantities_dump(quant);
@@ -1264,6 +1271,120 @@ cs_cdo_quantities_dump(const cs_cdo_quantities_t  *cdoq)
 
   fclose(fdump);
   BFT_FREE(fname);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute the portion of volume surrounding each face of a cell.
+ *        This volume corresponds to a pyramid with base f and apex x_f
+ *        The computed quantity is scanned with the c2f adjacency
+ *
+ * \param[in]      cdoq        pointer to cs_cdo_quantities_t structure
+ * \param[in]      c2f         pointer to the cell --> edges connectivity
+ * \param[in, out] p_pvol_fc   double pointer to the face volume in each cell
+ *                             If not allocated before calling this function,
+ *                             one allocates the array storing the volumes
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cdo_quantities_compute_pvol_fc(const cs_cdo_quantities_t    *cdoq,
+                                  const cs_adjacency_t         *c2f,
+                                  cs_real_t                   **p_pvol_fc)
+{
+  if (cdoq == NULL || c2f == NULL)
+    bft_error(__FILE__, __LINE__, 0,
+              " %s: A mandatory structure is not allocated.\n", __func__);
+
+  const cs_lnum_t  n_cells = cdoq->n_cells;
+
+  cs_real_t  *pvol_fc = *p_pvol_fc;
+
+  /* Initialize array */
+  if (pvol_fc == NULL)
+    BFT_MALLOC(pvol_fc, c2f->idx[n_cells], cs_real_t);
+
+#if defined(DEBUG) && !defined(NDEBUG)
+  memset(pvol_fc, 0, c2f->idx[n_cells]*sizeof(cs_real_t));
+#endif
+
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
+  for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+    for (cs_lnum_t j = c2f->idx[c_id]; j < c2f->idx[c_id+1]; j++) {
+
+      const cs_lnum_t  f_id = c2f->ids[j];
+      const cs_nvec3_t  fp_nvec = cs_quant_set_face_nvec(f_id, cdoq);
+      const cs_nvec3_t  ed_nvec = cs_quant_set_dedge_nvec(j, cdoq);
+
+      cs_real_t  p_fc = _dp3(fp_nvec.unitv, ed_nvec.unitv);
+      p_fc *= cs_math_1ov3 * fp_nvec.meas * ed_nvec.meas;
+
+      pvol_fc[j] = p_fc;
+
+    } /* Loop on cell faces */
+  } /* Loop on cells */
+
+  /* Return pointer */
+  *p_pvol_fc = pvol_fc;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute the portion of volume surrounding each edge of a cell
+ *        The computed quantity is scanned with the c2e adjacency
+ *
+ * \param[in]      cdoq        pointer to cs_cdo_quantities_t structure
+ * \param[in]      c2e         pointer to the cell --> edges connectivity
+ * \param[in, out] p_pvol_ec   double pointer to the edge volume in each cell
+ *                             If not allocated before calling this function,
+ *                             one allocates the array storing the volumes
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cdo_quantities_compute_pvol_ec(const cs_cdo_quantities_t   *cdoq,
+                                  const cs_adjacency_t        *c2e,
+                                  cs_real_t                  **p_pvol_ec)
+{
+  if (cdoq == NULL || c2e == NULL)
+    bft_error(__FILE__, __LINE__, 0,
+              " %s: A mandatory structure is not allocated.\n", __func__);
+
+  const cs_lnum_t  n_cells = cdoq->n_cells;
+
+  cs_real_t  *pvol_ec = *p_pvol_ec;
+
+  /* Initialize array */
+  if (pvol_ec == NULL)
+    BFT_MALLOC(pvol_ec, c2e->idx[n_cells], cs_real_t);
+
+  if (cdoq->pvol_ec != NULL)
+    memcpy(pvol_ec, cdoq->pvol_ec, c2e->idx[n_cells]*sizeof(cs_real_t));
+
+  else {
+
+#if defined(DEBUG) && !defined(NDEBUG)
+    memset(pvol_ec, 0, c2e->idx[n_cells]*sizeof(cs_real_t));
+#endif
+
+#   pragma omp parallel for if (n_cells > CS_THR_MIN)
+    for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+
+      const cs_lnum_t  start = c2e->idx[c_id];
+      const cs_real_t  *sface = cdoq->dface_normal + 3*start;
+      const cs_lnum_t  *c2e_ids = c2e->ids + start;
+
+      cs_real_t  *_pvol = pvol_ec + start;
+      for (cs_lnum_t j = 0; j < c2e->idx[c_id+1]-start; j++)
+        _pvol[j] = cs_math_1ov3 * _dp3(sface + 3*j,
+                                       cdoq->edge_vector + 3*c2e_ids[j]);
+
+    } /* Loop on cells */
+
+  } /* Not already existing */
+
+  /* Return pointer */
+  *p_pvol_ec = pvol_ec;
 }
 
 /*----------------------------------------------------------------------------*/

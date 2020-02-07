@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -345,7 +345,8 @@ cs_cdo_diffusion_svb_cost_generic(const cs_equation_param_t      *eqp,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Take into account Dirichlet BCs by a weak enforcement using Nitsche
- *          technique. Case of CDO-Vb schemes with a CO+ST algorithm.
+ *          technique. Case of scalar-valued CDO-Vb schemes with an orthogonal
+ *          splitting between the consistency/stabilization parts (OCS)
  *
  * \param[in]       eqp       pointer to a \ref cs_equation_param_t struct.
  * \param[in]       cm        pointer to a \ref cs_cell_mesh_t structure
@@ -356,18 +357,18 @@ cs_cdo_diffusion_svb_cost_generic(const cs_equation_param_t      *eqp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_diffusion_svb_cost_weak_dirichlet(const cs_equation_param_t      *eqp,
-                                         const cs_cell_mesh_t           *cm,
-                                         cs_face_mesh_t                 *fm,
-                                         cs_cell_builder_t              *cb,
-                                         cs_cell_sys_t                  *csys);
+cs_cdo_diffusion_svb_ocs_weak_dirichlet(const cs_equation_param_t      *eqp,
+                                        const cs_cell_mesh_t           *cm,
+                                        cs_face_mesh_t                 *fm,
+                                        cs_cell_builder_t              *cb,
+                                        cs_cell_sys_t                  *csys);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Take into account Dirichlet BCs by a weak enforcement using Nitsche
- *          technique.
- *          A Dirichlet is set for the three components of the vector.
- *          Case of vector-valued CDO-Vb schemes with a CO+ST algorithm.
+ *          technique. A Dirichlet is set for the three components of the
+ *          vector. Case of vector-valued CDO-Vb schemes with an orthogonal
+ *          splitting between the consistency/stabilization parts (OCS)
  *
  * \param[in]       eqp       pointer to a \ref cs_equation_param_t struct.
  * \param[in]       cm        pointer to a \ref cs_cell_mesh_t structure
@@ -378,16 +379,17 @@ cs_cdo_diffusion_svb_cost_weak_dirichlet(const cs_equation_param_t      *eqp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_diffusion_vvb_cost_weak_dirichlet(const cs_equation_param_t      *eqp,
-                                         const cs_cell_mesh_t           *cm,
-                                         cs_face_mesh_t                 *fm,
-                                         cs_cell_builder_t              *cb,
-                                         cs_cell_sys_t                  *csys);
+cs_cdo_diffusion_vvb_ocs_weak_dirichlet(const cs_equation_param_t      *eqp,
+                                        const cs_cell_mesh_t           *cm,
+                                        cs_face_mesh_t                 *fm,
+                                        cs_cell_builder_t              *cb,
+                                        cs_cell_sys_t                  *csys);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Take into account a sliding BCs.
- *          Case of vector-valued CDO-Vb schemes with a CO+ST algorithm.
+ *          Case of vector-valued CDO-Vb schemes with a OCS algorithm.
+ *          Orthogonal splitting between Consistency/Stabilization parts.
  *
  * \param[in]       eqp       pointer to a \ref cs_equation_param_t struct.
  * \param[in]       cm        pointer to a \ref cs_cell_mesh_t structure
@@ -398,17 +400,18 @@ cs_cdo_diffusion_vvb_cost_weak_dirichlet(const cs_equation_param_t      *eqp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_diffusion_vvb_cost_sliding(const cs_equation_param_t      *eqp,
-                                  const cs_cell_mesh_t           *cm,
-                                  cs_face_mesh_t                 *fm,
-                                  cs_cell_builder_t              *cb,
-                                  cs_cell_sys_t                  *csys);
+cs_cdo_diffusion_vvb_ocs_sliding(const cs_equation_param_t      *eqp,
+                                 const cs_cell_mesh_t           *cm,
+                                 cs_face_mesh_t                 *fm,
+                                 cs_cell_builder_t              *cb,
+                                 cs_cell_sys_t                  *csys);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Take into account Dirichlet BCs by a weak enforcement using Nitsche
  *          technique plus a symmetric treatment. Case of CDO-Vb schemes with a
- *          CO+ST algorithm.
+ *          COST/Bubble or Voronoi algorithm. One assumes an Orthogonal
+ *          splitting between Consistency/Stabilization parts (OCS).
  *
  * \param[in]       eqp       pointer to a \ref cs_equation_param_t struct.
  * \param[in]       cm        pointer to a \ref cs_cell_mesh_t structure
@@ -419,11 +422,11 @@ cs_cdo_diffusion_vvb_cost_sliding(const cs_equation_param_t      *eqp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_diffusion_svb_cost_wsym_dirichlet(const cs_equation_param_t      *eqp,
-                                         const cs_cell_mesh_t           *cm,
-                                         cs_face_mesh_t                 *fm,
-                                         cs_cell_builder_t              *cb,
-                                         cs_cell_sys_t                  *csys);
+cs_cdo_diffusion_svb_ocs_wsym_dirichlet(const cs_equation_param_t      *eqp,
+                                        const cs_cell_mesh_t           *cm,
+                                        cs_face_mesh_t                 *fm,
+                                        cs_cell_builder_t              *cb,
+                                        cs_cell_sys_t                  *csys);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -509,11 +512,11 @@ cs_cdo_diffusion_vcb_wsym_dirichlet(const cs_equation_param_t      *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief   Compute the diffusive flux across dual faces for a given cell
- *          The discrete Hodge operator has been previously computed using a
- *          COST algorithm.
+ * \brief   Compute the diffusive flux across dual faces for a given cell.
+ *          Use the same consistent approximation as in the discrete Hodge op.
+ *          for this computation.
  *          This function is dedicated to vertex-based schemes.
- *                       Flux = -Hdg * GRAD(pot)
+ *                       Flux = -Consistent(Hdg) * GRAD(pot)
  *
  * \param[in]      cm      pointer to a cs_cell_mesh_t structure
  * \param[in]      pot     values of the potential fields at specific locations
@@ -523,17 +526,17 @@ cs_cdo_diffusion_vcb_wsym_dirichlet(const cs_equation_param_t      *eqp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_diffusion_svb_cost_get_dfbyc_flux(const cs_cell_mesh_t      *cm,
-                                         const double              *pot,
-                                         cs_cell_builder_t         *cb,
-                                         double                    *flx);
+cs_cdo_diffusion_svb_get_dfbyc_flux(const cs_cell_mesh_t      *cm,
+                                    const double              *pot,
+                                    cs_cell_builder_t         *cb,
+                                    double                    *flx);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Compute the constant approximation of the diffusive flux inside a
- *          (primal) cell. Use the CO+ST algo. for computing the discrete Hodge
- *          op. This function is dedicated to vertex-based schemes.
- *          Flux = -Hdg * GRAD(pot)
+ *          (primal) cell. Use the same consistent approximation as in the
+ *          discrete Hodge op. for this computation. This function is dedicated
+ *          to vertex-based schemes. Flux = -Hdg * GRAD(pot)
  *
  * \param[in]      cm      pointer to a cs_cell_mesh_t structure
  * \param[in]      pot     values of the potential fields at specific locations
@@ -543,33 +546,36 @@ cs_cdo_diffusion_svb_cost_get_dfbyc_flux(const cs_cell_mesh_t      *cm,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_diffusion_svb_cost_get_cell_flux(const cs_cell_mesh_t      *cm,
-                                        const double              *pot,
-                                        cs_cell_builder_t         *cb,
-                                        double                    *flx);
+cs_cdo_diffusion_svb_get_cell_flux(const cs_cell_mesh_t      *cm,
+                                   const double              *pot,
+                                   cs_cell_builder_t         *cb,
+                                   double                    *flx);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief   Compute the normal flux for a face assuming only the knowledge
- *          of the potential at cell vertices. CO+ST algorithm is used for
- *          reconstructing the normal flux from the degrees of freedom.
+ * \brief  Compute the normal flux for a face assuming only the knowledge of
+ *         the potential at cell vertices. Valid for algorithm relying on a
+ *         spliting of the consistency/stabilization part as in OCS (also
+ *         called CO+ST) or Bubble algorithm. This is used for reconstructing
+ *         the normal flux from the degrees of freedom. The contribution for
+ *         each vertex of the face is then computed.
  *
- * \param[in]  f              face id in the cell mesh
- * \param[in]  eqp            pointer to a cs_equation_param_t structure
- * \param[in]  cm             pointer to a cs_cell_mesh_t structure
- * \param[in]  pot            array of values of the potential (all the mesh)
- * \param[in, out] cb         auxiliary structure dedicated to diffusion
- * \param[in, out] vf_flux    array of values to set (size: n_vc)
+ * \param[in]      f       face id in the cell mesh
+ * \param[in]      eqp     pointer to a cs_equation_param_t structure
+ * \param[in]      cm      pointer to a cs_cell_mesh_t structure
+ * \param[in]      pot     array of values of the potential (all the mesh)
+ * \param[in, out] cb      auxiliary structure dedicated to diffusion
+ * \param[in, out] flux    array of values to set (size: n_vc)
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_diffusion_svb_cost_vbyf_flux(short int                   f,
-                                    const cs_equation_param_t  *eqp,
-                                    const cs_cell_mesh_t       *cm,
-                                    const cs_real_t            *pot,
-                                    cs_cell_builder_t          *cb,
-                                    cs_real_t                  *flux);
+cs_cdo_diffusion_svb_vbyf_flux(short int                   f,
+                               const cs_equation_param_t  *eqp,
+                               const cs_cell_mesh_t       *cm,
+                               const cs_real_t            *pot,
+                               cs_cell_builder_t          *cb,
+                               cs_real_t                  *flux);
 
 /*----------------------------------------------------------------------------*/
 /*!

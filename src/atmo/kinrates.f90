@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -84,7 +84,7 @@ if (ippmod(iatmos).ge.1) then
 endif
 
 if (ippmod(iatmos).ge.2) then
-  call field_get_val_s(ivarfl(isca(itotwt)), cvar_totwt)
+  call field_get_val_s(ivarfl(isca(iymw)), cvar_totwt)
   call field_get_val_s(iliqwt, cpro_liqwt)
 endif
 
@@ -93,6 +93,7 @@ endif
 ! Computation of zenith angle
 qureel = float(squant)
 heurtu = float(shour) + float(smin)/60.d0+ssec/3600.d0
+if (idtvar.eq.0 .or. idtvar.eq.1) heurtu = heurtu + ttcabs/3600.d0
 call raysze(xlat,xlon,qureel,heurtu,0,albe,dlmuzero,fo)
 azi = dabs(dacos(dlmuzero)*180.d0/pi)
 
@@ -157,7 +158,7 @@ do iel = 1, ncel
       call kinetic_3(nrg,rk,temp,hspec,press,azi,1.0d0,iphotolysis)
     endif
   else if (ichemistry.eq.4) then
-    call kinetic(nrg,rk,temp,hspec,press,azi,1.0d0,iphotolysis)
+    call kinetic_4(nrg,rk,temp,hspec,press,azi,1.0d0,iphotolysis)
   endif
 
   ! Storage of kinetic rates

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -131,7 +131,7 @@ endif
 
 ! ---> Physique particuliere : Atmospherique
 ! Momentum source terms
-if (ippmod(iatmos).ge.0 .and. iatmst.gt.0) then
+if (ippmod(iatmos).ge.0 .and. iatmst.ge.1) then
   call add_property_field('momentum_source_terms', 'MomentumSourceTerms', 3, .false., imomst)
   call field_set_key_int(imomst, keylog, 1)
   call field_set_key_int(imomst, keyvis, 1)

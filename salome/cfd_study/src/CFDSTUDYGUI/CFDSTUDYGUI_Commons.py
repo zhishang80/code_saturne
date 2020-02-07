@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -137,7 +137,7 @@ def CheckCFD_CodeEnv(code):
 
     if code == CFD_Saturne:
         try:
-            from cs_package import package
+            from code_saturne.cs_package import package
             iok = True
         except ImportError as e:
             mess = cfdstudyMess.trMessage(ObjectTR.tr("INFO_DLG_INVALID_ENV"),[code]) + e.__str__()
@@ -148,7 +148,7 @@ def CheckCFD_CodeEnv(code):
             iok = False
     elif code == CFD_Neptune:
         try:
-            from nc_package import package
+            from neptune_cfd.nc_package import package
             iok = True
         except ImportError as e:
             mess = cfdstudyMess.trMessage(ObjectTR.tr("INFO_DLG_INVALID_ENV"),[code]) + e.__str__()
@@ -186,14 +186,14 @@ def BinCode():
     c = ""
     mess = ""
     # default package is code_saturne (for convert...)
-    from cs_package import package
+    from code_saturne.cs_package import package
     pkg = package()
 
     if CFD_Code() == CFD_Saturne:
         bindir = pkg.get_dir('bindir')
         b = os.path.join(bindir, "code_saturne")
     elif CFD_Code() == CFD_Neptune:
-        from nc_package import package
+        from neptune_cfd.nc_package import package
         pkg = package()
         bindir = pkg.get_dir('bindir')
         b = os.path.join(bindir, "neptune_cfd")

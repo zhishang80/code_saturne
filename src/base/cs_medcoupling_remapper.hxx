@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -117,7 +117,6 @@ cs_medcoupling_remapper_initialize(const char   *name,
  * \param[in] r            pointer to the cs_medcoupling_remapper_t struct
  * \param[in] iteration    time iteration to load
  * \param[in] order        iteration order to load
- *
  */
 /*----------------------------------------------------------------------------*/
 
@@ -125,6 +124,27 @@ void
 cs_medcoupling_remapper_set_iteration(cs_medcoupling_remapper_t  *r,
                                       int                         iteration,
                                       int                         order);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief set non-default options for a remapper
+ *
+ * \param[in] r      pointer to the cs_medcoupling_remapper_t struct
+ * \param[in] key    pointer to string representing key
+ *                   currently handled: one of {Precision, IntersectionType}
+ * \param[in] value  pointer to string representing value:
+ *                   - for Precision: floating-point value (default: 1e-12)
+ *                   - for IntersectionType: one of {Triangulation, Convex,
+ *                     Geometric2D, PointLocator, Barycentric,
+ *                     BarycentricGeo2D, MappedBarycentric}
+ *                     (see MEDCoupling INTERP_KERNEL documentation)
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_set_options(cs_medcoupling_remapper_t  *r,
+                                    const char                  key[],
+                                    const char                  value[]);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -185,6 +205,86 @@ cs_medcoupling_remapper_rotate(cs_medcoupling_remapper_t  *r,
                                cs_real_t                   invariant[3],
                                cs_real_t                   axis[3],
                                cs_real_t                   angle);
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Retrieve the two closest time steps indexes.
+ *
+ * The returned value is int[2].
+ * If the requested time value if outside the time bounds stored in the file,
+ * the both values are identical (first or last value), and a warning is printed
+ * in the listing file.
+ *
+ * \param[in]      r    pointer to remapper object
+ * \param[in]      t    requested time value
+ * \param[in,out]  id1  first returned index
+ * \param[in,out]  id2  second returned index
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_find_time_index(cs_medcoupling_remapper_t *r,
+                                        cs_real_t                  t,
+                                        int                       *id1,
+                                        int                       *id2);
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Retrieve the two closest time steps indexes.
+ *
+ * The returned value is int[2].
+ * If the requested time value if outside the time bounds stored in the file,
+ * the both values are identical (first or last value), and a warning is printed
+ * in the listing file.
+ *
+ * \param[in]      r    pointer to remapper object
+ * \param[in]      id   requested index
+ * \param[in,out]  t    corresponding time value
+ */
+/*----------------------------------------------------------------------------*/
+void
+cs_medcoupling_remapper_get_time_from_index(cs_medcoupling_remapper_t *r,
+                                            int                        id,
+                                            cs_real_t                 *t);
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Retrieve the two closest time steps indexes.
+ *
+ * The returned value is int[2].
+ * If the requested time value if outside the time bounds stored in the file,
+ * the both values are identical (first or last value), and a warning is printed
+ * in the listing file.
+ *
+ * \param[in]      r      pointer to remapper object
+ * \param[in]      id     requested time index
+ * \param[in,out]  iter   index iteration
+ * \param[in,out]  order  index iteration order
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_get_iter_order_from_index(cs_medcoupling_remapper_t *r,
+                                                  int                        id,
+                                                  int                       *it,
+                                                  int                       *order);
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Load the time value corresponding to id.
+ *
+ * \param[in]      r      pointer to remapper object
+ * \param[in]      id     requested time index
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_update_time_value(cs_medcoupling_remapper_t *r,
+                                          int                        id);
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Destroy all remappers
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_destroy_all(void);
 
 /*----------------------------------------------------------------------------*/
 

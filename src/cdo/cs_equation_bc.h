@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -141,6 +141,28 @@ cs_equation_vb_set_cell_bc(const cs_cell_mesh_t         *cm,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Set the BC into a cellwise view of the current system.
+ *          Case of edge-based schemes
+ *
+ * \param[in]      cm           pointer to a cellwise view of the mesh
+ * \param[in]      eqp          pointer to a cs_equation_param_t structure
+ * \param[in]      face_bc      pointer to a cs_cdo_bc_face_t structure
+ * \param[in]      dir_values   Dirichlet values associated to each vertex
+ * \param[in, out] csys         pointer to a cellwise view of the system
+ * \param[in, out] cb           pointer to a cellwise builder
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_eb_set_cell_bc(const cs_cell_mesh_t         *cm,
+                           const cs_equation_param_t    *eqp,
+                           const cs_cdo_bc_face_t       *face_bc,
+                           const cs_real_t               dir_values[],
+                           cs_cell_sys_t                *csys,
+                           cs_cell_builder_t            *cb);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Set the BC into a cellwise view of the current system.
  *          Case of Face-based schemes
  *
  * \param[in]      cm          pointer to a cellwise view of the mesh
@@ -188,7 +210,7 @@ cs_equation_compute_dirichlet_vb(cs_real_t                   t_eval,
                                  const cs_cdo_bc_face_t     *face_bc,
                                  cs_cell_builder_t          *cb,
                                  cs_flag_t                  *bcflag,
-                                 cs_real_t                  *bcvals);
+                                 cs_real_t                  *values);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -232,6 +254,23 @@ void
 cs_equation_set_vertex_bc_flag(const cs_cdo_connect_t     *connect,
                                const cs_cdo_bc_face_t     *face_bc,
                                cs_flag_t                  *vflag);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Define an array of flags for each edge collecting the flags
+ *          of associated boundary faces
+ *
+ * \param[in]      connect     pointer to a \ref cs_cdo_connect_t struct.
+ * \param[in]      face_bc     pointer to a structure collecting boundary
+ *                             conditions applied to faces
+ * \param[in, out] edge_flag   BC flag on edges to define
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_set_edge_bc_flag(const cs_cdo_connect_t     *connect,
+                             const cs_cdo_bc_face_t     *face_bc,
+                             cs_flag_t                  *edge_flag);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -297,6 +336,29 @@ cs_equation_compute_robin(cs_real_t                    t_eval,
                           const cs_equation_param_t   *eqp,
                           const cs_cell_mesh_t        *cm,
                           double                      *rob_values);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Compute the values of the tangential component lying on the domain
+ *          boundary. Kind of BCs used when DoFs are attached to CDO (primal)
+ *          edge-based schemes. One sets the values of the circulation.
+ *
+ * \param[in]      t_eval     time at which one evaluates the boundary cond.
+ * \param[in]      mesh       pointer to a cs_mesh_t structure
+ * \param[in]      quant      pointer to a cs_cdo_quantities_t structure
+ * \param[in]      connect    pointer to a cs_cdo_connect_t struct.
+ * \param[in]      eqp        pointer to a cs_equation_param_t
+ * \param[in, out] values     pointer to the array of values to set
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_compute_circulation_eb(cs_real_t                    t_eval,
+                                   const cs_mesh_t             *mesh,
+                                   const cs_cdo_quantities_t   *quant,
+                                   const cs_cdo_connect_t      *connect,
+                                   const cs_equation_param_t   *eqp,
+                                   cs_real_t                   *values);
 
 /*----------------------------------------------------------------------------*/
 

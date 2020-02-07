@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -114,7 +114,7 @@ base/vof.lo: base/cstphy.lo base/field.lo base/numvar.lo base/optcal.lo \
 base/cplsat.lo: base/paramx.lo
 base/cstphy.lo: base/paramx.lo
 base/cs_c_bindings.lo: base/paramx.lo base/entsor.lo base/mesh.lo base/period.lo \
- base/field.lo base/field_operator.lo
+ base/field.lo base/field_operator.lo base/cplsat.lo
 base/cs_f_interfaces.lo: base/cs_c_bindings.lo base/paramx.lo base/dimens.lo \
  base/mesh.lo base/optcal.lo base/field.lo lagr/lagran.lo
 base/cs_nz_condensation.lo: base/pointe.lo
@@ -126,10 +126,11 @@ base/entsor.lo: base/paramx.lo base/field.lo
 base/field_operator.lo: base/paramx.lo base/dimens.lo base/mesh.lo \
  base/optcal.lo base/field.lo
 base/numvar.lo: base/paramx.lo
-base/optcal.lo: base/paramx.lo base/field.lo base/numvar.lo base/cstphy.lo
+base/optcal.lo: base/paramx.lo base/field.lo base/numvar.lo base/cstphy.lo \
+ base/cs_c_bindings.lo base/cdomod.lo
 base/pointe.lo: base/paramx.lo base/numvar.lo base/mesh.lo base/parall.lo \
  base/period.lo base/optcal.lo base/entsor.lo lagr/lagran.lo rayt/radiat.lo \
- pprt/ppincl.lo base/ihmpre.lo base/albase.lo base/cstnum.lo base/cs_c_bindings.lo
+ pprt/ppincl.lo base/albase.lo base/cstnum.lo base/cs_c_bindings.lo
 base/ptrglo.lo: base/paramx.lo base/dimens.lo base/mesh.lo base/numvar.lo \
  base/optcal.lo base/parall.lo base/period.lo base/mesh.lo base/field.lo
 base/rotation.lo: base/paramx.lo

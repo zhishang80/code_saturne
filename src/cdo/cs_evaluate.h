@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -69,6 +69,152 @@ cs_evaluate_set_shared_pointers(const cs_cdo_quantities_t    *quant,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Compute reduced quantities for an array of size equal to dim * n_x
+ *         The quantities computed are synchronized in parallel.
+ *
+ * \param[in]      dim     local array dimension (max: 3)
+ * \param[in]      n_x     number of elements
+ * \param[in]      array   array to analyze
+ * \param[in]      w_x     weight to apply (may be set to  NULL)
+ * \param[in, out] min     resulting min array (size: dim, or 4 if dim = 3)
+ * \param[in, out] max     resulting max array (size: dim, or 4 if dim = 3)
+ * \param[in, out] wsum    (weighted) sum array (size: dim, or 4 if dim = 3)
+ * \param[in, out] asum    (weighted) sum of absolute values (same size as wsum)
+ * \param[in, out] ssum    (weighted) sum of squared values (same size as wsum)
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_array_reduction(int                     dim,
+                            cs_lnum_t               n_x,
+                            const cs_real_t        *array,
+                            const cs_real_t        *w_x,
+                            cs_real_t              *min,
+                            cs_real_t              *max,
+                            cs_real_t              *wsum,
+                            cs_real_t              *asum,
+                            cs_real_t              *ssum);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute reduced quantities for an array attached to either vertex,
+ *         face or edge DoFs
+ *         The weight to apply to each entity x is scanned using the adjacency
+ *         structure. array size is equal to dim * n_x
+ *         The quantities computed are synchronized in parallel.
+ *
+ * \param[in]      dim     local array dimension (max: 3)
+ * \param[in]      n_x     number of elements
+ * \param[in]      array   array to analyze
+ * \param[in]      w_x     weight to apply (may be set to  NULL)
+ * \param[in, out] min     resulting min array (size: dim, or 4 if dim = 3)
+ * \param[in, out] max     resulting max array (size: dim, or 4 if dim = 3)
+ * \param[in, out] vsum    (weighted) sum array (size: dim, or 4 if dim = 3)
+ * \param[in, out] asum    (weighted) sum of absolute values (same size as vsum)
+ * \param[in, out] ssum    (weighted) sum of squared values (same size as vsum)
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_scatter_array_reduction(int                     dim,
+                                    cs_lnum_t               n_x,
+                                    const cs_real_t        *array,
+                                    const cs_adjacency_t   *c2x,
+                                    const cs_real_t        *w_x,
+                                    cs_real_t              *min,
+                                    cs_real_t              *max,
+                                    cs_real_t              *wsum,
+                                    cs_real_t              *asum,
+                                    cs_real_t              *ssum);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the weighted L2-norm of an array. The weight is scanned
+ *         by a \ref cs_adjacency_t structure
+ *         The quantities computed are synchronized in parallel.
+ *
+ * \param[in]  array   array to analyze
+ * \param[in]  c2x     ajacency structure from cell to x entities (mandatory)
+ * \param[in]  w_c2x   weight to apply (mandatory), scanned by c2x
+ *
+ * \return the square weighted L2-norm
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_real_t
+cs_evaluate_square_wc2x_norm(const cs_real_t        *array,
+                             const cs_adjacency_t   *c2x,
+                             const cs_real_t        *w_c2x);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the weighted L2-norm of an array. The weight is scanned
+ *         by a \ref cs_adjacency_t structure.
+ *         Case of a vector-valued array.
+ *         The quantities computed are synchronized in parallel.
+ *
+ * \param[in]  array   array to analyze
+ * \param[in]  c2x     ajacency structure from cell to x entities (mandatory)
+ * \param[in]  w_c2x   weight to apply (mandatory), scanned by c2x
+ *
+ * \return the square weighted L2-norm
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_real_t
+cs_evaluate_3_square_wc2x_norm(const cs_real_t        *array,
+                               const cs_adjacency_t   *c2x,
+                               const cs_real_t        *w_c2x);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the relative norm of the difference of two arrays scanned
+ *         by the same \ref cs_adjacency_t structure. Normalization is done
+ *         with the reference array.
+ *         The quantities computed are synchronized in parallel.
+ *
+ * \param[in]  array   array to analyze
+ * \param[in]  ref     array used for normalization and difference
+ * \param[in]  c2x     ajacency structure from cell to x entities (mandatory)
+ * \param[in]  w_c2x   weight to apply (mandatory), scanned by c2x
+ *
+ * \return the computed square weighted and normalized L2-norm of the
+ *          difference between array and reference
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_real_t
+cs_evaluate_delta_square_wc2x_norm(const cs_real_t        *array,
+                                   const cs_real_t        *ref,
+                                   const cs_adjacency_t   *c2x,
+                                   const cs_real_t        *w_c2x);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the relative norm of the difference of two arrays scanned
+ *         by the same \ref cs_adjacency_t structure. Normalization is done
+ *         with the reference array.
+ *         The quantities computed are synchronized in parallel.
+ *         Case of vector-valued arrays.
+ *
+ * \param[in]  array   array to analyze
+ * \param[in]  ref     array used for normalization and difference
+ * \param[in]  c2x     ajacency structure from cell to x entities (mandatory)
+ * \param[in]  w_c2x   weight to apply (mandatory), scanned by c2x
+ *
+ * \return the computed square weighted and normalized L2-norm of the
+ *          difference between array and reference
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_real_t
+cs_evaluate_delta_3_square_wc2x_norm(const cs_real_t        *array,
+                                     const cs_real_t        *ref,
+                                     const cs_adjacency_t   *c2x,
+                                     const cs_real_t        *w_c2x);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief  Compute the value related to each DoF in the case of a density field
  *         The value defined by the analytic function is by unity of volume
  *
@@ -104,10 +250,49 @@ cs_evaluate_density_by_value(cs_flag_t          dof_flag,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Evaluate the quantity attached to a potential field for all the DoFs
+ * \brief  Evaluate the quantity attached to a potential field at vertices
  *         when the definition relies on an analytic expression
  *
- * \param[in]      dof_flag    indicate where the evaluation has to be done
+ * \param[in]      def           pointer to a cs_xdef_t pointer
+ * \param[in]      time_eval     physical time at which one evaluates the term
+ * \param[in]      n_v_selected  number of selected vertices
+ * \param[in]      selected_lst  list of selected vertices
+ * \param[in, out] retval        pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_potential_at_vertices_by_analytic(const cs_xdef_t   *def,
+                                              const cs_real_t    time_eval,
+                                              const cs_lnum_t    n_v_selected,
+                                              const cs_lnum_t   *selected_lst,
+                                              cs_real_t          retval[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate the quantity attached to a potential field at face centers
+ *         when the definition relies on an analytic expression
+ *
+ * \param[in]      def           pointer to a cs_xdef_t pointer
+ * \param[in]      time_eval     physical time at which one evaluates the term
+ * \param[in]      n_f_selected  number of selected faces
+ * \param[in]      selected_lst  list of selected faces
+ * \param[in, out] retval        pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_potential_at_faces_by_analytic(const cs_xdef_t   *def,
+                                           const cs_real_t    time_eval,
+                                           const cs_lnum_t    n_f_selected,
+                                           const cs_lnum_t   *selected_lst,
+                                           cs_real_t          retval[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate the quantity attached to a potential field at cell centers
+ *         when the definition relies on an analytic expression
+ *
  * \param[in]      def         pointer to a cs_xdef_t pointer
  * \param[in]      time_eval   physical time at which one evaluates the term
  * \param[in, out] retval      pointer to the computed values
@@ -115,10 +300,9 @@ cs_evaluate_density_by_value(cs_flag_t          dof_flag,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_evaluate_potential_by_analytic(cs_flag_t           dof_flag,
-                                  const cs_xdef_t    *def,
-                                  cs_real_t           time_eval,
-                                  cs_real_t           retval[]);
+cs_evaluate_potential_at_cells_by_analytic(const cs_xdef_t    *def,
+                                           const cs_real_t     time_eval,
+                                           cs_real_t           retval[]);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -142,46 +326,145 @@ cs_evaluate_potential_by_qov(cs_flag_t          dof_flag,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Evaluate the quantity attached to a potential field for all the DoFs
+ * \brief  Evaluate a potential field at vertices from a definition by a
+ *         constant value
  *
- * \param[in]      dof_flag  indicate where the evaluation has to be done
+ * \param[in]      def             pointer to a cs_xdef_t pointer
+ * \param[in]      n_v_selected    number of selected vertices
+ * \param[in]      selected_lst    list of selected vertices
+ * \param[in, out] retval          pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_potential_at_vertices_by_value(const cs_xdef_t   *def,
+                                           const cs_lnum_t    n_v_selected,
+                                           const cs_lnum_t   *selected_lst,
+                                           cs_real_t          retval[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate a potential field atface centers from a definition by a
+ *         constant value
+ *
+ * \param[in]      def             pointer to a cs_xdef_t pointer
+ * \param[in]      n_f_selected    number of selected faces
+ * \param[in]      selected_lst    list of selected faces
+ * \param[in, out] retval          pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_potential_at_faces_by_value(const cs_xdef_t   *def,
+                                        const cs_lnum_t    n_f_selected,
+                                        const cs_lnum_t   *selected_lst,
+                                        cs_real_t          retval[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate a potential field at cell centers from a definition by
+ *         value
+ *
  * \param[in]      def       pointer to a cs_xdef_t pointer
  * \param[in, out] retval    pointer to the computed values
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_evaluate_potential_by_value(cs_flag_t          dof_flag,
-                               const cs_xdef_t   *def,
-                               cs_real_t          retval[]);
+cs_evaluate_potential_at_cells_by_value(const cs_xdef_t   *def,
+                                        cs_real_t          retval[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate the circulation along a selection of (primal) edges.
+ *         Circulation is defined thanks to a constant vector field (by value)
+ *
+ * \param[in]      def            pointer to a cs_xdef_t pointer
+ * \param[in]      n_e_selected   number of selected edges
+ * \param[in]      selected_lst   list of selected edges
+ * \param[in, out] retval         pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_circulation_along_edges_by_value(const cs_xdef_t   *def,
+                                             const cs_lnum_t    n_e_selected,
+                                             const cs_lnum_t   *selected_lst,
+                                             cs_real_t          retval[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate the circulation along a selection of (primal) edges.
+ *         Circulation is defined thanks to an array
+ *
+ * \param[in]      def            pointer to a cs_xdef_t pointer
+ * \param[in]      n_e_selected   number of selected edges
+ * \param[in]      selected_lst   list of selected edges
+ * \param[in, out] retval         pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_circulation_along_edges_by_array(const cs_xdef_t   *def,
+                                             const cs_lnum_t    n_e_selected,
+                                             const cs_lnum_t   *selected_lst,
+                                             cs_real_t          retval[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate the circulation along a selection of (primal) edges.
+ *         Circulation is defined by an analytical function.
+ *
+ * \param[in]      def            pointer to a cs_xdef_t pointer
+ * \param[in]      time_eval      physical time at which one evaluates the term
+ * \param[in]      n_e_selected   number of selected edges
+ * \param[in]      selected_lst   list of selected edges
+ * \param[in, out] retval         pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_evaluate_circulation_along_edges_by_analytic(const cs_xdef_t   *def,
+                                                const cs_real_t    time_eval,
+                                                const cs_lnum_t    n_e_selected,
+                                                const cs_lnum_t   *selected_lst,
+                                                cs_real_t          retval[]);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Evaluate the average of a function on the faces
  *
- * \param[in]      def       pointer to a cs_xdef_t pointer
- * \param[in, out] retval    pointer to the computed values
+ * \param[in]      def            pointer to a cs_xdef_t pointer
+ * \param[in]      n_f_selected   number of selected faces
+ * \param[in]      selected_lst   list of selected faces
+ * \param[in, out] retval         pointer to the computed values
  */
 /*----------------------------------------------------------------------------*/
 
 void
 cs_evaluate_average_on_faces_by_value(const cs_xdef_t   *def,
+                                      const cs_lnum_t    n_f_selected,
+                                      const cs_lnum_t   *selected_lst,
                                       cs_real_t          retval[]);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Evaluate the average of a function on the faces
+ * \brief  Evaluate the average of a function on the faces.
  *         Warning: retval has to be initialize before calling this function.
  *
- * \param[in]      def        pointer to a cs_xdef_t pointer
- * \param[in]      time_eval  physical time at which one evaluates the term
- * \param[in, out] retval     pointer to the computed values
+ * \param[in]      def            pointer to a cs_xdef_t pointer
+ * \param[in]      time_eval      physical time at which one evaluates the term
+ * \param[in]      n_f_selected   number of selected faces
+ * \param[in]      selected_lst   list of selected faces
+ * \param[in, out] retval         pointer to the computed values
  */
 /*----------------------------------------------------------------------------*/
 
 void
 cs_evaluate_average_on_faces_by_analytic(const cs_xdef_t   *def,
-                                         cs_real_t          time_eval,
+                                         const cs_real_t    time_eval,
+                                         const cs_lnum_t    n_f_selected,
+                                         const cs_lnum_t   *selected_lst,
                                          cs_real_t          retval[]);
 
 /*----------------------------------------------------------------------------*/
@@ -250,15 +533,19 @@ cs_evaluate_scal_domain_integral_by_array(cs_flag_t         array_loc,
 /*!
  * \brief  Evaluate the average of a function on the faces
  *
- * \param[in]      def        pointer to a cs_xdef_t pointer
- * \param[in]      time_eval  physical time at which one evaluates the term
- * \param[in, out] retval     pointer to the computed values
+ * \param[in]      def            pointer to a cs_xdef_t pointer
+ * \param[in]      time_eval      physical time at which one evaluates the term
+ * \param[in]      n_f_selected   number of selected faces
+ * \param[in]      selected_lst   list of selected faces
+ * \param[in, out] retval         pointer to the computed values
  */
 /*----------------------------------------------------------------------------*/
 
 static inline void
 cs_evaluate_average_on_faces(const cs_xdef_t   *def,
                              cs_real_t          time_eval,
+                             const cs_lnum_t    n_f_selected,
+                             const cs_lnum_t   *selected_lst,
                              cs_real_t          retval[])
 {
   /* Sanity checks */
@@ -267,11 +554,16 @@ cs_evaluate_average_on_faces(const cs_xdef_t   *def,
   switch (def->type) {
 
   case CS_XDEF_BY_VALUE:
-    cs_evaluate_average_on_faces_by_value(def, retval);
+    cs_evaluate_average_on_faces_by_value(def,
+                                          n_f_selected, selected_lst,
+                                          retval);
     break;
 
   case CS_XDEF_BY_ANALYTIC_FUNCTION:
-    cs_evaluate_average_on_faces_by_analytic(def, time_eval, retval);
+    cs_evaluate_average_on_faces_by_analytic(def,
+                                             time_eval,
+                                             n_f_selected, selected_lst,
+                                             retval);
     break;
 
   default:

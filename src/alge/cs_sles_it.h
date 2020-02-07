@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -56,7 +56,7 @@ BEGIN_C_DECLS
 
 typedef enum {
 
-  CS_SLES_PCG,                 /*!< Preconditionned conjugate gradient */
+  CS_SLES_PCG,                 /*!< Preconditioned conjugate gradient */
   CS_SLES_FCG,                 /*!< Preconditions flexible conjugate gradient,
                                     described in \cite Notay:2015 */
   CS_SLES_IPCG,                /*!< Preconditions inexact conjugate gradient */

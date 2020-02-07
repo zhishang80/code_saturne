@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -25,6 +25,12 @@
   Street, Fifth Floor, Boston, MA 02110-1301, USA.
 */
 
+/*----------------------------------------------------------------------------
+ *  Local headers
+ *----------------------------------------------------------------------------*/
+
+#include "cs_defs.h"
+
 /*----------------------------------------------------------------------------*/
 
 BEGIN_C_DECLS
@@ -33,7 +39,7 @@ BEGIN_C_DECLS
 
 typedef struct _cs_paramedmem_remapper_t cs_paramedmem_remapper_t;
 
-/* -------------------------------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
 /*!
  * \brief   Creates a new cs_paramedmem_remapper_t instance
  *
@@ -44,15 +50,17 @@ typedef struct _cs_paramedmem_remapper_t cs_paramedmem_remapper_t;
  *
  * \return  cs_paramedmem_remapper_t struct
  */
-/* -------------------------------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
 
 cs_paramedmem_remapper_t *
 cs_paramedmem_remapper_create(char       *name,
                               const char *sel_criteria,
                               char        *fileName,
-                              char        *meshName);
+                              char        *meshName,
+                              cs_real_t   center[3],
+                              cs_real_t   radius);
 
-/* -------------------------------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
 /*!
  * \brief Interpolate a given field on the local mesh for a given time
  *
@@ -72,14 +80,71 @@ cs_paramedmem_remapper_create(char       *name,
  *
  * \return  cs_real_t pointer containing the new values on target mesh
  */
-/* -------------------------------------------------------------------------- */
+/*----------------------------------------------------------------------------*/
 
 cs_real_t *
 cs_paramedmem_remap_field(cs_paramedmem_remapper_t *r,
                           char                     *fieldName,
+                          cs_real_t                 dval,
                           int                       time_choice,
                           double                    tval);
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief get a remapper by its name
+ *
+ * \param[in] name  name of the remapper
+ *
+ * \return  pointer to cs_paramedmem_remapper_t struct
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_paramedmem_remapper_t *
+cs_paramedmem_remapper_by_name_try(const char *name);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief translate the mesh using a given vector
+ *
+ * \param[in] r            pointer to the cs_paramedmem_remapper_t struct
+ * \param[in] translation  translation vector
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_paramedmem_remapper_translate(cs_paramedmem_remapper_t  *r,
+                                 cs_real_t                  translation[3]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Rotate the mesh using a center point, axis and angle
+ *
+ * \param[in] r          pointer to the cs_paramedmem_remapper_t struct
+ * \param[in] invariant  coordinates of the invariant point
+ * \param[in] axis       rotation axis vector
+ * \param[in] angle      rotation angle in radians
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_paramedmem_remapper_rotate(cs_paramedmem_remapper_t  *r,
+                              cs_real_t                  invariant[3],
+                              cs_real_t                  axis[3],
+                              cs_real_t                  angle);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Destroy all remappers
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_paramedmem_remapper_destroy_all(void);
+
+/*----------------------------------------------------------------------------*/
+
+#endif // HAVE_MEDCOUPLING_LOADER
+
 END_C_DECLS
-#endif
+
 #endif /* __CS_PARAMEDMEM_REMAPPER_HXX__ */

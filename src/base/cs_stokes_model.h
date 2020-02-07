@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -112,7 +112,7 @@ typedef struct {
                                  - 1: true
                                  - 0: false (default) */
   bool          fluid_solid;  /* Has a solid zone where dynamics must be killed?
-                                 - fasle (default)
+                                 - false (default)
                                  - true */
 
 } cs_stokes_model_t;
@@ -130,7 +130,7 @@ extern const cs_stokes_model_t  *cs_glob_stokes_model;
  *============================================================================*/
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_stokes_model
+ * Provide access to cs_glob_stokes_model
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/

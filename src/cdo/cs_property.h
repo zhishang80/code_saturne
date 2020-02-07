@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -45,6 +45,10 @@ BEGIN_C_DECLS
  * Macro definitions
  *============================================================================*/
 
+/* Common property names (property which is shared between different module) */
+
+#define CS_PROPERTY_MASS_DENSITY   "mass_density"
+
 /*!
  * @defgroup cdo_property_flags Flags specifying metadata related to the
  *  post-processing for a property
@@ -56,9 +60,35 @@ BEGIN_C_DECLS
 
 /*! @} */
 
+/*!
+ * @defgroup cdo_property_type Flags specifying metadata related to the
+ *  the type of property
+ * @{
+ */
+
+/*! \var CS_PROPERTY_ISO
+ *  1: Isotropic behavior (one real number is sufficient to describe the
+ *  property) */
+#define CS_PROPERTY_ISO           (1 << 0)
+
+/*! \var CS_PROPERTY_ORTHO
+ *  2: Orthotropic behavior (three real numbers describe the behavior assuming
+ *  that the different behavior is aligned with Cartesian axis) */
+#define CS_PROPERTY_ORTHO         (1 << 1)
+
+/*! \var CS_PROPERTY_ANISO
+ *  4: Anisotropic behavior (a 3x3 tensor describe the behavior). This tensor
+ *  should be symmetric positive definite (i.e 6 real numbers describe the
+ *  behavior). */
+#define CS_PROPERTY_ANISO         (1 << 2)
+
+/*! @} */
+
 /*============================================================================
  * Type definitions
  *============================================================================*/
+
+typedef cs_flag_t cs_property_type_t;
 
 /*! \enum cs_property_key_t
  *  \brief List of available keys for setting options on a property
@@ -74,43 +104,23 @@ typedef enum {
 
 } cs_property_key_t;
 
-/*! \enum cs_property_type_t
- *  \brief Type of property to consider
- *
- *  \var CS_PROPERTY_ISO
- *  Isotropic behavior (one real number is sufficient to describe the property)
- *
- *  \var CS_PROPERTY_ORTHO
- *  Orthotropic behavior (three real numbers describe the behavior assuming
- *  that the different behavior is aligned with Cartesian axis)
- *
- *  \var CS_PROPERTY_ANISO
- *  Anisotropic behavior (a 3x3 tensor describe the behavior). This tensor
- *  should be symmetric positive definite (i.e 6 real numbers describe the
- *  behavior).
- */
-
-typedef enum {
-
-  CS_PROPERTY_ISO,
-  CS_PROPERTY_ORTHO,
-  CS_PROPERTY_ANISO,
-
-  CS_PROPERTY_N_TYPES
-
-} cs_property_type_t;
-
+/* ======================================== */
 /* Set of parameters attached to a property */
+/* ======================================== */
+
 typedef struct {
 
   char  *restrict      name;
   int                  id;
   cs_flag_t            state_flag;
   cs_flag_t            process_flag;
-
-  /* The number of values to set depends on the type of property
-      isotropic   = 1, orthotropic = 3, anisotropic = 9  */
   cs_property_type_t   type;
+
+  /* Reference value wich is used as default when nothing else is set. This
+   * value can also be used to renormalized quantities related to this property
+   * By default, this is set to 1
+   */
+  cs_real_t            ref_value;
 
   /* Property is up to now only defined on the whole domain (volume) */
   int                  n_definitions;  /* Current number of definitions used */
@@ -278,7 +288,7 @@ cs_property_is_isotropic(const cs_property_t   *pty)
   if (pty == NULL)
     return false;
 
-  if (pty->type == CS_PROPERTY_ISO)
+  if (pty->type & CS_PROPERTY_ISO)
     return true;
   else
     return false;
@@ -317,10 +327,24 @@ static inline cs_property_type_t
 cs_property_get_type(const cs_property_t   *pty)
 {
   if (pty == NULL)
-    return CS_PROPERTY_N_TYPES;
+    return 0; /* means undefined */
 
   return pty->type;
 }
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Set the reference value associated to a \ref cs_property_t structure
+ *         This is a real number even whatever the type of property is.
+ *
+ * \param[in, out]  pty      pointer to a cs_property_t structure
+ * \param[in]       refval   value to set
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_property_set_reference_value(cs_property_t    *pty,
+                                double            refval);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -464,7 +488,7 @@ cs_xdef_t *
 cs_property_def_by_array(cs_property_t    *pty,
                          cs_flag_t         loc,
                          cs_real_t        *array,
-                         _Bool             is_owner,
+                         bool              is_owner,
                          cs_lnum_t        *index);
 
 /*----------------------------------------------------------------------------*/

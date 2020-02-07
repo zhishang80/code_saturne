@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -45,6 +45,7 @@
 #include "cs_hho_builder.h"
 #include "cs_log.h"
 #include "cs_math.h"
+#include "cs_scheme_geometry.h"
 #include "cs_volume_zone.h"
 
 /*----------------------------------------------------------------------------
@@ -478,7 +479,7 @@ cs_source_term_get_flag(const cs_xdef_t  *st)
  */
 /*----------------------------------------------------------------------------*/
 
-cs_flag_t
+cs_eflag_t
 cs_source_term_init(cs_param_space_scheme_t       space_scheme,
                     const int                     n_source_terms,
                     cs_xdef_t             *const *source_terms,
@@ -491,7 +492,7 @@ cs_source_term_init(cs_param_space_scheme_t       space_scheme,
               " Limitation to %d source terms has been reached!",
               CS_N_MAX_SOURCE_TERMS);
 
-  cs_flag_t  msh_flag = 0;
+  cs_eflag_t  msh_flag = 0;
   *source_mask = NULL;
   for (short int i = 0; i < CS_N_MAX_SOURCE_TERMS; i++)
     compute_source[i] = NULL;
@@ -540,27 +541,33 @@ cs_source_term_init(cs_param_space_scheme_t       space_scheme,
           switch (st_def->qtype) {
 
           case CS_QUADRATURE_BARY:
-            msh_flag |= CS_FLAG_COMP_PVQ | CS_FLAG_COMP_EV | CS_FLAG_COMP_PFQ |
-              CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FE  | CS_FLAG_COMP_FEQ;
+            msh_flag |=
+              CS_FLAG_COMP_PVQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_PFC |
+              CS_FLAG_COMP_FE  | CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV  |
+              CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PEC | CS_FLAG_COMP_DEQ;
             compute_source[st_id] = cs_source_term_dcsd_bary_by_analytic;
             break;
 
           case CS_QUADRATURE_BARY_SUBDIV:
-            msh_flag |= CS_FLAG_COMP_EV | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_HFQ |
-              CS_FLAG_COMP_FE | CS_FLAG_COMP_FEQ;
+            msh_flag |=
+              CS_FLAG_COMP_EV | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_PFC |
+              CS_FLAG_COMP_FE | CS_FLAG_COMP_FEQ | CS_FLAG_COMP_DEQ;
             compute_source[st_id] = cs_source_term_dcsd_q1o1_by_analytic;
             break;
 
           case CS_QUADRATURE_HIGHER:
-            msh_flag |= CS_FLAG_COMP_PFQ | CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FE |
-              CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV | CS_FLAG_COMP_PVQ |
-              CS_FLAG_COMP_PEQ;
+            msh_flag |=
+              CS_FLAG_COMP_PFQ | CS_FLAG_COMP_PFC | CS_FLAG_COMP_FE  |
+              CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV  | CS_FLAG_COMP_PVQ |
+              CS_FLAG_COMP_PEQ | CS_FLAG_COMP_DEQ;
             compute_source[st_id] = cs_source_term_dcsd_q10o2_by_analytic;
             break;
 
           case CS_QUADRATURE_HIGHEST:
-            msh_flag |= CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
-              CS_FLAG_COMP_EV;
+            msh_flag |=
+              CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE  |
+              CS_FLAG_COMP_EV  | CS_FLAG_COMP_PFC | CS_FLAG_COMP_FEQ |
+              CS_FLAG_COMP_DEQ;
             compute_source[st_id] = cs_source_term_dcsd_q5o3_by_analytic;
             break;
 
@@ -574,6 +581,11 @@ cs_source_term_init(cs_param_space_scheme_t       space_scheme,
         case CS_XDEF_BY_ARRAY:
           msh_flag |= CS_FLAG_COMP_PVQ;
           compute_source[st_id] = cs_source_term_dcsd_by_array;
+          break;
+
+        case CS_XDEF_BY_DOF_FUNCTION:
+          msh_flag |= CS_FLAG_COMP_PVQ;
+          compute_source[st_id] = cs_source_term_dcsd_by_dof_func;
           break;
 
         default:
@@ -664,6 +676,13 @@ cs_source_term_init(cs_param_space_scheme_t       space_scheme,
           compute_source[st_id] = cs_source_term_pcsd_by_value;
         break;
 
+      case CS_XDEF_BY_DOF_FUNCTION:
+        if ((*sys_flag) & CS_FLAG_SYS_VECTOR)
+          compute_source[st_id] = cs_source_term_pcvd_by_dof_func;
+        else
+          compute_source[st_id] = cs_source_term_pcsd_by_dof_func;
+        break;
+
       case CS_XDEF_BY_ANALYTIC_FUNCTION:
         msh_flag |= CS_FLAG_COMP_PV;
         if ((*sys_flag) & CS_FLAG_SYS_VECTOR) {
@@ -676,8 +695,8 @@ cs_source_term_init(cs_param_space_scheme_t       space_scheme,
 
             /* TODO: Are all these flags really necessary? Check in the */
             /* integration */
-            msh_flag |= CS_FLAG_COMP_EV  |CS_FLAG_COMP_EF |CS_FLAG_COMP_PFQ |
-                        CS_FLAG_COMP_FEQ |CS_FLAG_COMP_HFQ|CS_FLAG_COMP_PEQ |
+            msh_flag |= CS_FLAG_COMP_EV  |CS_FLAG_COMP_EF | CS_FLAG_COMP_PFQ |
+                        CS_FLAG_COMP_FEQ |CS_FLAG_COMP_HFQ| CS_FLAG_COMP_PEQ |
                         CS_FLAG_COMP_FE;
             compute_source[st_id] = cs_source_term_pcvd_by_analytic;
 
@@ -693,8 +712,8 @@ cs_source_term_init(cs_param_space_scheme_t       space_scheme,
 
             /* TODO: Are all these flags really necessary? Check in the */
             /* integration */
-            msh_flag |= CS_FLAG_COMP_EV  |CS_FLAG_COMP_EF |CS_FLAG_COMP_PFQ |
-                        CS_FLAG_COMP_FEQ |CS_FLAG_COMP_HFQ|CS_FLAG_COMP_PEQ |
+            msh_flag |= CS_FLAG_COMP_EV  |CS_FLAG_COMP_EF | CS_FLAG_COMP_PFQ |
+                        CS_FLAG_COMP_FEQ |CS_FLAG_COMP_HFQ| CS_FLAG_COMP_PEQ |
                         CS_FLAG_COMP_FE;
             compute_source[st_id] = cs_source_term_pcsd_by_analytic;
 
@@ -815,7 +834,7 @@ cs_source_term_compute_cellwise(const int                    n_source_terms,
 
       cs_source_term_cellwise_t  *compute = compute_source[st_id];
 
-      /* Contrib is updated inside */
+      /* result is updated inside */
       compute(source_terms[st_id], cm, time_eval, cb, input, result);
 
     } /* Loop on source terms */
@@ -830,7 +849,7 @@ cs_source_term_compute_cellwise(const int                    n_source_terms,
 
         cs_source_term_cellwise_t  *compute = compute_source[st_id];
 
-        /* Contrib is updated inside */
+        /* result is updated inside */
         compute(source_terms[st_id], cm, time_eval, cb, input, result);
 
       } /* Compute the source term on this cell */
@@ -843,135 +862,8 @@ cs_source_term_compute_cellwise(const int                    n_source_terms,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Compute the contribution related to a source term in the case of
- *         an input data which is a density
- *
- * \param[in]      loc        describe where is located the associated DoF
- * \param[in]      source     pointer to a cs_xdef_t structure
- * \param[in]      time_eval  physical time at which one evaluates the term
- * \param[in, out] p_values   pointer to the computed values (allocated if NULL)
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_source_term_compute_from_density(cs_flag_t                loc,
-                                    const cs_xdef_t         *source,
-                                    cs_real_t                time_eval,
-                                    double                  *p_values[])
-{
-  const cs_cdo_quantities_t  *quant = cs_cdo_quant;
-
-  double  *values = *p_values;
-
-  if (source == NULL)
-    bft_error(__FILE__, __LINE__, 0, _(_err_empty_st));
-
-  int  stride = 0;
-  if (loc & CS_FLAG_SCALAR)
-    stride = 1;
-  else if (loc & CS_FLAG_VECTOR)
-    stride = 3;
-  else
-    bft_error(__FILE__, __LINE__, 0, " %s: Invalid case\n", __func__);
-
-  cs_lnum_t n_ent = 0;
-  if (cs_flag_test(loc, cs_flag_dual_cell) ||
-      cs_flag_test(loc, cs_flag_primal_vtx))
-    n_ent = quant->n_vertices;
-  else if (cs_flag_test(loc, cs_flag_primal_cell))
-    n_ent = quant->n_cells;
-  else
-    bft_error(__FILE__, __LINE__, 0, " %s: Invalid case\n", __func__);
-
-  /* Initialize values */
-  if (values == NULL)
-    BFT_MALLOC(values, n_ent*stride, double);
-  memset(values, 0, n_ent*stride*sizeof(double));
-
-  switch (source->type) {
-
-  case CS_XDEF_BY_VALUE:
-    cs_evaluate_density_by_value(loc, source, values);
-    break;
-
-  case CS_XDEF_BY_ANALYTIC_FUNCTION:
-    cs_evaluate_density_by_analytic(loc, source, time_eval, values);
-    break;
-
-  default:
-    bft_error(__FILE__, __LINE__, 0, _(" Invalid type of definition.\n"));
-
-  } /* Switch according to def_type */
-
-  /* Return values */
-  *p_values = values;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief  Compute the contribution related to a source term in the case of
- *         an input data which is a potential
- *
- * \param[in]      loc        describe where is located the associated DoF
- * \param[in]      source     pointer to a cs_xdef_t structure
- * \param[in]      time_eval  physical time at which one evaluates the term
- * \param[in, out] p_values   pointer to the computed values (allocated if NULL)
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_source_term_compute_from_potential(cs_flag_t                loc,
-                                      const cs_xdef_t         *source,
-                                      cs_real_t                time_eval,
-                                      double                  *p_values[])
-{
-  const int  stride = 1; /* Only this case is managed up to now */
-  const cs_cdo_quantities_t  *quant = cs_cdo_quant;
-
-  double  *values = *p_values;
-
-  if (source == NULL)
-    bft_error(__FILE__, __LINE__, 0, _(_err_empty_st));
-
-  cs_lnum_t n_ent = 0;
-  if (cs_flag_test(loc, cs_flag_dual_cell) ||
-      cs_flag_test(loc, cs_flag_primal_vtx))
-    n_ent = quant->n_vertices;
-  else if (cs_flag_test(loc, cs_flag_primal_cell))
-    n_ent = quant->n_cells;
-  else
-    bft_error(__FILE__, __LINE__, 0,
-              _(" Invalid case. Not able to compute the source term.\n"));
-
-  /* Initialize values */
-  if (values == NULL)
-    BFT_MALLOC(values, n_ent*stride, double);
-  for (cs_lnum_t i = 0; i < n_ent*stride; i++)
-    values[i] = 0.0;
-
-  switch (source->type) {
-
-  case CS_XDEF_BY_VALUE:
-    cs_evaluate_potential_by_value(loc, source, values);
-    break;
-
-  case CS_XDEF_BY_ANALYTIC_FUNCTION:
-    cs_evaluate_potential_by_analytic(loc, source, time_eval, values);
-    break;
-
-    default:
-      bft_error(__FILE__, __LINE__, 0, _(" Invalid type of definition.\n"));
-
-  } /* Switch according to def_type */
-
-  /* Return values */
-  *p_values = values;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices by a constant
  *         value.
  *         A discrete Hodge operator has to be computed before this call and
@@ -1003,7 +895,7 @@ cs_source_term_pvsp_by_value(const cs_xdef_t           *source,
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
   assert(cb != NULL && cb->hdg != NULL);
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PV));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PV));
 
   const cs_real_t *s_input = (const cs_real_t *)source->input;
   const cs_real_t  pot_value = s_input[0];
@@ -1024,7 +916,7 @@ cs_source_term_pvsp_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices by an
  *         analytical function.
  *         A discrete Hodge operator has to be computed before this call and
@@ -1055,7 +947,7 @@ cs_source_term_pvsp_by_analytic(const cs_xdef_t           *source,
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
   assert(cb != NULL && cb->hdg != NULL);
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PV));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PV));
 
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
 
@@ -1077,7 +969,7 @@ cs_source_term_pvsp_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by a value.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -1106,7 +998,7 @@ cs_source_term_dcsd_by_value(const cs_xdef_t           *source,
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PVQ));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PVQ));
 
   const cs_real_t *s_input = (const cs_real_t *)source->input;
   const cs_real_t  density_value = s_input[0];
@@ -1118,7 +1010,7 @@ cs_source_term_dcsd_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a vector-valued density defined at dual cells by a value.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -1147,7 +1039,7 @@ cs_source_term_dcvd_by_value(const cs_xdef_t           *source,
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PVQ));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PVQ));
 
   const cs_real_t *st_vect = (const cs_real_t *)source->input;
 
@@ -1159,7 +1051,7 @@ cs_source_term_dcvd_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an array.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -1188,7 +1080,7 @@ cs_source_term_dcsd_by_array(const cs_xdef_t           *source,
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PVQ));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PVQ));
 
   const cs_xdef_array_input_t  *ai =
     (const cs_xdef_array_input_t *)source->input;
@@ -1201,7 +1093,57 @@ cs_source_term_dcsd_by_array(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
+ *         Case of a scalar density defined at dual cells by a DoF function.
+ *
+ * \param[in]      source     pointer to a cs_xdef_t structure
+ * \param[in]      cm         pointer to a cs_cell_mesh_t structure
+ * \param[in]      time_eval  physical time at which one evaluates the term
+ * \param[in, out] cb         pointer to a cs_cell_builder_t structure
+ * \param[in, out] input      pointer to an element cast on-the-fly (or NULL)
+ * \param[in, out] values     pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_source_term_dcsd_by_dof_func(const cs_xdef_t           *source,
+                                const cs_cell_mesh_t      *cm,
+                                cs_real_t                  time_eval,
+                                cs_cell_builder_t         *cb,
+                                void                      *input,
+                                double                    *values)
+{
+  CS_UNUSED(cb);
+  CS_UNUSED(time_eval);
+  CS_UNUSED(input);
+
+  if (source == NULL)
+    return;
+
+  /* Sanity checks */
+  assert(values != NULL && cm != NULL);
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PVQ));
+
+  const cs_xdef_dof_input_t  *context = (cs_xdef_dof_input_t *)source->input;
+
+  /* Up to now this should be the only location allowed */
+  assert(cs_flag_test(context->loc, cs_flag_primal_cell));
+
+  /* Call the DoF function to evaluate the function at xc */
+  double  cell_eval;
+  context->func(1, &(cm->c_id), true,  /* compacted output ? */
+                context->input,
+                &cell_eval);
+
+  cell_eval *= cm->vol_c;
+  for (int v = 0; v < cm->n_vc; v++)
+    values[v] += cell_eval * cm->wvc[v];
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the contribution for a cell related to a source term and
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use the barycentric approximation as quadrature to evaluate the
@@ -1231,50 +1173,63 @@ cs_source_term_dcsd_bary_by_analytic(const cs_xdef_t           *source,
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PVQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_HFQ |
-                      CS_FLAG_COMP_FE  | CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PVQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_PFC |
+                       CS_FLAG_COMP_FE  | CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV  |
+                       CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PEC));
 
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
 
   /* Compute the barycenter of each portion of dual cells */
-  cs_real_3_t  *xgv = cb->vectors;
+  double  *vol_vc = cb->values;
   for (short int v = 0; v < cm->n_vc; v++)
-    xgv[v][0] = xgv[v][1] = xgv[v][2] = 0.;
+    vol_vc[v] = cm->vol_c * cm->wvc[v];
 
+  /* cell and vertex contribution */
+  cs_real_3_t  *xgv = cb->vectors;
+  for (short int v = 0; v < cm->n_vc; v++) {
+    xgv[v][0] = 0.25 * vol_vc[v] * (cm->xc[0] + cm->xv[0]);
+    xgv[v][1] = 0.25 * vol_vc[v] * (cm->xc[1] + cm->xv[1]);
+    xgv[v][2] = 0.25 * vol_vc[v] * (cm->xc[2] + cm->xv[2]);
+  }
+
+  /* edge contribution */
+  for (short int e = 0; e < cm->n_ec; e++) {
+
+    cs_real_t  *xgv1 = xgv[cm->e2v_ids[2*e]];
+    cs_real_t  *xgv2 = xgv[cm->e2v_ids[2*e+1]];
+
+    const cs_real_t  *xe = cm->edge[e].center;
+    const double  e_coef = 0.125 * cm->pvol_e[e]; /* 0.25* (0.5*|pvol_ec|)  */
+    for (int k = 0; k < 3; k++) {
+      xgv1[k] += e_coef * xe[k];
+      xgv2[k] += e_coef * xe[k];
+    }
+
+  } /* Loop on cell edges */
+
+  /* face contribution */
+  cs_real_t  *wvf = cb->values + cm->n_vc;
   for (short int f = 0; f < cm->n_fc; f++) {
 
-    cs_real_3_t  xfc;
+    cs_compute_wvf(f, cm, wvf);
 
     const double  *xf = cm->face[f].center;
-    const double  hf_coef = cs_math_1ov6 * cm->hfc[f];
+    const double  f_coef = 0.25 * cm->pvol_f[f];
 
-    for (int k = 0; k < 3; k++) xfc[k] = 0.25*(xf[k] + cm->xc[k]);
+    for (short int v = 0; v < cm->n_vc; v++) {
+      if (wvf[v] > 0) {
+        const double  vf_coef = f_coef * wvf[v];
+        xgv[v][0] += vf_coef * xf[0];
+        xgv[v][1] += vf_coef * xf[1];
+        xgv[v][2] += vf_coef * xf[2];
+      }
 
-    for (int i = cm->f2e_idx[f]; i < cm->f2e_idx[f+1]; i++) {
+    }
 
-      const short int  e = cm->f2e_ids[i];
-      const short int  v1 = cm->e2v_ids[2*e];
-      const short int  v2 = cm->e2v_ids[2*e+1];
-      const double  *xv1 = cm->xv + 3*v1, *xv2 = cm->xv + 3*v2;
-      const double  tet_vol = cm->tef[i]*hf_coef;
+  } /* Loop on faces */
 
-      /* xg = 0.25(xv1 + xe + xf + xc) where xe = 0.5*(xv1 + xv2) */
-      for (int k = 0; k < 3; k++)
-        xgv[v1][k] += tet_vol*(xfc[k] + 0.375*xv1[k] + 0.125*xv2[k]);
-
-      /* xg = 0.25(xv2 + xe + xf + xc) where xe = 0.5*(xv1 + xv2) */
-      for (int k = 0; k < 3; k++)
-        xgv[v2][k] += tet_vol*(xfc[k] + 0.375*xv2[k] + 0.125*xv1[k]);
-
-    } /* Loop on face edges */
-
-  } /* Loop on cell faces */
-
-  /* Compute the source term contribution for each vertex */
-  double  *vol_vc = cb->values;
   for (short int v = 0; v < cm->n_vc; v++) {
-    vol_vc[v] = cm->vol_c * cm->wvc[v];
     const double  invvol = 1/vol_vc[v];
     for (int k = 0; k < 3; k++) xgv[v][k] *= invvol;
   }
@@ -1287,13 +1242,13 @@ cs_source_term_dcsd_bary_by_analytic(const cs_xdef_t           *source,
              eval_xgv);
 
   for (short int v = 0; v < cm->n_vc; v++)
-    values[v] = cm->vol_c * cm->wvc[v] * eval_xgv[v];
+    values[v] = vol_vc[v] * eval_xgv[v];
 }
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use a the barycentric approximation as quadrature to evaluate the
@@ -1324,9 +1279,9 @@ cs_source_term_dcsd_q1o1_by_analytic(const cs_xdef_t           *source,
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PFQ | CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FE |
-                      CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PFQ | CS_FLAG_COMP_PFC | CS_FLAG_COMP_FE |
+                       CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
 
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
 
@@ -1336,7 +1291,7 @@ cs_source_term_dcsd_q1o1_by_analytic(const cs_xdef_t           *source,
     cs_real_t  eval_xg[2];
 
     const double  *xf = cm->face[f].center;
-    const double  hf_coef = cs_math_1ov6 * cm->hfc[f];
+    const double  hf_coef = 0.5 * cm->pvol_f[f]/cm->face[f].meas;
 
     for (int k = 0; k < 3; k++) xfc[k] = 0.25*(xf[k] + cm->xc[k]);
 
@@ -1346,7 +1301,6 @@ cs_source_term_dcsd_q1o1_by_analytic(const cs_xdef_t           *source,
       const short int  v1 = cm->e2v_ids[2*e];
       const short int  v2 = cm->e2v_ids[2*e+1];
       const double  *xv1 = cm->xv + 3*v1, *xv2 = cm->xv + 3*v2;
-      const double  half_pef_vol = cm->tef[i]*hf_coef;
 
       /* xg = 0.25(xv1 + xe + xf + xc) where xe = 0.5*(xv1 + xv2) */
       for (int k = 0; k < 3; k++)
@@ -1361,6 +1315,7 @@ cs_source_term_dcsd_q1o1_by_analytic(const cs_xdef_t           *source,
                  anai->input,
                  eval_xg);
 
+      const double  half_pef_vol = cm->tef[i]*hf_coef;
       values[v1] += half_pef_vol * eval_xg[0];
       values[v2] += half_pef_vol * eval_xg[1];
 
@@ -1373,7 +1328,7 @@ cs_source_term_dcsd_q1o1_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use a ten-point quadrature rule to evaluate the integral.
@@ -1404,10 +1359,10 @@ cs_source_term_dcsd_q10o2_by_analytic(const cs_xdef_t           *source,
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
   assert(cb != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PFQ | CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FE  |
-                      CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV  | CS_FLAG_COMP_PVQ |
-                      CS_FLAG_COMP_PEQ));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PFQ | CS_FLAG_COMP_PFC | CS_FLAG_COMP_FE  |
+                       CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV  | CS_FLAG_COMP_PVQ |
+                       CS_FLAG_COMP_PEQ));
 
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
 
@@ -1500,7 +1455,7 @@ cs_source_term_dcsd_q10o2_by_analytic(const cs_xdef_t           *source,
   for (short int f = 0; f < cm->n_fc; f++) {
 
     const double  *xf = cm->face[f].center;
-    const double  hfc = cm->hfc[f];
+    const double  hf_coef = 0.5* cm->pvol_f[f]/cm->face[f].meas;
 
     /* Reset volume of the face related to a vertex */
     for (short int v = 0; v < cm->n_vc; v++) pvf_vol[v] = 0;
@@ -1510,7 +1465,7 @@ cs_source_term_dcsd_q10o2_by_analytic(const cs_xdef_t           *source,
       const short int  e = cm->f2e_ids[i];
       const short int  v1 = cm->e2v_ids[2*e];
       const short int  v2 = cm->e2v_ids[2*e+1];
-      const double  half_pef_vol = cs_math_1ov6 * cm->tef[i] * hfc;
+      const double  half_pef_vol = hf_coef * cm->tef[i];
 
       pvf_vol[v1] += half_pef_vol;
       pvf_vol[v2] += half_pef_vol;
@@ -1572,7 +1527,7 @@ cs_source_term_dcsd_q10o2_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use a five-point quadrature rule to evaluate the integral.
@@ -1608,34 +1563,32 @@ cs_source_term_dcsd_q5o3_by_analytic(const cs_xdef_t           *source,
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
   assert(cb != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
-                      CS_FLAG_COMP_EV));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
+                       CS_FLAG_COMP_EV  | CS_FLAG_COMP_PFC | CS_FLAG_COMP_FEQ));
 
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
 
   /* Temporary buffers */
   double  *contrib = cb->values;
-  for (short int v = 0; v < cm->n_vc; v++) contrib[v] = 0;
+  memset(contrib, 0, cm->n_vc*sizeof(double));
 
   /* Main loop on faces */
   for (short int f = 0; f < cm->n_fc; f++) {
 
     const double  *xf = cm->face[f].center;
+    const double  hf_coef = 0.5* cm->pvol_f[f]/cm->face[f].meas;
 
     for (int i = cm->f2e_idx[f]; i < cm->f2e_idx[f+1]; i++) {
 
       const short int  e = cm->f2e_ids[i];
       const short int  v1 = cm->e2v_ids[2*e];
       const short int  v2 = cm->e2v_ids[2*e+1];
-      const double  tet_vol = 0.5*cs_math_voltet(cm->xv + 3*v1,
-                                                 cm->xv + 3*v2,
-                                                 xf,
-                                                 cm->xc);
+      const double  half_pef_vol = hf_coef * cm->tef[i];
 
       /* Compute Gauss points and its weights */
       cs_quadrature_tet_5pts(cm->xv + 3*v1, cm->edge[e].center, xf, cm->xc,
-                             tet_vol,
+                             half_pef_vol,
                              gauss_pts, weights);
 
       anai->func(time_eval, 5, NULL, (const cs_real_t *)gauss_pts,
@@ -1649,7 +1602,7 @@ cs_source_term_dcsd_q5o3_by_analytic(const cs_xdef_t           *source,
 
       /* Compute Gauss points and its weights */
       cs_quadrature_tet_5pts(cm->xv + 3*v2, cm->edge[e].center, xf, cm->xc,
-                             tet_vol,
+                             half_pef_vol,
                              gauss_pts, weights);
 
       anai->func(time_eval, 5, NULL, (const cs_real_t *)gauss_pts,
@@ -1673,7 +1626,7 @@ cs_source_term_dcsd_q5o3_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices and cells
  *         by a constant value.
  *         A discrete Hodge operator has to be computed before this call and
@@ -1726,7 +1679,7 @@ cs_source_term_vcsp_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices and cells by
  *         an analytical function.
  *         A discrete Hodge operator has to be computed before this call and
@@ -1784,7 +1737,7 @@ cs_source_term_vcsp_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density (sd) defined on primal cells by a value.
  *         Case of face-based schemes
  *
@@ -1817,7 +1770,104 @@ cs_source_term_pcsd_by_value(const cs_xdef_t           *source,
 
   const cs_real_t *s_input = (const cs_real_t *)source->input;
 
-  values[cm->n_fc] = s_input[0] * cm->vol_c;
+  values[cm->n_fc] += s_input[0] * cm->vol_c;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the contribution for a cell related to a source term and
+ *         add it to the given array of values.
+ *         Case of a density defined on primal cells by a DoF function.
+ *         Case of scalar-valued face-based schemes
+ *
+ * \param[in]      source     pointer to a cs_xdef_t structure
+ * \param[in]      cm         pointer to a cs_cell_mesh_t structure
+ * \param[in]      time_eval  physical time at which one evaluates the term
+ * \param[in, out] cb         pointer to a cs_cell_builder_t structure
+ * \param[in, out] input      pointer to an element cast on-the-fly (or NULL)
+ * \param[in, out] values     pointer to the computed value
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_source_term_pcsd_by_dof_func(const cs_xdef_t           *source,
+                                const cs_cell_mesh_t      *cm,
+                                cs_real_t                  time_eval,
+                                cs_cell_builder_t         *cb,
+                                void                      *input,
+                                double                    *values)
+{
+  CS_UNUSED(cb);
+  CS_UNUSED(time_eval);
+  CS_UNUSED(input);
+
+  if (source == NULL)
+    return;
+
+  cs_xdef_dof_input_t  *context = (cs_xdef_dof_input_t *)source->input;
+
+  /* Sanity checks */
+  assert(values != NULL && cm != NULL);
+
+  /* Up to now this should be the only location allowed */
+  assert(cs_flag_test(context->loc, cs_flag_primal_cell));
+
+  /* Call the DoF function to evaluate the function at xc */
+  double  cell_eval;
+  context->func(1, &(cm->c_id), true,  /* compacted output ? */
+                context->input,
+                &cell_eval);
+
+  values[cm->n_fc] += cell_eval * cm->vol_c;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the contribution for a cell related to a source term and
+ *         add it to the given array of values.
+ *         Case of a density defined on primal cells by a DoF function.
+ *         Case of vector-valued face-based schemes
+ *
+ * \param[in]      source     pointer to a cs_xdef_t structure
+ * \param[in]      cm         pointer to a cs_cell_mesh_t structure
+ * \param[in]      time_eval  physical time at which one evaluates the term
+ * \param[in, out] cb         pointer to a cs_cell_builder_t structure
+ * \param[in, out] input      pointer to an element cast on-the-fly (or NULL)
+ * \param[in, out] values     pointer to the computed value
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_source_term_pcvd_by_dof_func(const cs_xdef_t           *source,
+                                const cs_cell_mesh_t      *cm,
+                                cs_real_t                  time_eval,
+                                cs_cell_builder_t         *cb,
+                                void                      *input,
+                                double                    *values)
+{
+  CS_UNUSED(cb);
+  CS_UNUSED(time_eval);
+  CS_UNUSED(input);
+
+  if (source == NULL)
+    return;
+
+  cs_xdef_dof_input_t  *context = (cs_xdef_dof_input_t *)source->input;
+
+  /* Sanity checks */
+  assert(values != NULL && cm != NULL);
+
+  /* Up to now this should be the only location allowed */
+  assert(cs_flag_test(context->loc, cs_flag_primal_cell));
+
+  /* Call the DoF function to evaluate the function at xc */
+  cs_real_t  cell_eval[3];
+  context->func(1, &(cm->c_id), true,  /* compacted output ? */
+                context->input,
+                cell_eval);
+
+  for (int k = 0; k < 3; k++)
+    values[3*cm->n_fc+k] += cell_eval[k] * cm->vol_c;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1863,7 +1913,7 @@ cs_source_term_pcvd_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at primal cells by an analytical
  *         function.
  *         Use the barycentric approximation as quadrature to evaluate the
@@ -1933,16 +1983,15 @@ cs_source_term_pcsd_by_analytic(const cs_xdef_t           *source,
                                 void                      *input,
                                 double                    *values)
 {
-  CS_UNUSED(cb);
   CS_UNUSED(input);
   if (source == NULL)
     return;
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
-                      CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
+                       CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
 
   assert(source->dim == 1);
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
@@ -2039,7 +2088,7 @@ cs_source_term_pcsd_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at primal cells by an array.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -2078,7 +2127,7 @@ cs_source_term_pcsd_by_array(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a vector-valued density defined at primal cells by an
  *         analytical function.
  *         Use the barycentric approximation as quadrature to evaluate the
@@ -2151,18 +2200,16 @@ cs_source_term_pcvd_by_analytic(const cs_xdef_t           *source,
                                 void                      *input,
                                 double                    *values)
 {
-  CS_UNUSED(cb);
   CS_UNUSED(input);
-  CS_UNUSED(time_eval);
 
   if (source == NULL)
     return;
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
-                      CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
+                       CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
   assert(source->dim == 3);
 
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
@@ -2468,9 +2515,9 @@ cs_source_term_hhosd_by_analytic(const cs_xdef_t           *source,
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL && input != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
-                      CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
+                       CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
 
   cs_hho_builder_t  *hhob = (cs_hho_builder_t *)input;
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;
@@ -2589,9 +2636,9 @@ cs_source_term_hhovd_by_analytic(const cs_xdef_t           *source,
 
   /* Sanity checks */
   assert(values != NULL && cm != NULL && input != NULL);
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
-                      CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PEQ | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FE |
+                       CS_FLAG_COMP_FEQ | CS_FLAG_COMP_EV));
 
   cs_hho_builder_t  *hhob = (cs_hho_builder_t *)input;
   cs_xdef_analytic_input_t  *anai = (cs_xdef_analytic_input_t *)source->input;

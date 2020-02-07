@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -163,7 +163,7 @@ _radiative_transfer_type(cs_tree_node_t  *tn_rt,
                          int             *keyword)
 {
   cs_tree_node_t *tn = cs_tree_get_node(tn_rt, param);
-  const char *type = cs_gui_node_get_tag(tn, "type");
+  const char *type = (tn != NULL) ? cs_gui_node_get_tag(tn, "type") : NULL;
 
   if (type != NULL) {
     if (cs_gui_strcmp(type, "constant"))
@@ -255,12 +255,8 @@ cs_gui_radiative_transfers_finalize(void)
 void
 cs_gui_radiative_transfer_parameters(void)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const char *model = cs_gui_get_thermophysical_model("radiative_transfer");
 
-  int isuird = 0;
   int ac_type = 0;
 
   if (cs_gui_strcmp(model, "off"))
@@ -276,11 +272,13 @@ cs_gui_radiative_transfer_parameters(void)
       = cs_tree_get_node(cs_glob_tree,
                          "thermophysical_models/radiative_transfer");
 
+    int isuird = -1;
     cs_gui_node_get_child_status_int(tn0, "restart", &isuird);
-    if (isuird) {
-      if (cs_restart_present())
-        cs_glob_rad_transfer_params->restart = true;
-    }
+    if (! cs_restart_present() || isuird == 0)
+      cs_glob_rad_transfer_params->restart = false;
+    else if (isuird == 1)
+      cs_glob_rad_transfer_params->restart = true;
+
     cs_gui_node_get_child_int(tn0, "quadrature",
                               &cs_glob_rad_transfer_params->i_quadrature);
     cs_gui_node_get_child_int(tn0, "directions_number",
@@ -361,9 +359,6 @@ cs_gui_rad_transfer_absorption(cs_real_t  ck[])
 void
 cs_gui_radiative_transfer_postprocess(void)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const int n_rad_b_f = 8;
 
   const char  *b_rad_names[8] = {
@@ -450,9 +445,6 @@ cs_gui_radiative_transfer_bcs(const    int   itypfb[],
                               double        *xlamp,
                               double        *rcodcl)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const cs_lnum_t  n_b_faces = cs_glob_mesh->n_b_faces;
 
   cs_tree_node_t *tn_b0 = cs_tree_get_node(cs_glob_tree,

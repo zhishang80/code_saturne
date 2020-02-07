@@ -2,7 +2,7 @@ dnl-----------------------------------------------------------------------------
 dnl
 dnl This file is part of Code_Saturne, a general-purpose CFD tool.
 dnl
-dnl Copyright (C) 1998-2019 EDF S.A.
+dnl Copyright (C) 1998-2020 EDF S.A.
 dnl
 dnl This program is free software; you can redistribute it and/or modify it under
 dnl the terms of the GNU General Public License as published by the Free Software
@@ -95,6 +95,7 @@ if test "x$with_medcoupling" != "xno" ; then
 
   AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
 [[#include <MEDCouplingFieldDouble.hxx>
+#include <MEDCouplingPartDefinition.hxx>
 #include <MEDLoader.hxx>
 #include <MEDFileField1TS.hxx>]],
 [[using namespace MEDCoupling;

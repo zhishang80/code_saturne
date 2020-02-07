@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -191,7 +191,7 @@ typedef struct {
     either be 0 or be larger than \ref idstnt. */
   int     modcpl;
 
-  /*!  direction (1=x, 2=y, 3=z) of the complete model.
+  /*!  direction (1=x, 2=y, 3=z, 4=local_max) of the complete model.
     it corresponds to the main directions of the flow.
     Useful if \ref modcpl > 0 */
   int     idirla;
@@ -268,9 +268,14 @@ typedef struct {
      - 1: resuspension model */
   int  resuspension;
 
-  /* - 0: no clogging model
+  /*!- 0: no clogging model
      - 1: clogging model */
   int  clogging;
+
+  /*!- 0: spherical particles (default)
+     - 1: spheroid particles
+     - 2: ellipsoids */
+  int  shape;
 
   /* - 0: no consolidation model
      - 1: consolidation model */
@@ -288,9 +293,6 @@ typedef struct {
   int fragmentation;
 
   int  n_stat_classes;
-
-  /*! number of aggregates that form the particle */
-  int n_particle_aggregates;
 
   int  n_user_variables;
 
@@ -451,14 +453,25 @@ typedef struct {
 
 } cs_lagr_clogging_model_t;
 
+/*! Parameters of model for non-spherical particles */
+/* ------------------------------------------------ */
+
+typedef struct {
+
+  cs_real_t          param_chmb;
+
+} cs_lagr_shape_model_t;
+
 /*! Parameters of the particle agglomeration model */
 /* ------------------------------------------ */
 
 typedef struct {
 
+  cs_lnum_t          n_max_classes;
+  cs_real_t          min_stat_weight;
+  cs_real_t          max_stat_weight;
   cs_real_t          scalar_kernel;
   cs_real_t          base_diameter;
-  cs_real_t          (*function_kernel)(cs_lnum_t, cs_lnum_t);
 
 } cs_lagr_agglomeration_model_t;
 
@@ -538,7 +551,8 @@ typedef struct {
 
   int         cluster;              /*!< statistical cluster id */
 
-  int         particle_aggregate;
+  int         aggregat_class_id;    /*!< aggregate class id */
+  cs_real_t   aggregat_fractal_dim; /*!< aggregate fractal dimension */
 
   cs_real_t   velocity_magnitude;   /*!< particle velocity magnitude */
   cs_real_t   velocity[3];          /*!< particle velocity components */
@@ -548,6 +562,20 @@ typedef struct {
   cs_real_t   diameter;             /*!< particle diameter */
   cs_real_t   diameter_variance;    /*!< particle diameter variance */
 
+  cs_real_t   shape;                /*!< particle shape for spheroids
+                                        (if \ref shape_model is activated */
+  cs_real_t   orientation[3];       /*!< particle orintation for spheroids */
+  cs_real_t   radii[3];             /*!< particle radii for ellispoids */
+  cs_real_t   angular_vel[3];       /*!< particle angular velocity
+                                         (if \ref shape_model is activated */
+
+  cs_real_t   euler[4];             /*!< particle four Euler parameters
+                                         (if \ref shape_model is activated */
+  cs_real_t   shape_param[4];       /*!< particle shape parameters
+                                         for ellispoids
+                                         (alpha_0, beta_0, gamma_0, chi _0)
+                                         in Brenner 1964
+                                         (if \ref shape_model is activated */
   cs_real_t   density;              /*!< particle density */
 
   cs_real_t   fouling_index;        /*!< fouling index */
@@ -573,7 +601,8 @@ typedef struct {
   int  ltsdyn;
 
   /*! activation (=1) or not (=0) of the two-way coupling on the mass.
-    Useful if \ref iilagr = CS_LAGR_TWOWAY_COUPLING, \ref physical_model = 1 and \ref impvar = 1 */
+    Useful if \ref iilagr = CS_LAGR_TWOWAY_COUPLING,
+    \ref physical_model = 1 and \ref impvar = 1 */
   int  ltsmas;
 
   /*  if \ref physical_model = 1 and \ref itpvar = 1, \ref ltsthe
@@ -828,7 +857,7 @@ typedef struct {
     file (\ref isuist =1). If the name of a variable is changed between two
     calculations, it will not be possible to read its value from the restart
     file */
-  char           **nombrd;
+  char  **nombrd;
 
 } cs_lagr_boundary_interactions_t;
 
@@ -998,6 +1027,7 @@ extern cs_lagr_specific_physics_t            *cs_glob_lagr_specific_physics;
 extern cs_lagr_reentrained_model_t           *cs_glob_lagr_reentrained_model;
 extern cs_lagr_precipitation_model_t         *cs_glob_lagr_precipitation_model;
 extern cs_lagr_clogging_model_t              *cs_glob_lagr_clogging_model;
+extern cs_lagr_shape_model_t                 *cs_glob_lagr_shape_model;
 
 extern cs_lagr_agglomeration_model_t         *cs_glob_lagr_agglomeration_model;
 extern cs_lagr_fragmentation_model_t         *cs_glob_lagr_fragmentation_model;
@@ -1115,6 +1145,24 @@ cs_get_lagr_precipitation_model(void);
 
 cs_lagr_clogging_model_t *
 cs_get_lagr_clogging_model(void);
+
+/*----------------------------------------------------------------------------
+ * Provide access to cs_lagr_shape_model_t
+ *
+ * needed to initialize structure with GUI
+ *----------------------------------------------------------------------------*/
+
+cs_lagr_shape_model_t *
+cs_get_lagr_shape_model(void);
+
+/*----------------------------------------------------------------------------
+ * Provide access to cs_lagr_agglomeration_model_t
+ *
+ * needed to initialize structure with GUI
+ *----------------------------------------------------------------------------*/
+
+cs_lagr_agglomeration_model_t *
+cs_get_lagr_agglomeration_model(void);
 
 /*----------------------------------------------------------------------------
  * Provide access to cs_lagr_consolidation_model_t

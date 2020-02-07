@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -108,7 +108,7 @@ class MobileMeshModel(Model):
             node = node_pm.xmlGetNode('groundwater_model',  'model')
             if node and node['model'] != 'off':
                 compat = False
-        if self.case.xmlRootNode().tagName == "NEPTUNE_CFD_GUI":
+        if self.case.module_name() == "neptune_cfd":
             compat = False
 
         return compat

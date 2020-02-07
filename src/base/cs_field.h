@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -74,6 +74,9 @@ BEGIN_C_DECLS
 /*! user-defined */
 #define CS_FIELD_USER                (1 << 6)
 
+/*! field associated to a CDO equation */
+#define CS_FIELD_CDO                 (1 << 7)
+
 /*! @} */
 
 /*============================================================================
@@ -90,6 +93,7 @@ typedef enum {
   CS_FIELD_INVALID_KEY_ID,
   CS_FIELD_INVALID_CATEGORY,
   CS_FIELD_INVALID_TYPE,
+  CS_FIELD_INVALID_FIELD,
   CS_FIELD_LOCKED
 
 } cs_field_error_type_t;

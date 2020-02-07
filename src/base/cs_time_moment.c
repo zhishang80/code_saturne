@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -438,7 +438,7 @@ _restart_info_read(void)
   /* Read previous time step if not already done */
 
   if (ts->nt_prev < 1) {
-    r = cs_restart_create("main", "restart", CS_RESTART_MODE_READ);
+    r = cs_restart_create("main.csc", "restart", CS_RESTART_MODE_READ);
     cs_restart_read_time_step_info(r);
     if (_restart_uses_main == false)
       cs_restart_destroy(&r);
@@ -448,9 +448,9 @@ _restart_info_read(void)
 
   if (r == NULL) {
     if (_restart_uses_main)
-      r = cs_restart_create("main", NULL, CS_RESTART_MODE_READ);
+      r = cs_restart_create("main.csc", NULL, CS_RESTART_MODE_READ);
     else
-      r = cs_restart_create("auxiliary", NULL, CS_RESTART_MODE_READ);
+      r = cs_restart_create("auxiliary.csc", NULL, CS_RESTART_MODE_READ);
   }
 
   _restart_info_read_auxiliary(r);
@@ -534,7 +534,7 @@ _check_restart(const char                     *name,
   int prev_wa_id = -1;
 
   if (   (*nt_start > -1 && *nt_start >= ri->nt_prev)
-      || (*t_start >= 0 && *t_start >= ri->nt_prev))
+      || (*t_start >= 0 && *t_start >= ri->t_prev))
     return prev_id;
 
   /* Adjust accumulator info if moment should be restarted */
@@ -1661,15 +1661,13 @@ cs_time_moment_define_by_func(const char                *name,
         break;
       }
     }
+  } else { /* Build field matching moment */
+    f = cs_field_create(name,
+                        CS_FIELD_POSTPROCESS | CS_FIELD_ACCUMULATOR,
+                        location_id,
+                        moment_dim,
+                        false);  /* no previous values */
   }
-
-  /* Build field matching moment */
-
-  f = cs_field_create(name,
-                      CS_FIELD_POSTPROCESS | CS_FIELD_ACCUMULATOR,
-                      location_id,
-                      moment_dim,
-                      false);  /* no previous values */
 
   moment_id = _find_or_add_moment(location_id,
                                   dim,

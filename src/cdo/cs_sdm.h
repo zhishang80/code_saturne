@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -210,6 +210,26 @@ cs_sdm_add_scalvect(int               n,
 
   for (int i = 0; i < n; i++)
     y[i] += s * x[i];
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Set the lower left according to the upper right part in order to
+ *          get a symmetric matrix.
+ *
+ * \param[in, out]      mat    pointer to a cs_sdm_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_sdm_symm_ur(cs_sdm_t      *mat)
+{
+  assert(mat != NULL);
+  for (int i = 1; i < mat->n_rows; i++) {
+    cs_real_t  *m_i = mat->val + i*mat->n_rows;
+    for (int j = 0; j < i; j++)
+      m_i[j] = mat->val[j*mat->n_rows + i];
+  }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -427,6 +447,21 @@ cs_sdm_block33_init(cs_sdm_t     *m,
                     int           n_row_blocks,
                     int           n_col_blocks);
 
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Convert a matrix with each entry is a 3x3 block into a matrix
+ *          with a block for each component x,y,z.
+ *
+ * \param[in]      mb33        pointer to a matrix
+ * \param[in, out] mbxyz       pointer to a matrix to build (but allocated)
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_sdm_block_33_to_xyz(const cs_sdm_t   *mb33,
+                       cs_sdm_t         *mbxyz);
+
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Copy a cs_sdm_t structure into another cs_sdm_t structure
@@ -594,6 +629,31 @@ void
 cs_sdm_multiply(const cs_sdm_t   *a,
                 const cs_sdm_t   *b,
                 cs_sdm_t         *c);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Compute a dense 3x3 matrix-vector product
+ *          mv has been previously allocated
+ *
+ * \param[in]      mat    local matrix to use
+ * \param[in]      vec    local vector to use
+ * \param[in, out] mv result of the local matrix-vector product
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_sdm_33_matvec(const cs_sdm_t    *mat,
+                 const cs_real_t   *vec,
+                 cs_real_t         *mv)
+{
+  /* Sanity checks */
+  assert(mat != NULL && vec != NULL && mv != NULL);
+  assert(mat->n_rows == 3 && mat->n_cols == 3);
+
+  mv[0] = vec[0]*mat->val[0] + vec[1]*mat->val[1] + vec[2]*mat->val[2];
+  mv[1] = vec[0]*mat->val[3] + vec[1]*mat->val[4] + vec[2]*mat->val[5];
+  mv[2] = vec[0]*mat->val[6] + vec[1]*mat->val[7] + vec[2]*mat->val[8];
+}
 
 /*----------------------------------------------------------------------------*/
 /*!

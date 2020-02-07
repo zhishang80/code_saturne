@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -100,7 +100,7 @@ call field_get_val_s(icrom, crom)
 if (ippmod(iatmos).ge.1) call field_get_val_s(itempc, cpro_tempc)
 
 if (ippmod(iatmos).ge.2) then
-  call field_get_val_s(ivarfl(isca(itotwt)), cvar_totwt)
+  call field_get_val_s(ivarfl(isca(iymw)), cvar_totwt)
   call field_get_val_s(iliqwt, cpro_liqwt)
 endif
 

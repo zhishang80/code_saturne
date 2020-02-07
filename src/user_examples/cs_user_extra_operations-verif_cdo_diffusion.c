@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -30,47 +30,25 @@
  * Standard C library headers
  *----------------------------------------------------------------------------*/
 
-#include <errno.h>
-#include <locale.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
+
+#if defined(HAVE_MPI)
+#include <mpi.h>
+#endif
+
+/*----------------------------------------------------------------------------
+ * PLE library headers
+ *----------------------------------------------------------------------------*/
+
+#include <ple_coupling.h>
 
 /*----------------------------------------------------------------------------
  * Local headers
  *----------------------------------------------------------------------------*/
 
-#include <bft_mem.h>
-#include <bft_printf.h>
-
-#include "cs_array_reduce.h"
-#include "cs_blas.h"
-#include "cs_domain.h"
-#include "cs_math.h"
-#include "cs_mesh.h"
-#include "cs_mesh_adjacencies.h"
-#include "cs_mesh_quantities.h"
-#include "cs_mesh_location.h"
-#include "cs_parall.h"
-#include "cs_post.h"
-#include "cs_field.h"
-#include "cs_sdm.h"
-#include "cs_cdofb_scaleq.h"
-#include "cs_equation.h"
-#include "cs_equation_param.h"
-#include "cs_evaluate.h"
-#include "cs_hodge.h"
-#include "cs_param.h"
-#include "cs_quadrature.h"
-#include "cs_reco.h"
-
-/*----------------------------------------------------------------------------
- * Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -87,8 +65,6 @@ BEGIN_C_DECLS
  * \brief Additional user-defined post-processing and analysis functions
 */
 /*----------------------------------------------------------------------------*/
-
-/*! \cond DOXYGEN_SHOULD_SKIP_THIS */
 
 /*=============================================================================
  * Local Macro definitions and structure definitions
@@ -289,8 +265,6 @@ _cdovb_post(const cs_cdo_connect_t     *connect,
 
 }
 
-/*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
-
 /*============================================================================
  * Public function prototypes
  *============================================================================*/
@@ -307,6 +281,9 @@ _cdovb_post(const cs_cdo_connect_t     *connect,
 void
 cs_user_extra_operations(cs_domain_t          *domain)
 {
+
+  /*! [extra_verif_cdo_diff] */
+
   const cs_cdo_connect_t  *connect = domain->connect;
   const cs_cdo_quantities_t  *cdoq = domain->cdo_quantities;
   const cs_time_step_t  *time_step = domain->time_step;
@@ -366,6 +343,8 @@ cs_user_extra_operations(cs_domain_t          *domain)
   /* Free */
   BFT_FREE(filename);
   fclose(resume);
+
+  /*! [extra_verif_cdo_diff] */
 }
 
 /*----------------------------------------------------------------------------*/

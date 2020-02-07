@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -58,10 +58,10 @@ class BodyForcesModel(Model):
         """
         self.case = case
 
-        if self.case.xmlRootNode().tagName == "Code_Saturne_GUI":
+        if self.case.module_name() == "code_saturne":
             self.node_pp      = self.case.xmlGetNode('physical_properties')
             self.node_gravity = self.node_pp.xmlInitNode('gravity')
-        elif self.case.xmlRootNode().tagName == "NEPTUNE_CFD_GUI":
+        elif self.case.module_name() == "neptune_cfd":
             self.node_pp = self.case.xmlGetNode('closure_modeling')
             self.node_gravity = self.node_pp.xmlInitNode('gravity')
 

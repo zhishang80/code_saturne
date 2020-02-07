@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -304,26 +304,6 @@ void CS_PROCF(synvin, SYNVIN)
 void CS_PROCF(synvie, SYNVIE)
 (
  cs_real_t  var[]
-);
-
-/*----------------------------------------------------------------------------
- * Update a diagonal tensor array in case of parallelism and/or periodicity.
- *
- * Fortran interface:
- *
- * subroutine syndia(var)
- * *****************
- *
- * var11   : <-> : diagonal tensor component 11 array
- * var22   : <-> : diagonal tensor component 22 array
- * var33   : <-> : diagonal tensor component 33 array
- *----------------------------------------------------------------------------*/
-
-void CS_PROCF(syndia, SYNDIA)
-(
- cs_real_t  var11[],
- cs_real_t  var22[],
- cs_real_t  var33[]
 );
 
 /*----------------------------------------------------------------------------

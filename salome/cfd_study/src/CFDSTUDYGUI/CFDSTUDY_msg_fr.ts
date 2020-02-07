@@ -111,6 +111,10 @@
             <translation>Exécution du script...</translation>
         </message>
         <message>
+            <source>RUN_SCRIPT_ACTION_ACCESS_ERROR</source>
+            <translation>Vous n'avez pas les droits d'accès pour le script d'exécution !</translation>
+        </message>
+        <message>
             <source>UPDATE_CASE_PATH_ACTION_TEXT</source>
             <translation>Mise à jour du chemin du cas...</translation>
         </message>
@@ -121,10 +125,6 @@
         <message>
             <source>UPDATE_CASE_PATH_ACTION_SB</source>
             <translation>Mise à jour du chemin du cas...</translation>
-        </message>
-        <message>
-            <source>RUN_SCRIPT_ACTION_ACCESS_ERROR</source>
-            <translation>Vous n'avez pas les droits d'accès pour le script d'exécution !</translation>
         </message>
         <message>
             <source>SOLVER_FILE_MENU_TEXT</source>
@@ -175,6 +175,54 @@
             <translation>Ouvrir un terminal</translation>
         </message>
         <message>
+            <source>SOLVER_EDITOR_ACTION_TEXT</source>
+            <translation>Gestion des sources utilisateur</translation>
+        </message>
+        <message>
+            <source>SOLVER_EDITOR_ACTION_TIP</source>
+            <translation>Gestion des sources utilisateur</translation>
+        </message>
+        <message>
+            <source>SOLVER_EDITOR_ACTION_SB</source>
+            <translation>Gestion des sources utilisateur</translation>
+        </message>
+        <message>
+            <source>SOLVER_COMPILER_ACTION_TEXT</source>
+            <translation>Tester la compilation des fonctions utilisateur</translation>
+        </message>
+        <message>
+            <source>SOLVER_COMPILER_ACTION_TIP</source>
+            <translation>Tester la compilation des fonctions utilisateur</translation>
+        </message>
+        <message>
+            <source>SOLVER_COMPILER_ACTION_SB</source>
+            <translation>Tester la compilation des fonctions utilisateur</translation>
+        </message>
+        <message>
+            <source>SOLVER_LOGVIEWER_ACTION_TEXT</source>
+            <translation>Visionner les fichiers log</translation>
+        </message>
+        <message>
+            <source>SOLVER_LOGVIEWER_ACTION_TIP</source>
+            <translation>Visionner les fichiers log</translation>
+        </message>
+        <message>
+            <source>SOLVER_LOGVIEWER_ACTION_SB</source>
+            <translation>Visionner les fichiers log</translation>
+        </message>
+        <message>
+            <source>SOLVER_FILETRANSFER_ACTION_TEXT</source>
+            <translation>Transférer des fichiers sur un cluster distant</translation>
+        </message>
+        <message>
+            <source>SOLVER_FILETRANSFER_ACTION_TIP</source>
+            <translation>Transférer des fichiers sur un cluster distant</translation>
+        </message>
+        <message>
+            <source>SOLVER_FILETRANSFER_ACTION_SB</source>
+            <translation>Transférer des fichiers sur un cluster distant</translation>
+        </message>
+        <message>
             <source>SOLVER_DISPLAYCASE_ACTION_TEXT</source>
             <translation>Afficher le contenu du XML</translation>
         </message>
@@ -185,6 +233,30 @@
         <message>
             <source>SOLVER_DISPLAYCASE_ACTION_SB</source>
             <translation>Afficher le contenu du XML</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_ACTION_TEXT</source>
+            <translation>Lancer le calcul</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_ACTION_TIP</source>
+            <translation>Lancer le calcul</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_ACTION_SB</source>
+            <translation>Lancer le calcul</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_OT_ACTION_TEXT</source>
+            <translation>Passer la mise en données à OpenTURNS</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_OT_ACTION_TIP</source>
+            <translation>Passer la mise en données à OpenTURNS</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_OT_ACTION_SB</source>
+            <translation>Passer la mise en données à OpenTURNS</translation>
         </message>
         <message>
             <source>REMOVE_ACTION_TEXT</source>

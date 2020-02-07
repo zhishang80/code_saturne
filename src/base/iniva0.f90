@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -80,7 +80,7 @@ integer          iel   , ifac
 integer          iclip , ii    , jj    , idim, f_dim
 integer          ifcvsl
 integer          iflid, nfld, ifmaip, bfmaip, iflmas, iflmab
-integer          kscmin, kscmax
+integer          kscmin
 integer          f_type, idftnp
 integer          keyvar
 integer          f_id, kdflim
@@ -136,15 +136,6 @@ call field_get_val_s_by_name('dt', dt)
 
 jj = 0
 
-! En compressible, ISYMPA initialise (= 1) car utile dans le calcul
-!     du pas de temps variable avant passage dans les C.L.
-
-if ( ippmod(icompf).ge.0 ) then
-  do ifac = 1, nfabor
-    isympa(ifac) = 1
-  enddo
-endif
-
 !===============================================================================
 ! 2. PAS DE TEMPS
 !===============================================================================
@@ -183,7 +174,7 @@ call field_current_to_previous(icrom)
 call field_current_to_previous(ibrom)
 call field_current_to_previous(ibrom)
 
-! Moleacular viscosity
+! Molecular viscosity
 call field_get_val_s(iviscl, viscl)
 call field_get_val_s(ivisct, visct)
 
@@ -283,7 +274,6 @@ if (iale.ge.1) then
   endif
 
   call cs_gui_mesh_viscosity
-  call usvima
 
 endif
 
@@ -600,19 +590,24 @@ do iflid = 0, nfld - 1
   call field_get_type(iflid, f_type)
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-    call field_get_key_int(iflid, kimasf, iflmas) ! interior mass flux
-    call field_get_key_int(iflid, kbmasf, iflmab) ! boundary mass flux
+    ! Is this field not managed by CDO ? Not useful with CDO
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
 
-    if (iflmas.ge.0 .and. iflmas.ne.ifmaip) then
-      call field_current_to_previous(iflid)
-      ifmaip = iflmas
-    endif
+      call field_get_key_int(iflid, kimasf, iflmas) ! interior mass flux
+      call field_get_key_int(iflid, kbmasf, iflmab) ! boundary mass flux
 
-    if (iflmab.ge.0 .and. iflmab.ne.bfmaip) then
-      call field_current_to_previous(iflid)
-      bfmaip = iflmab
-    endif
-  endif
+      if (iflmas.ge.0 .and. iflmas.ne.ifmaip) then
+        call field_current_to_previous(iflid)
+        ifmaip = iflmas
+      endif
+
+      if (iflmab.ge.0 .and. iflmab.ne.bfmaip) then
+        call field_current_to_previous(iflid)
+        bfmaip = iflmab
+      endif
+
+    endif ! CDO ?
+  endif ! VARIABLE ?
 
 enddo
 
@@ -642,8 +637,13 @@ do iflid = 0, nfld - 1
   call field_get_type(iflid, f_type)
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-    call field_current_to_previous(iflid)
-  endif
+    ! Is this field not managed by CDO ? Perfomed elsewhere with CDO
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
+
+      call field_current_to_previous(iflid)
+
+    endif ! CDO ?
+  endif ! VARIABLE ?
 enddo
 
 
@@ -656,19 +656,23 @@ do f_id = 0, nfld - 1
 
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
+    ! Is this field not managed by CDO ?
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
 
-    call field_get_key_int(f_id, kdflim, iflid)
+      call field_get_key_int(f_id, kdflim, iflid)
 
-    if (iflid.ne.-1) then
+      if (iflid.ne.-1) then
 
-      call field_get_val_s(iflid, cpro_diff_lim)
+        call field_get_val_s(iflid, cpro_diff_lim)
 
-      do iel = 1, ncelet
-        cpro_diff_lim(iel) = 1.d0
-      enddo
+        do iel = 1, ncelet
+          cpro_diff_lim(iel) = 1.d0
+        enddo
 
-    endif
-  endif
+      endif
+
+    endif ! CDO ?
+  endif ! VARIABLE ?
 enddo
 
 !----

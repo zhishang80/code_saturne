@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -412,6 +412,12 @@ cs_lagr_event_initialize(void)
        CS_LAGR_RESIDENCE_TIME,
        CS_LAGR_MASS,
        CS_LAGR_DIAMETER,
+       CS_LAGR_SHAPE,
+       CS_LAGR_ORIENTATION,
+       CS_LAGR_RADII,
+       CS_LAGR_ANGULAR_VEL,
+       CS_LAGR_EULER,
+       CS_LAGR_SHAPE_PARAM,
        CS_LAGR_TAUP_AUX,
        CS_LAGR_COORDS,
        CS_LAGR_VELOCITY,

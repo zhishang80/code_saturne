@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -81,7 +81,7 @@ BEGIN_C_DECLS
 /*!
   \enum cs_parameter_error_behavior_t
 
-  \brief File acces modes
+  \brief File access modes
 
   \var CS_WARNING
        Warn only
@@ -109,16 +109,17 @@ BEGIN_C_DECLS
         - 0: arithmetic (default)
   \var  cs_space_disc_t::imrgra
         type of gradient reconstruction
-        - 0: iterative process
+        - 0: Green-Gauss with iterative handling of non-orthogonalities
         - 1: standard least squares method
         - 2: least squares method with extended neighborhood
         - 3: least squares method with reduced extended neighborhood
-        - 4: iterative process initialized by the least squares method
-  \var  cs_space_disc_t::anomax
-        <a name="anomax"></a>
-        non orthogonality angle of the faces, in radians.
-        For larger angle values, cells with one node on the wall are kept in the
-        extended support of the neighboring cells.
+        - 4: Green-Gauss with least squares gradient face values
+        - 5: Green-Gauss with least squares gradient over extended
+             neighborhood face values
+        - 6: Green-Gauss with least squares gradient over reduced
+             extended neighborhood face values
+        - 7: Green-Gauss with face values based on cell to vertex interpolation
+
   \var  cs_space_disc_t::iflxmw
         method to compute interior mass flux due to ALE mesh velocity
         - 0: based on nodes displacement
@@ -249,13 +250,9 @@ BEGIN_C_DECLS
 
   \var  cs_var_cal_opt_t::nswrgr
         \anchor nswrgr
-        For each unknown variable, \ref nswrgr <= 1 indicates that the gradients
-        are not reconstructed
-         - if \ref imrgra = 0 or 4, \ref nswrgr is the number of iterations for
-         the gradient reconstruction
-         - if \ref imrgra = 1, 2 or 3, \ref nswrgr > 1 indicates that the
-         gradients are reconstructed (but the method is not iterative, so any
-         value larger than 1 for \ref nswrgr yields the same result).\n
+        Number of iterations for the iterative gradient reconstruction
+        (\ref imrgra = 0).
+        If \ref imrgra = 0 and \ref nswrgr <= 1, gradients are not reconstructed.
 
   \var  cs_var_cal_opt_t::nswrsm
         \anchor nswrsm
@@ -271,40 +268,27 @@ BEGIN_C_DECLS
         Indicates the type of gradient reconstruction (one method for all the
         variables)
            - 0: iterative reconstruction of the non-orthogonalities
-           - 1: least squares method based on the first neighbour cells (cells
+           - 1: least squares method based on the first neighbor cells (cells
         which share a face with the treated cell)
-           - 2: least squares method based on the extended neighbourhood (cells
-        which share a node with the treated cell)
-           - 3: least squares method based on a partial extended neighbourhood
-        (all first neighbours plus the extended neighbourhood cells that are
-        connected to a face where the non-orthogonality angle is larger than
-        parameter anomax)
-           - 4: iterative reconstruction with initialisation using the least
-        squares method (first neighbours)
-           - 5: iterative reconstruction with initialisation using the least
-        squares method based on an extended neighbourhood
-           - 6: iterative reconstruction with initialisation using the least
-        squares method based on a partial extended neighbourhood
+           - 2, 3: least squares method using the extended neighborhood
+           - 4: Green-Gauss based using the least squares method (first neighbors)
+                to compute face values
+           - 5, 6: Green-Gauss based using the least squares method with an
+                extended neighborhood to compute face values
+        squares method based on a partial extended neighborhood
         if \ref imrgra fails due to probable mesh quality problems, it is usually
         effective to use \ref imrgra = 3. Moreover, \ref imrgra = 3 is usually
         faster than \ref imrgra = 0 (but with less feedback on its use).
-        It should be noted that \ref imrgra = 1, 2 or 3 automatically triggers
-        a gradient limitation procedure. See \ref imligr.\n
-        Useful if and only if there is \ref nswrgr > 1 for at least one variable.
-        Also, pressure gradients (or other gradients deriving from a potential)
-        always use an iterative reconstruction. To force a non-iterative
-        reconstruction for those gradients, a negative value of this keyword
-        may be used, in which case the method matching the absolute value
-        of the keyword will be used.
 
   \var  cs_var_cal_opt_t::imligr
         \anchor imligr
         For each unknown variable, indicates the type of gradient limitation
-           - -1: no limitation
-           - 0: based on the neighbours
-           - 1: superior order\n
-        For all the unknowns, \ref imligr is initialized to -1 if \ref imrgra
-        = 0 or 4 and to 1 if \ref imrgra = 1, 2 or 3.
+           - -1 (CS_GRADIENT_LIMIT_NONE): no limitation
+           - 0 (CS_GRADIENT_LIMIT_CELL): based on the neighbors
+           - 1 (CS_GRADIENT_LIMIT_FACE): superior order\n
+        \ref imligr is applied only to least-squares gradients.
+        In the case of the Green-Gauss gradient with least-squares-based
+        face gradients, it is applied to the least-squares step.
 
   \var  cs_var_cal_opt_t::ircflu
         \anchor ircflu
@@ -383,13 +367,14 @@ BEGIN_C_DECLS
   \var  cs_var_cal_opt_t::epsrgr
         \anchor epsrgr
         For each unknown variable, relative precision for the iterative gradient
-        reconstruction.\n Useful for all the unknowns when \ref imrgra = 0 or 4.
+        reconstruction.\n Useful for all the unknowns when \ref imrgra = 0.
 
   \var  cs_var_cal_opt_t::climgr
         \anchor climgr
-        For each unknown variable, factor of gradient limitation (high value means
-        little limitation). \n
-        Useful for all the unknowns variables for which \ref imligr = -1.
+        For least squares gradients, factor of gradient limitation
+        (high value means little limitation). \n
+        Useful for all the variables using least-squares gradients for
+        which \ref imligr > CS_GRADIENT_LIMIT_NONE.
 
   \var  cs_var_cal_opt_t::extrag
         \anchor extrag
@@ -397,17 +382,14 @@ BEGIN_C_DECLS
         gradients at the boundaries. It affects only the Neumann conditions.
         The only possible values of \ref extrag are:
              - 0: homogeneous Neumann calculated at first-order
-             - 0.5: improved homogeneous Neumann, calculated at second-order in
-        the case of an orthogonal mesh and at first-order otherwise
              - 1: gradient extrapolation (gradient at the boundary face equal to
-        the gradient in the neighbour cell), calculated at second-order in the
+        the gradient in the neighbor cell), calculated at second-order in the
         case of an orthogonal mesh and at first-order otherwise extrag often
         allows to correct the non-physical velocities that appear on horizontal
         walls when density is variable and there is gravity. It is strongly
         advised to keep \ref extrag = 0 for the variables apart from pressure.
         See also \ref cs_stokes_model_t::iphydr "iphydr". In practice, only the
-        values 0 and 1 are allowed. The value 0.5 is not allowed by default (but
-        the lock can be overridden if necessary, contact the development team).
+        values 0 and 1 are allowed.
 
   \var  cs_var_cal_opt_t::relaxv
         \anchor relaxv
@@ -431,6 +413,59 @@ BEGIN_C_DECLS
 /*----------------------------------------------------------------------------*/
 
 /*!
+  \struct cs_time_scheme_t
+
+  \brief Time scheme descriptor.
+
+  Members of the time scheme structure are publicly accessible, to allow for
+  concise  syntax, as they are expected to be used in many places.
+
+  \var  cs_time_scheme_t::isto2t
+        \anchor isto2t
+        Specifies the time scheme activated for
+        the source terms of the turbulence equations i.e. related to
+        \f$k\f$, \f$R_{ij}\f$, \f$\varepsilon\f$, \f$\omega\f$, \f$\varphi\f$,
+        \f$\overline{f}\f$), apart from convection and diffusion.
+        - 0: standard first-order: the terms which are linear
+             functions of the solved variable are implicit and the others
+              are explicit
+        - 1: second-order: the terms of the form \f$S_i\phi\f$ which are
+             linear functions of the solved variable \f$\phi\f$ are
+             expressed as second-order terms by interpolation (according to
+             the formula
+             \f$(S_i\phi)^{n+\theta}=S_i^n[(1-\theta)\phi^n+\theta\phi^{n+1}]\f$,
+             \f$\theta\f$ being given by the value of \ref thetav associated
+             with the variable \f$\phi\f$); the other terms \f$S_e\f$ are
+             expressed as second-order terms by extrapolation (according to
+             the formula
+             \f$(S_e)^{n+\theta}=[(1+\theta)S_e^n-\theta S_e^{n-1}]\f$,
+             \f$\theta\f$ being given by the value of \ref thetst = 0.5)
+        - 2: the linear terms \f$S_i\phi\f$ are treated in the same
+             \ref isto2t = 1; the other terms \f$S_e\f$ are way as when
+             extrapolated according to the same formula as when
+             \ref isto2t = 1, but with \f$\theta\f$= \ref thetst = 1.\n
+             Due to certain specific couplings between the turbulence equations,
+             \ref isto2t is allowed the value 1 or 2 only for the
+             \f$R_{ij}\f$ models (\ref iturb = 30 or 31);
+             hence, it is always initialised to 0.
+
+  \var  cs_time_scheme_t::thetst
+        \anchor thetst
+        \f$ \theta \f$-scheme for the extrapolation of the nonlinear
+        explicit source terms $S_e$ of the turbulence equations when the
+        source term extrapolation has been activated (see \ref isto2t),
+        following the formula
+        \f$(S_e)^{n+\theta}=(1+\theta)S_e^n-\theta S_e^{n-1}\f$.\n
+        The value of \f$theta\f$ is deduced from the value chosen for
+        \ref isto2t. Generally, only the value 0.5 is used.
+        -  0 : explicit
+        - 1/2: extrapolated in n+1/2
+        -  1 : extrapolated in n+1
+*/
+
+/*----------------------------------------------------------------------------*/
+
+/*!
   \struct cs_piso_t
 
   \brief PISO options descriptor.
@@ -439,7 +474,7 @@ BEGIN_C_DECLS
   concise  syntax, as they are expected to be used in many places.
 
   \var  cs_piso_t::nterup
-        number of interations on the pressure-velocity coupling on Navier-Stokes
+        number of iterations on the pressure-velocity coupling on Navier-Stokes
   \var  cs_piso_t::epsup
         relative precision for the convergence test of the iterative process on
         pressure-velocity coupling
@@ -479,7 +514,7 @@ typedef struct {
 
   char     *name;               /* Property name */
   int       dim;                /* Property dimension */
-  int       location_id;        /* Propert location id */
+  int       location_id;        /* Property location id */
 
 } cs_user_property_def_t;
 
@@ -505,7 +540,7 @@ static cs_var_cal_opt_t _var_cal_opt =
   .isstpc = 1,
   .nswrgr = 100,
   .nswrsm = 1,
-  .imrgra = 0,
+  .imrgra = -1,
   .imligr = -1,
   .ircflu = 1,
   .iwgrec = 0,
@@ -526,12 +561,21 @@ static cs_var_cal_opt_t _var_cal_opt =
 static cs_space_disc_t  _space_disc =
 {
   .imvisf = 0,
-  .imrgra = 0,
-  .anomax = -1e12*10.,
+  .imrgra = 4,
   .iflxmw = 0
 };
 
 const cs_space_disc_t  *cs_glob_space_disc = &_space_disc;
+
+/* Time scheme options structure and associated pointer */
+
+static cs_time_scheme_t  _time_scheme =
+{
+  .isto2t = -999,
+  .thetst = -999.0,
+};
+
+const cs_time_scheme_t  *cs_glob_time_scheme = &_time_scheme;
 
 /* PISO structure and associated pointer */
 
@@ -595,8 +639,11 @@ cs_tree_node_t  *cs_glob_tree = NULL;
 void
 cs_f_space_disc_get_pointers(int     **imvisf,
                              int     **imrgra,
-                             double  **anomax,
                              int     **iflxmw);
+
+void
+cs_f_time_scheme_get_pointers(int     **isto2t,
+                              double  **thetst);
 
 void
 cs_f_piso_get_pointers(int     **nterup,
@@ -652,7 +699,7 @@ _log_func_var_cal_opt(const void *t)
 static void
 _log_func_default_var_cal_opt(const void *t)
 {
-  const char fmt_i[] = "      %-19s  %d %s\n";
+  const char fmt_i[] = "      %-19s  %-12d %s\n";
   const char fmt_r[] = "      %-19s  %-12.3g %s\n";
   const cs_var_cal_opt_t *_t = (const void *)t;
   cs_log_printf(CS_LOG_SETUP,"  var_cal_opt\n");
@@ -798,20 +845,32 @@ _log_func_default_gas_mix_species_prop(const void *t)
  * parameters:
  *   imvisf  --> pointer to cs_glob_space_disc->imvisf
  *   imrgra  --> pointer to cs_glob_space_disc->imrgra
- *   anomax  --> pointer to cs_glob_space_disc->anomax
  *   iflxmw  --> pointer to cs_glob_space_disc->iflxmw
  *----------------------------------------------------------------------------*/
 
 void
 cs_f_space_disc_get_pointers(int     **imvisf,
                              int     **imrgra,
-                             double  **anomax,
                              int     **iflxmw)
 {
   *imvisf = &(_space_disc.imvisf);
   *imrgra = &(_space_disc.imrgra);
-  *anomax = &(_space_disc.anomax);
   *iflxmw = &(_space_disc.iflxmw);
+}
+
+/*----------------------------------------------------------------------------
+ * Get pointers to members of the global time scheme structure.
+ *
+ * This function is intended for use by Fortran wrappers, and
+ * enables mapping to Fortran global pointers.
+ *----------------------------------------------------------------------------*/
+
+void
+cs_f_time_scheme_get_pointers(int     **isto2t,
+                              double  **thetst)
+{
+  *isto2t = &(_time_scheme.isto2t);
+  *thetst = &(_time_scheme.thetst);
 }
 
 /*----------------------------------------------------------------------------
@@ -850,7 +909,7 @@ cs_f_piso_get_pointers(int     **nterup,
 
 /*----------------------------------------------------------------------------
  *!
- * \brief Provide acces to cs_glob_space_disc.
+ * \brief Provide access to cs_glob_space_disc.
  *
  * Needed to initialize structure with GUI and user C functions.
  *
@@ -864,9 +923,25 @@ cs_get_glob_space_disc(void)
   return &_space_disc;
 }
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Provide access to cs_glob_time_scheme
+ *
+ * needed to initialize structure with GUI and user C functions.
+ *
+ * \return  time scheme information structure
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_time_scheme_t *
+cs_get_glob_time_scheme(void)
+{
+  return &_time_scheme;
+}
+
 /*----------------------------------------------------------------------------
  *!
- * \brief Provide acces to cs_glob_piso.
+ * \brief Provide access to cs_glob_piso.
  *
  * Needed to initialize structure with GUI.
  *
@@ -1062,7 +1137,7 @@ cs_parameters_read_restart_info(void)
 {
   if (cs_restart_present()) {
     cs_restart_t *r
-      = cs_restart_create("main", "restart", CS_RESTART_MODE_READ);
+      = cs_restart_create("main.csc", "restart", CS_RESTART_MODE_READ);
     cs_restart_read_time_step_info(r);
     cs_restart_destroy(&r);
   }
@@ -1563,21 +1638,17 @@ cs_space_disc_log_setup(void)
         "                    1: standard least squares method\n"
         "                    2: least squares method with extended "
         "neighborhood\n"
-        "                    3: standard least squares method with reduced "
-        "extended neighborhood\n"
-        "                    4: iterative process initialized by the least "
-        "squares method)\n"
+        "                    3: standard least squares method with reduced"
+        " extended neighborhood\n"
+        "                    4: Green-Gauss using least squares face value"
+        " interpolation)\n"
         "\n"
-        "    anomax       %-12.3g (non-orthogonality angle (rad) above which "
-        "cells are\n"
-        "                    selected for the extended neighborhood)\n"
         "    iflxmw:      %d (method to compute inner mass flux due to mesh "
         "velocity in ALE\n"
         "                    0: based on mesh velocity at cell centers\n"
         "                    1: based on nodes displacement)\n"),
         cs_glob_space_disc->imvisf,
         cs_glob_space_disc->imrgra,
-        cs_glob_space_disc->anomax,
         cs_glob_space_disc->iflxmw);
 }
 

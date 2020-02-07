@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -191,8 +191,7 @@ endif
 !    Mass density
 !===============================================================================
 
-call cs_fuel_physprop2 ( ncelet , ncel )
-!=====================
+call cs_fuel_physprop2(ncel)
 
 !===============================================================================
 ! 3. Calculation of the physical properties of the gaseous phase
@@ -361,8 +360,7 @@ call cs_fuel_physprop1 &
 
 ! --- Transport of H2
 
-call  cs_fuel_thfieldconv2 ( ncelet , ncel )
-!=========================
+call  cs_fuel_thfieldconv2(ncel)
 
 !===============================================================================
 ! 5. Calculation of the physical properties of the mixture

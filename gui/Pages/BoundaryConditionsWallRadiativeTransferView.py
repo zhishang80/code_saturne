@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -171,7 +171,7 @@ class BoundaryConditionsWallRadiativeTransferView(QWidget,
         #self.lineEditEmissivity.show()
         self.lineEditEmissivity.setText(str(self.__boundary.getEmissivity()))
 
-        #self.labelIntTemperature.hide()
+        self.labelIntTemperature.setText("Interior temperature")
         #self.lineEditIntTemperature.hide()
         #self.labelIntTemperatureUnit.hide()
         self.lineEditIntTemperature.setText(str(self.__boundary.getInternalTemperatureProfile()))
@@ -197,6 +197,9 @@ class BoundaryConditionsWallRadiativeTransferView(QWidget,
         self.lineEditConductionFlux.setText(str(self.__boundary.getFlux()))
 
         if cond == 'ipgrno':
+
+            self.labelIntTemperature.setText("Initial temperature")
+
             self.labelConductivity.show()
             self.lineEditConductivity.show()
             self.labelConductivityUnit.show()

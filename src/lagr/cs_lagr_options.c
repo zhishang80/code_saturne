@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -41,7 +41,6 @@
  *  Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_error.h"
 #include "bft_mem.h"
 #include "bft_printf.h"
 
@@ -304,8 +303,7 @@ cs_lagr_option_definition(cs_int_t   *isuite,
   /* User setup
      ---------- */
 
-  if (cs_gui_file_is_loaded())
-    cs_gui_particles_model();
+  cs_gui_particles_model();
 
   cs_user_lagr_model();
 
@@ -798,7 +796,7 @@ cs_lagr_option_definition(cs_int_t   *isuite,
                                   _("in Lagrangian module"),
                                   "cs_glob_lagr_time_scheme->idirla",
                                   lagr_time_scheme->idirla,
-                                  1, 4);
+                                  1, 5);
   }
 
   cs_parameters_is_in_range_int(CS_ABORT_DELAYED,

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -59,7 +59,6 @@ use cstnum
 use ppppar
 use ppthch
 use ppincl
-use ihmpre
 use field
 use cs_c_bindings
 
@@ -70,37 +69,13 @@ implicit none
 ! Local variables
 
 integer          ii
-integer          iok, kscmin, kscmax
-double precision  scaclp(4)
+integer          iok
 
 type(var_cal_opt) :: vcopt
 
 !===============================================================================
 ! 1. VARIABLES TRANSPORTEES
 !===============================================================================
-
-! 1.1 Definition des scamin et des scamax des variables transportees
-! ==================================================================
-
-! Key id for scamin and scamax
-call field_get_key_id("min_scalar_clipping", kscmin)
-call field_get_key_id("max_scalar_clipping", kscmax)
-
-call field_get_key_double(ivarfl(isca(ienerg)), kscmin, scaclp(1))
-call field_get_key_double(ivarfl(isca(itempk)), kscmin, scaclp(2))
-call field_get_key_double(ivarfl(isca(ienerg)), kscmax, scaclp(3))
-call field_get_key_double(ivarfl(isca(itempk)), kscmax, scaclp(4))
-
-if ( (abs(scaclp(1)+grand).gt.epzero).or.           &
-     (abs(scaclp(2)+grand).gt.epzero).or.           &
-     (abs(scaclp(3)-grand).gt.epzero).or.           &
-     (abs(scaclp(4)-grand).gt.epzero) ) then
-  write(nfecra,2000) scaclp(1), scaclp(3), scaclp(2), scaclp(4)
-  call csexit (1)
-endif
-
-! 1.2 Nature des scalaires transportes
-! ====================================
 
 ! Does scalar itempk behave like a temperature ?
 ! TODO check this; should be 1 for temperature unless handled in
@@ -159,9 +134,7 @@ irovar = 1
 ! 4. ON REDONNE LA MAIN A L'UTLISATEUR
 !===============================================================================
 
-if (iihmpr.eq.1) then
-  call cscfgp(icfgrp)
-endif
+call cscfgp(icfgrp)
 
 call uscfx2
 !==========
@@ -205,36 +178,6 @@ endif
 
 #if defined(_CS_LANG_FR)
 
- 2000 format(                                                     &
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/,&
-'@ @@ ATTENTION : ARRET A L''ENTREE DES DONNEES               ',/,&
-'@    =========                                               ',/,&
-'@    PHYSIQUE PARTICULIERE (COMPRESSIBLE) DEMANDEE           ',/,&
-'@                                                            ',/,&
-'@  Les bornes des variables energie ou temperature           ',/,&
-'@    ont ete modifiees :                                     ',/,&
-'@                                                            ',/,&
-'@                      SCAMIN        SCAMAX                  ',/,&
-'@  energie     ',2E14.5                                       ,/,&
-'@  temperature ',2E14.5                                       ,/,&
-'@                                                            ',/,&
-'@  Les bornes de ces variables ne doivent pas etre modifiees.',/,&
-'@  On peut modifier les bornes des variables rho et energie  ',/,&
-'@  dans uscfx1, mais ce n''est pas conseille.                ',/,&
-'@  Il est preferable de gerer les depassements éventuels     ',/,&
-'@  au moyen des fonctions contenues dans le fichier          ',/,&
-'@  cfther.f90: cf_check_internal_energy, cf_check_temperature',/,&
-'@  (arret du calcul en fin de pas de temps en cas de         ',/,&
-'@   depassement).                                            ',/,&
-'@                                                            ',/,&
-'@  Le calcul ne sera pas execute.                            ',/,&
-'@                                                            ',/,&
-'@  Verifier les parametres.                                  ',/,&
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/)
  3000 format(                                                     &
 '@                                                            ',/,&
 '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
@@ -289,36 +232,6 @@ endif
 
 #else
 
- 2000 format(                                                     &
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/,&
-'@ @@ WARNING : STOP WHILE READING INPUT DATAS                ',/,&
-'@    =========                                               ',/,&
-'@    SPECIFIC PHYSICS MODULES (COMPRESSIBLE) SET             ',/,&
-'@                                                            ',/,&
-'@  The bounds of the variables energy or temperature         ',/,&
-'@    have been modified :                                    ',/,&
-'@                                                            ',/,&
-'@                      SCAMIN        SCAMAX                  ',/,&
-'@  energy      ',2E14.5                                       ,/,&
-'@  temperature ',2E14.5                                       ,/,&
-'@                                                            ',/,&
-'@  The bounds of these variables should not be modified.     ',/,&
-'@  It is possible to modify the bounds of the variables      ',/,&
-'@  density or energy in uscfx2, but it is not recommended.   ',/,&
-'@  It is advised to manage the possible overshoot by the     ',/,&
-'@  use of the functions defined in the file cfther.f90:      ',/,&
-'@  cf_check_internal_energy, cf_check_temperature (stop of   ',/,&
-'@  the calculation at the end of the time step in case of an ',/,&
-'@  overshoot).                                               ',/,&
-'@                                                            ',/,&
-'@  The calculation could NOT run.                            ',/,&
-'@                                                            ',/,&
-'@  Check parameters.                                         ',/,&
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/)
  3000 format(                                                     &
 '@                                                            ',/,&
 '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -452,6 +452,7 @@ class InletBoundary(Boundary):
         XMLTurbulenceNode = node.xmlInitNode('turbulence')
 
         formula = XMLTurbulenceNode.xmlGetString('formula')
+
         return formula
 
 
@@ -464,7 +465,8 @@ class InletBoundary(Boundary):
                ('z','face center coordinate'),
                ('t','time'),
                ('dt','time step'),
-               ('iter','number of time step')]
+               ('iter','number of time step'),
+               ('surface', 'Boundary zone surface')]
         for (name, val) in NotebookModel(self.case).getNotebookList():
             sym.append((name, 'value (notebook) = ' + str(val)))
 
@@ -1579,7 +1581,7 @@ class InletBoundaryTestCase(ModelTest):
         """Check whether the InletBoundaryModel class could set and get NonCondensableValue"""
         MainFieldsModel(self.case).addField()
         MainFieldsModel(self.case).addDefinedField("2", "field2", 'dispersed', 'gas', 'on', 'on', 'off', 2)
-        from NonCondensableModel import NonCondensableModel
+        from code_saturne.model.NonCondensableModel import NonCondensableModel
         NonCondensableModel(self.case).addNonCondensable()
         mdl = Boundary('inlet','BC_1',self.case)
         mdl.setNonCondensableValue('1','H2',16.5)

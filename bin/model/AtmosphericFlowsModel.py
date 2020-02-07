@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -91,7 +91,6 @@ class AtmosphericFlowsModel(Model):
         self.__updateScalarAndProperty()
         if (model == "humid" or model == "dry"):
             NumericalParamGlobalModel(self.case).setHydrostaticPressure("on")
-            NumericalParamGlobalModel(self.case).setWallPressureExtrapolation("extrapolation")
             if (model == "dry"):
                 ThermalScalarModel(self.case).setThermalModel('potential_temperature')
             else:
@@ -99,7 +98,6 @@ class AtmosphericFlowsModel(Model):
         else:
             ThermalScalarModel(self.case).setThermalModel('off')
             NumericalParamGlobalModel(self.case).setHydrostaticPressure("off")
-            NumericalParamGlobalModel(self.case).setWallPressureExtrapolation("neumann")
 
 
     @Variables.noUndo
@@ -171,7 +169,7 @@ class AtmosphericFlowsModel(Model):
         if model != AtmosphericFlowsModel.off:
 
             if model == AtmosphericFlowsModel.dry:
-                self.__removeScalar(node, 'total_water')
+                self.__removeScalar(node, 'ym_water')
                 self.__removeScalar(node, 'number_of_droplets')
                 self.__removeProperty(node, 'liquid_water')
                 self.__setProperty(node, 'RealTemp', 'real_temperature')
@@ -179,7 +177,7 @@ class AtmosphericFlowsModel(Model):
                     self.__fluidProp.setPropertyMode('density', 'predefined_law')
 
             elif model == AtmosphericFlowsModel.humid:
-                self.__setScalar(node, 'TotWater', 'total_water', 'model')
+                self.__setScalar(node, 'TotWater', 'ym_water', 'model')
                 self.__setScalar(node, 'TotDrop', 'number_of_droplets', 'model')
                 self.__setProperty(node, 'RealTemp', 'real_temperature')
                 self.__setProperty(node, 'LiqWater', 'liquid_water')
@@ -187,13 +185,13 @@ class AtmosphericFlowsModel(Model):
                     self.__fluidProp.setPropertyMode('density', 'predefined_law')
 
             elif model == AtmosphericFlowsModel.constant:
-                self.__removeScalar(node, 'total_water')
+                self.__removeScalar(node, 'ym_water')
                 self.__removeScalar(node, 'number_of_droplets')
                 self.__removeProperty(node, 'liquid_water')
                 FluidCharacteristicsModel(self.case).setPropertyMode('density', 'constant')
 
         else:
-            self.__removeScalar(node, 'total_water')
+            self.__removeScalar(node, 'ym_water')
             self.__removeScalar(node, 'number_of_droplets')
             self.__removeProperty(node, 'liquid_water')
 
@@ -313,7 +311,7 @@ class AtmosphericFlowsTestCase(ModelTest):
 
         doc = """<atmospheric_flows model="humid">
                     <read_meteo_data status="on">
-                        <variable label="total water" name="total_water" type="model"/>
+                        <variable label="total water" name="ym_water" type="model"/>
                         <variable label="number of droplets" name="number_of_droplets" type="model"/>
                         <property label="Real temp" name="real_temperature"/>
                         <property label="Liquid water" name="liquid_water"/>

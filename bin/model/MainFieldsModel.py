@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -91,9 +91,7 @@ class MainFieldsModel(Variables, Model):
         """
         # XML file parameters
         self.case = case
-        #~ if self.case.xmlRootNode().tagName == "NEPTUNE_CFD_GUI":
-            #
-            # XML file parameters
+
         self.XMLNodethermo   = self.case.xmlGetNode('thermophysical_models')
         self.__XMLNodefields = self.XMLNodethermo.xmlInitNode('fields')
         self.XMLNodeVariable = self.XMLNodethermo.xmlInitNode('variables')
@@ -106,7 +104,6 @@ class MainFieldsModel(Variables, Model):
         self.node_anal       = self.case.xmlInitNode('analysis_control')
         self.node_average    = self.node_anal.xmlInitNode('time_averages')
         self.node_profile    = self.node_anal.xmlInitNode('profiles')
-
 
         pressure_node = self.XMLNodethermo.xmlGetNode('variable',
                                                       name='pressure')
@@ -234,10 +231,12 @@ class MainFieldsModel(Variables, Model):
         Variables(self.case).setNewVariableProperty("variable", "", self.XMLNodeVariable, fieldNumber, "velocity", "U_"+field_name, dim='3', post = True)
         Variables(self.case).setNewVariableProperty("variable", "", self.XMLNodeVariable, fieldNumber, "enthalpy", "enthalpy_"+field_name, post = True)
 
+        # Physical properties are set by default to "constant" to avoid uninitialized states with the GUI
         Variables(self.case).setNewVariableProperty("property", "", self.XMLNodeproperty, fieldNumber, "density", "density_"+field_name)
         Variables(self.case).setNewVariableProperty("property", "", self.XMLNodeproperty, fieldNumber, "molecular_viscosity", "molecular_viscosity_"+field_name)
         Variables(self.case).setNewVariableProperty("property", "", self.XMLNodeproperty, fieldNumber, "specific_heat", "specific_heat_"+field_name)
         Variables(self.case).setNewVariableProperty("property", "", self.XMLNodeproperty, fieldNumber, "thermal_conductivity", "thermal_conductivity_"+field_name)
+
         Variables(self.case).setNewVariableProperty("property", "", self.XMLNodeproperty, fieldNumber, "mass_trans", "mass_trans_"+field_name)
         Variables(self.case).setNewVariableProperty("property", "", self.XMLNodeproperty, fieldNumber, "wall_distance", "y_plus_"+field_name, support = "boundary")
         if self.getCompressibleStatus(fieldNumber) == "on":

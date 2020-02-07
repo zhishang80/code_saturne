@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -88,8 +88,6 @@
 !> \param[in]     itrfin        for ALE
 !> \param[in]     ineefl        for ALE
 !> \param[in]     itrfup        for ALE
-!> \param[in]     flmalf        work array for FSI
-!> \param[in]     flmalb        work array for FSI
 !> \param[in]     cofale        work array for FSI
 !> \param[in]     xprale        work array for FSI
 !> \param[in,out] icodcl        face boundary condition code:
@@ -104,10 +102,21 @@
 !>                                 \f$ \vect{u} \cdot \vect{n} = 0 \f$
 !>                               - 9 free inlet/outlet
 !>                                 (input mass flux blocked to 0)
-!>                               - 11 Boundary value related to the next cell
+!>                               - 10 Boundary value related to the next cell
 !>                                 value by an affine function
+!>                               - 11 Generalized Dirichlet for vectors
+!>                               - 12 Dirichlet boundary value related to the
+!>                                 next cell value by an affine function for
+!>                                 the advection operator and Neumann for the
+!>                                 diffusion operator
 !>                               - 13 Dirichlet for the advection operator and
 !>                                 Neumann for the diffusion operator
+!>                               - 14 Generalized symmetry for vectors (used for
+!>                                 Marangoni effects modeling)
+!>                               - 15 Neumann for the advection operator and
+!>                                 homogeneous Neumann for the diffusion
+!>                                 operator (walls with hydro. pressure for
+!>                                 the compressible module)
 !> \param[in,out] isostd        indicator for standard outlet
 !>                               and reference face index
 !> \param[in]     dt            time step (per cell)
@@ -136,7 +145,7 @@ subroutine condli &
  ( nvar   , nscal  , iterns ,                                     &
    isvhb  ,                                                       &
    itrale , italim , itrfin , ineefl , itrfup ,                   &
-   flmalf , flmalb , cofale , xprale ,                            &
+   cofale , xprale ,                                              &
    icodcl , isostd ,                                              &
    dt     , rcodcl ,                                              &
    visvdr , hbord  , theipb )
@@ -152,7 +161,6 @@ use alaste
 use alstru
 use atincl, only: iautom, iprofm
 use coincl, only: fment, ientfu, ientgb, ientgf, ientox, tkent, qimp
-use ihmpre, only: iihmpr
 use ppcpfu, only: inmoxy
 use cstphy
 use cstnum
@@ -183,7 +191,7 @@ implicit none
 integer          nvar   , nscal , iterns, isvhb
 integer          itrale , italim , itrfin , ineefl , itrfup
 
-double precision, pointer, dimension(:) :: flmalf, flmalb, xprale
+double precision, pointer, dimension(:) :: xprale
 double precision, pointer, dimension(:,:) :: cofale
 integer, pointer, dimension(:,:) :: icodcl
 integer, dimension(nfabor+1) :: isostd
@@ -327,33 +335,28 @@ call precli(nvar, icodcl, rcodcl)
 !     - Interface Code_Saturne
 !       ======================
 
-if (iihmpr.eq.1) then
+! N.B. Zones de face de bord : on utilise provisoirement les zones des
+!    physiques particulieres, meme sans physique particuliere
+!    -> sera modifie lors de la restructuration des zones de bord
 
-  ! N.B. Zones de face de bord : on utilise provisoirement les zones des
-  !    physiques particulieres, meme sans physique particuliere
-  !    -> sera modifie lors de la restructuration des zones de bord
+call uiclim &
+  ( ippmod(idarcy),                                                &
+    nozppm, ncharm, ncharb, nclpch,                                &
+    iqimp,  icalke, ientat, ientcp, inmoxy, ientox,                &
+    ientfu, ientgb, ientgf, iprofm, iautom,                        &
+    itypfb, izfppp, icodcl,                                        &
+    qimp,   qimpat, qimpcp, dh,     xintur,                        &
+    timpat, timpcp, tkent ,  fment, distch, nvar, rcodcl)
 
-  call uiclim &
-    ( ippmod(idarcy),                                                &
-      nozppm, ncharm, ncharb, nclpch,                                &
-      iqimp,  icalke, ientat, ientcp, inmoxy, ientox,                &
-      ientfu, ientgb, ientgf, iprofm, iautom,                        &
-      itypfb, izfppp, icodcl,                                        &
-      qimp,   qimpat, qimpcp, dh,     xintur,                        &
-      timpat, timpcp, tkent ,  fment, distch, nvar, rcodcl)
+if (ippmod(iphpar).eq.0.or.ippmod(igmix).ge.0.or.ippmod(icompf).ge.0) then
 
-  if (ippmod(iphpar).eq.0.or.ippmod(igmix).ge.0.or.ippmod(icompf).ge.0) then
+  ! ON NE FAIT PAS DE LA PHYSIQUE PARTICULIERE
 
-    ! ON NE FAIT PAS DE LA PHYSIQUE PARTICULIERE
-
-    call stdtcl &
-      ( nbzppm , nozppm ,                                              &
-        iqimp  , icalke , qimp   , dh , xintur,                        &
-        itypfb , izfppp ,                                              &
-        rcodcl )
-
-
-  endif
+  call stdtcl &
+    ( nbzppm , nozppm ,                                              &
+      iqimp  , icalke , qimp   , dh , xintur,                        &
+      itypfb , izfppp ,                                              &
+      rcodcl )
 
 endif
 
@@ -371,11 +374,7 @@ call user_boundary_conditions(nvar, itypfb, icodcl, rcodcl)
 !     - Interface Code_Saturne
 !       ======================
 
-if (iihmpr.eq.1) then
-
-  call uiclve(nozppm, itypfb, izfppp)
-
-endif
+call uiclve(nozppm, itypfb, izfppp)
 
 ! -- Methode des vortex en L.E.S. :
 !    (Transfert des vortex dans les tableaux RCODCL)
@@ -420,17 +419,13 @@ if (iale.ge.1) then
   ! - Interface Code_Saturne
   !   ======================
 
-  if (iihmpr.eq.1) then
-
-    call uialcl &
-      ( ibfixe, igliss, ivimpo, ifresf,    &
+  call uialcl &
+    ( ibfixe, igliss, ivimpo, ifresf,    &
       ialtyb,                            &
       impale,                            &
       disale,                            &
       iuma, ivma, iwma,                  &
       rcodcl)
-
-  endif
 
   call usalcl &
     ( itrale ,                                                       &
@@ -441,7 +436,7 @@ if (iale.ge.1) then
     rcodcl , xyzno0 , disale )
 
   !     Au cas ou l'utilisateur aurait touche disale sans mettre impale=1, on
-  !       remet le deplacement initial
+  !     remet le deplacement initial
   do ii  = 1, nnod
     if (impale(ii).eq.0) then
       disale(1,ii) = xyznod(1,ii)-xyzno0(1,ii)
@@ -452,12 +447,7 @@ if (iale.ge.1) then
 
   ! En cas de couplage de structures, on calcule un deplacement predit
   if (nbstru.gt.0.or.nbaste.gt.0) then
-
-    call strpre &
-      ( itrale , italim , ineefl ,                                   &
-      impale ,                                                       &
-      flmalf , flmalb , xprale , cofale )
-
+    call strpre(itrale, italim, ineefl, impale, xprale, cofale)
   endif
 
 endif
@@ -491,12 +481,9 @@ if (itrfin.eq.1 .and. itrfup.eq.1) then
 endif
 
 
-!Radiative transfer: add contribution to enrgy BCs.
+!Radiative transfer: add contribution to energy BCs.
 if (iirayo.gt.0 .and. itrfin.eq.1 .and. itrfup.eq.1) then
-
-  call cs_rad_transfer_bcs(nvar, itypfb, icodcl,             &
-    dt, rcodcl)
-
+  call cs_rad_transfer_bcs(nvar, itypfb, icodcl, dt, rcodcl)
 endif
 
 ! For internal coupling, set itypfb to wall function by default
@@ -634,7 +621,7 @@ endif
 
 if (iale.ge.1) then
   call altycl &
- ( itypfb , ialtyb , icodcl , impale ,                            &
+ ( itypfb , ialtyb , icodcl , impale , .false. ,                  &
    dt     ,                                                       &
    rcodcl , xyzno0 )
 endif
@@ -644,7 +631,7 @@ if (iturbo.ne.0) then
 endif
 
 call typecl &
- ( nvar   , nscal  , iterns , .false. ,                           &
+ ( nvar   , nscal  , .false. ,                                    &
    itypfb , itrifb , icodcl , isostd ,                            &
    rcodcl )
 
@@ -751,8 +738,8 @@ do ii = 1, nscal
       iprev = 1
       iccocg = 1
 
-      call field_gradient_scalar(ivarfl(ivar), iprev, imrgra, inc,  &
-                                 iccocg,                            &
+      call field_gradient_scalar(ivarfl(ivar), iprev, 0, inc,  &
+                                 iccocg,                       &
                                  grad)
 
       call field_get_key_struct_var_cal_opt(ivarfl(ivar), vcopt)
@@ -823,9 +810,11 @@ do ii = 1, nscal
     if (itbrrb.eq.1 .and. vcopt%ircflu.eq.1) then
       call field_get_val_v(ivarfl(ivar), cvar_v)
 
+      allocate(gradv(3,3,ncelet))
+
       inc = 1
       iprev = 1
-      call field_gradient_vector(ivarfl(ivar), iprev, imrgra, inc, gradv)
+      call field_gradient_vector(ivarfl(ivar), iprev, 0, inc, gradv)
 
       do ifac = 1 , nfabor
         iel = ifabor(ifac)
@@ -836,6 +825,9 @@ do ii = 1, nscal
                              + gradv(3,isou,iel)*diipb(3,ifac)
         enddo
       enddo
+
+      deallocate(gradv)
+
     else
       call field_get_val_prev_v(ivarfl(ivar), cvara_v)
 
@@ -892,8 +884,7 @@ if (iclsym.ne.0.or.ipatur.ne.0.or.ipatrg.ne.0.or.iforbr.ge.0) then
     inc = 1
     iprev = 1
 
-    call field_gradient_vector(ivarfl(iu), iprev, imrgra, inc,    &
-                               gradv)
+    call field_gradient_vector(ivarfl(iu), iprev, 0, inc, gradv)
 
     call field_get_key_struct_var_cal_opt(ivarfl(iu), vcopt)
 
@@ -949,8 +940,7 @@ if ((iclsym.ne.0.or.ipatur.ne.0.or.ipatrg.ne.0).and.itytur.eq.3) then
       ! allocate a temporary array
       allocate(gradts(6,3,ncelet))
 
-      call field_gradient_tensor(ivarfl(irij), iprev, imrgra, inc,  &
-                                 gradts)
+      call field_gradient_tensor(ivarfl(irij), iprev, 0, inc, gradts)
 
       do ifac = 1 , nfabor
         iel = ifabor(ifac)
@@ -999,9 +989,7 @@ if ((iclsym.ne.0.or.ipatur.ne.0.or.ipatrg.ne.0).and.itytur.eq.3) then
         iprev = 1
         iccocg = 1
 
-        call field_gradient_scalar(ivarfl(ivar), iprev, imrgra, inc,  &
-                                   iccocg,                            &
-                                   grad)
+        call field_gradient_scalar(ivarfl(ivar), iprev, 0, inc, iccocg, grad)
 
         do ifac = 1 , nfabor
           iel = ifabor(ifac)
@@ -1469,7 +1457,7 @@ do ifac = 1, nfabor
   ! Boundary value proportional to boundary cell value
   !---------------------------------------------------
 
-  elseif (icodcl(ifac,ipr).eq.11) then
+  elseif (icodcl(ifac,ipr).eq.10) then
 
     pinf = rcodcl(ifac,ipr,1)
     ratio = rcodcl(ifac,ipr,2)
@@ -1479,6 +1467,21 @@ do ifac = 1, nfabor
          coefbp(ifac), cofbfp(ifac),                         &
          pinf        , ratio       , hint                    )
 
+  ! Imposed value for the convection operator is proportional to boundary
+  ! cell value, imposed flux for diffusion
+  !----------------------------------------------------------------------
+
+  elseif (icodcl(ifac,ipr).eq.12) then
+
+    pinf = rcodcl(ifac,ipr,1)
+    ratio = rcodcl(ifac,ipr,2)
+    dimp = rcodcl(ifac,ipr,3)
+
+    call set_affine_function_conv_neumann_diff_scalar        &
+       ( coefap(ifac), cofafp(ifac),                         &
+         coefbp(ifac), cofbfp(ifac),                         &
+         pinf        , ratio       , dimp                    )
+
   ! Imposed value for the convection operator, imposed flux for diffusion
   !----------------------------------------------------------------------
 
@@ -1487,10 +1490,22 @@ do ifac = 1, nfabor
     pimp = rcodcl(ifac,ipr,1)
     dimp = rcodcl(ifac,ipr,3)
 
-    call set_dirichlet_conv_neumann_diff_scalar &
+    call set_dirichlet_conv_neumann_diff_scalar              &
        ( coefap(ifac), cofafp(ifac),                         &
          coefbp(ifac), cofbfp(ifac),                         &
          pimp              , dimp )
+
+  ! Neumann for the convection operator, zero flux for diffusion
+  !----------------------------------------------------------------------
+
+  elseif (icodcl(ifac,ipr).eq.15) then
+
+    dimp = rcodcl(ifac,ipr,3)
+
+    call set_neumann_conv_h_neumann_diff_scalar              &
+       ( coefap(ifac), cofafp(ifac),                         &
+         coefbp(ifac), cofbfp(ifac),                         &
+         dimp , hint )
 
   endif
 
@@ -3323,6 +3338,8 @@ if (iale.eq.1) then
   call field_get_coefaf_v(ivarfl(iuma), cfaale)
   call field_get_coefbf_v(ivarfl(iuma), cfbale)
 
+  call field_get_key_struct_var_cal_opt(ivarfl(iuma), vcopt)
+
   if (iand(vcopt%idften, ISOTROPIC_DIFFUSION).ne.0) then
     call field_get_val_s(ivisma, cpro_visma_s)
   elseif (iand(vcopt%idften, ANISOTROPIC_DIFFUSION).ne.0) then
@@ -4692,6 +4709,7 @@ cofbf(3,1) = hint(6)*(1.d0 - coefb(3,3))
 return
 end subroutine
 
+
 !===============================================================================
 
 !-------------------------------------------------------------------------------
@@ -4723,8 +4741,6 @@ implicit none
 
 double precision coefa, cofaf, coefb, cofbf, pinf, ratio, hint
 
-! Local variables
-
 !===============================================================================
 
 ! Gradient BCs
@@ -4737,6 +4753,95 @@ cofbf =  hint*(1.d0 - coefb)
 
 return
 end subroutine
+
+
+!===============================================================================
+
+!-------------------------------------------------------------------------------
+! Arguments
+!______________________________________________________________________________.
+!  mode           name          role                                           !
+!______________________________________________________________________________!
+!> \param[out]    coefa         explicit BC coefficient for gradients
+!> \param[out]    cofaf         explicit BC coefficient for diffusive flux
+!> \param[out]    coefb         implicit BC coefficient for gradients
+!> \param[out]    cofbf         implicit BC coefficient for diffusive flux
+!> \param[in]     dimp          Flux value to impose
+!> \param[in]     hint          Internal exchange coefficient
+!_______________________________________________________________________________
+
+subroutine set_neumann_conv_h_neumann_diff_scalar &
+ (coefa , cofaf, coefb, cofbf, dimp, hint)
+
+!===============================================================================
+! Module files
+!===============================================================================
+
+!===============================================================================
+
+implicit none
+
+! Arguments
+
+double precision coefa, cofaf, coefb, cofbf, dimp, hint
+
+!===============================================================================
+
+! Gradient BCs
+call set_neumann_scalar(coefa, cofaf, coefb, cofbf, dimp, hint)
+
+! Flux BCs
+cofaf = 0.d0
+cofbf = 0.d0
+
+return
+end subroutine
+
+
+!===============================================================================
+
+!-------------------------------------------------------------------------------
+! Arguments
+!______________________________________________________________________________.
+!  mode           name          role                                           !
+!______________________________________________________________________________!
+!> \param[out]    coefa         explicit BC coefficient for gradients
+!> \param[out]    cofaf         explicit BC coefficient for diffusive flux
+!> \param[out]    coefb         implicit BC coefficient for gradients
+!> \param[out]    cofbf         implicit BC coefficient for diffusive flux
+!> \param[in]     pinf          affine part
+!> \param[in]     ratio         linear part
+!> \param[in]     dimp          Flux value to impose
+!_______________________________________________________________________________
+
+subroutine set_affine_function_conv_neumann_diff_scalar &
+ (coefa, cofaf, coefb, cofbf, pinf, ratio, dimp)
+
+!===============================================================================
+! Module files
+!===============================================================================
+
+!===============================================================================
+
+implicit none
+
+! Arguments
+
+double precision coefa, cofaf, coefb, cofbf, pinf, ratio, dimp
+
+!===============================================================================
+
+! Gradient BCs
+coefb = ratio
+coefa = pinf
+
+! Flux BCs
+cofaf = dimp
+cofbf = 0.d0
+
+return
+end subroutine
+
 
 !===============================================================================
 
@@ -4778,6 +4883,7 @@ cofbf = hext
 
 return
 end subroutine
+
 
 !===============================================================================
 
@@ -4950,22 +5056,7 @@ end subroutine
 !> \param[in]     nvar          total number of variables
 !> \param[in]     nscal         total number of scalars
 !> \param[in]     itrale        ALE iteration number
-!> \param[in,out] icodcl        face boundary condition code:
-!>                               - 1 Dirichlet
-!>                               - 2 Radiative outlet
-!>                               - 3 Neumann
-!>                               - 4 sliding and
-!>                                 \f$ \vect{u} \cdot \vect{n} = 0 \f$
-!>                               - 5 smooth wall and
-!>                                 \f$ \vect{u} \cdot \vect{n} = 0 \f$
-!>                               - 6 rough wall and
-!>                                 \f$ \vect{u} \cdot \vect{n} = 0 \f$
-!>                               - 9 free inlet/outlet
-!>                                 (input mass flux blocked to 0)
-!>                               - 11 Boundary value related to the next cell
-!>                                 value by an affine function
-!>                               - 13 Dirichlet for the advection operator and
-!>                                 Neumann for the diffusion operator
+!> \param[in,out] icodcl        face boundary condition code (see \ref condli)
 !> \param[in,out] isostd        indicator for standard outlet
 !>                               and reference face index
 !> \param[in]     dt            time step (per cell)
@@ -5002,7 +5093,6 @@ use alaste
 use alstru
 use atincl, only: iautom, iprofm
 use coincl, only: fment, ientfu, ientgb, ientgf, ientox, tkent, qimp
-use ihmpre, only: iihmpr
 use ppcpfu, only: inmoxy
 use cstphy
 use cstnum
@@ -5054,22 +5144,18 @@ call precli(nvar, icodcl, rcodcl)
 !     - Interface Code_Saturne
 !       ======================
 
-if (iihmpr.eq.1) then
+! N.B. Zones de face de bord : on utilise provisoirement les zones des
+!    physiques particulieres, meme sans physique particuliere
+!    -> sera modifie lors de la restructuration des zones de bord
 
-  ! N.B. Zones de face de bord : on utilise provisoirement les zones des
-  !    physiques particulieres, meme sans physique particuliere
-  !    -> sera modifie lors de la restructuration des zones de bord
-
-  call uiclim &
-    ( ippmod(idarcy),                                                &
-      nozppm, ncharm, ncharb, nclpch,                                &
-      iqimp,  icalke, ientat, ientcp, inmoxy, ientox,                &
-      ientfu, ientgb, ientgf, iprofm, iautom,                        &
-      itypfb, izfppp, icodcl,                                        &
-      qimp,   qimpat, qimpcp, dh,     xintur,                        &
-      timpat, timpcp, tkent ,  fment, distch, nvar, rcodcl)
-
-endif
+call uiclim &
+  ( ippmod(idarcy),                                                &
+    nozppm, ncharm, ncharb, nclpch,                                &
+    iqimp,  icalke, ientat, ientcp, inmoxy, ientox,                &
+    ientfu, ientgb, ientgf, iprofm, iautom,                        &
+    itypfb, izfppp, icodcl,                                        &
+    qimp,   qimpat, qimpcp, dh,     xintur,                        &
+    timpat, timpcp, tkent ,  fment, distch, nvar, rcodcl)
 
 !     - Sous-programme utilisateur
 !       ==========================
@@ -5095,17 +5181,13 @@ if (iale.ge.1) then
   ! - Interface Code_Saturne
   !   ======================
 
-  if (iihmpr.eq.1) then
-
-    call uialcl &
-      ( ibfixe, igliss, ivimpo, ifresf,    &
+  call uialcl &
+    ( ibfixe, igliss, ivimpo, ifresf,    &
       ialtyb,                            &
       impale,                            &
       disale,                            &
       iuma, ivma, iwma,                  &
       rcodcl)
-
-  endif
 
   call usalcl &
     ( itrale ,                                                       &
@@ -5116,7 +5198,7 @@ if (iale.ge.1) then
     rcodcl , xyzno0 , disale )
 
   !     Au cas ou l'utilisateur aurait touche disale sans mettre impale=1, on
-  !       remet le deplacement initial
+  !     remet le deplacement initial
   do ii  = 1, nnod
     if (impale(ii).eq.0) then
       disale(1,ii) = xyznod(1,ii)-xyzno0(1,ii)
@@ -5135,19 +5217,9 @@ call cs_internal_coupling_bcs(itypfb)
 ! 2. treatment of types of bcs given by itypfb
 !===============================================================================
 
-if (     ippmod(iphpar).ge.1.and.ippmod(igmix).eq.-1               &
-    .and.ippmod(ieljou).eq.-1.and.ippmod(ielarc).eq.-1             &
-    .or.ippmod(icompf).ge.0.and.ippmod(igmix).ge.0) then
-  call pptycl &
- ( nvar   , .true.,                                               &
-   icodcl , itypfb , izfppp ,                                     &
-   dt     ,                                                       &
-   rcodcl )
-endif
-
 if (iale.ge.1) then
   call altycl &
- ( itypfb , ialtyb , icodcl , impale ,                            &
+ ( itypfb , ialtyb , icodcl , impale , .true. ,                   &
    dt     ,                                                       &
    rcodcl , xyzno0 )
 endif
@@ -5164,8 +5236,18 @@ if (nbrcpl.gt.0) then
   call cscfbr_init(icodcl, itypfb)
 endif
 
+if (     ippmod(iphpar).ge.1.and.ippmod(igmix).eq.-1               &
+    .and.ippmod(ieljou).eq.-1.and.ippmod(ielarc).eq.-1             &
+    .or.ippmod(icompf).ge.0.and.ippmod(igmix).ge.0) then
+  call pptycl &
+ ( nvar   , .true.,                                               &
+   icodcl , itypfb , izfppp ,                                     &
+   dt     ,                                                       &
+   rcodcl )
+endif
+
 call typecl &
- ( nvar   , nscal  , iterns , .true. ,                            &
+ ( nvar   , nscal  , .true. ,                                     &
    itypfb , itrifb , icodcl , isostd ,                            &
    rcodcl )
 

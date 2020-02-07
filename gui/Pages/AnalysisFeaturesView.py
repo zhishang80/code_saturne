@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -387,6 +387,9 @@ class AnalysisFeaturesView(QWidget, Ui_AnalysisFeaturesForm):
             self.checkBoxALE.hide()
             self.checkBoxFans.hide()
 
+        elif homogeneous != 'off':
+            self.modelHgn.setItem(str_model=homogeneous)
+
         else:
             self.modelSinglePhase.setItem(str_model=compressible)
 
@@ -396,9 +399,9 @@ class AnalysisFeaturesView(QWidget, Ui_AnalysisFeaturesForm):
         Atmospheric = self.atmo.getAtmosphericFlowsModel() != 'off'
         JouleEffect = self.elect.getElectricalModel() != 'off'
         Groundwater = self.darc.getGroundwaterModel() != 'off'
-
         ReactiveFlows = self.gas.getGasCombustionModel()  != 'off' \
                         or self.pcoal.getCoalCombustionModel() != 'off'
+        Hgn = homogeneous != 'off'
 
         self.checkPrev = 'SinglePhase'
         combo = None
@@ -406,7 +409,8 @@ class AnalysisFeaturesView(QWidget, Ui_AnalysisFeaturesForm):
         for ind in ['Atmospheric',
                     'JouleEffect',
                     'Groundwater',
-                    'ReactiveFlows']:
+                    'ReactiveFlows',
+                    'Hgn']:
 
             radioButton = eval('self.radioButton'+ind)
             model_on = eval(ind)
@@ -596,7 +600,6 @@ class AnalysisFeaturesView(QWidget, Ui_AnalysisFeaturesForm):
             except Exception:
                 from code_saturne.cs_package import package as cs_package
                 self.case['package'] = cs_package()
-                self.case['package'].code_name = 'NEPTUNE_CFD'
 
             if hasattr(self.parent, 'updateTitleBar'):
                 self.parent.updateTitleBar()
@@ -619,6 +622,8 @@ class AnalysisFeaturesView(QWidget, Ui_AnalysisFeaturesForm):
                 self.comp.setCompressibleModel('off')
             if self.checkPrev == 'Atmospheric':
                 self.atmo.setAtmosphericFlowsModel('off')
+            if self.checkPrev == 'Hgn':
+                self.hgn.setHgnModel('off')
             if self.checkPrev == 'JouleEffect':
                 self.elect.setElectricalModel('off')
             if self.checkPrev == 'Groundwater':

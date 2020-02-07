@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -795,7 +795,7 @@ cs_hho_vecteq_init_context(const cs_equation_param_t   *eqp,
     bft_error(__FILE__, __LINE__, 0, " Expected: vector-valued HHO equation.");
 
   const cs_cdo_connect_t  *connect = cs_shared_connect;
-  const cs_lnum_t  n_faces = connect->n_faces[0];
+  const cs_lnum_t  n_faces = connect->n_faces[CS_ALL_FACES];
   const cs_lnum_t  n_cells = connect->n_cells;
 
   cs_hho_vecteq_t  *eqc = NULL;
@@ -905,7 +905,7 @@ cs_hho_vecteq_init_context(const cs_equation_param_t   *eqp,
   BFT_FREE(row_block_sizes);
 
   /* Handle boundary conditions */
-  const cs_lnum_t  n_b_faces = connect->n_faces[1];
+  const cs_lnum_t  n_b_faces = connect->n_faces[CS_BND_FACES];
   BFT_MALLOC(eqc->bf2def_ids, n_b_faces, short int);
 
 # pragma omp parallel for if (n_b_faces > CS_THR_MIN)
@@ -1035,9 +1035,9 @@ cs_hho_vecteq_compute_source(const cs_equation_param_t  *eqp,
 
   cs_timer_t  t0 = cs_timer_time();
 
-# pragma omp parallel if (quant->n_cells > CS_THR_MIN) default(none)     \
-  shared(quant, connect, eqp, eqb, eqc,                                  \
-         cs_hho_cell_sys, cs_hho_cell_bld, cs_hho_builders)              \
+# pragma omp parallel if (quant->n_cells > CS_THR_MIN)                  \
+  shared(quant, connect, eqp, eqb, eqc,                                 \
+         cs_hho_cell_sys, cs_hho_cell_bld, cs_hho_builders)             \
   firstprivate(t_cur)
   {
 #if defined(HAVE_OPENMP) /* Determine default number of OpenMP threads */
@@ -1052,7 +1052,7 @@ cs_hho_vecteq_compute_source(const cs_equation_param_t  *eqp,
     cs_cell_sys_t  *csys = cs_hho_cell_sys[t_id];
     cs_cell_builder_t  *cb = cs_hho_cell_bld[t_id];
     cs_hho_builder_t  *hhob = cs_hho_builders[t_id];
-    cs_flag_t  msh_flag = eqb->st_msh_flag;
+    cs_eflag_t  msh_flag = eqb->st_msh_flag;
 
 #   pragma omp for CS_CDO_OMP_SCHEDULE
     for (cs_lnum_t c_id = 0; c_id < quant->n_cells; c_id++) {
@@ -1094,7 +1094,7 @@ cs_hho_vecteq_compute_source(const cs_equation_param_t  *eqp,
 #endif
 
   cs_timer_t  t1 = cs_timer_time();
-  cs_timer_counter_add_diff(&(eqb->tcs), &t0, &t1);
+  cs_timer_counter_add_diff(&(eqb->tcb), &t0, &t1);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1196,7 +1196,7 @@ cs_hho_vecteq_build_system(const cs_mesh_t            *mesh,
   cs_matrix_assembler_values_t  *mav
     = cs_matrix_assembler_values_init(matrix, NULL, NULL);
 
-# pragma omp parallel if (quant->n_cells > CS_THR_MIN) default(none)    \
+# pragma omp parallel if (quant->n_cells > CS_THR_MIN)                  \
   shared(quant, connect, eqp, eqb, eqc, rhs, matrix, mav,               \
          field_val, cs_hho_cell_sys, cs_hho_cell_bld, cs_hho_builders)  \
   firstprivate(dt_cur, t_cur)
@@ -1229,7 +1229,7 @@ cs_hho_vecteq_build_system(const cs_mesh_t            *mesh,
     for (cs_lnum_t c_id = 0; c_id < quant->n_cells; c_id++) {
 
       const cs_flag_t  cell_flag = connect->cell_flag[c_id];
-      const cs_flag_t  msh_flag = cs_equation_cell_mesh_flag(cell_flag, eqb);
+      const cs_eflag_t  msh_flag = cs_equation_cell_mesh_flag(cell_flag, eqb);
 
       /* Set the local mesh structure for the current cell */
       cs_cell_mesh_build(c_id, msh_flag, connect, quant, cm);
@@ -1378,7 +1378,7 @@ cs_hho_vecteq_build_system(const cs_mesh_t            *mesh,
       /* ======== */
 
       /* Matrix assembly */
-      eqc->assemble(csys, eqc->rs, eqa, mav);
+      eqc->assemble(csys->mat, csys->dof_ids, eqc->rs, eqa, mav);
 
       /* RHS assembly */
       for (short int i = 0; i < eqc->n_face_dofs*cm->n_fc; i++) {
@@ -1443,7 +1443,7 @@ cs_hho_vecteq_update_field(const cs_real_t            *solu,
   memset(eqc->cell_values, 0,
          sizeof(cs_real_t) * eqc->n_cell_dofs * quant->n_cells);
 
-# pragma omp parallel if (quant->n_cells > CS_THR_MIN) default(none)    \
+# pragma omp parallel if (quant->n_cells > CS_THR_MIN)                  \
   shared(quant, connect, eqp, eqb, eqc, rhs, solu, field_val,           \
          cs_hho_cell_bld, cs_hho_builders)
   {
@@ -1470,7 +1470,7 @@ cs_hho_vecteq_update_field(const cs_real_t            *solu,
 
       const cs_lnum_t  c2f_shift = connect->c2f->idx[c_id];
       const cs_flag_t  cell_flag = connect->cell_flag[c_id];
-      const cs_flag_t  msh_flag = cs_equation_cell_mesh_flag(cell_flag, eqb);
+      const cs_eflag_t  msh_flag = cs_equation_cell_mesh_flag(cell_flag, eqb);
 
       /* Set the local mesh structure for the current cell */
       cs_cell_mesh_build(c_id, msh_flag, connect, quant, cm);

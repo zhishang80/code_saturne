@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -315,8 +315,8 @@ cs_math_3_square_distance(const cs_real_t  xa[3],
 /*!
  * \brief Compute the dot product of two vectors of 3 real values.
  *
- * \param[in]     u             vector of 3 real values
- * \param[in]     v             vector of 3 real values
+ * \param[in]   u   vector of 3 real values
+ * \param[in]   v   vector of 3 real values
  *
  * \return the resulting dot product u.v.
  */
@@ -333,13 +333,11 @@ cs_math_3_dot_product(const cs_real_t  u[3],
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Compute the dot product of
- * a tensor t with two vectors n1, and n2
- * n1 t n2
+ * \brief Compute the dot product of a tensor t with two vectors, n1 and n2.
  *
- * \param[in]     n1            vector of 3 real values
- * \param[in]     t             vector of 3 real values
- * \param[in]     n2            vector of 3 real values
+ * \param[in]     n1    vector of 3 real values
+ * \param[in]     t     vector of 3 real values
+ * \param[in]     n2    vector of 3 real values
  *
  * \return the resulting dot product n1.t.n2.
  */
@@ -350,10 +348,10 @@ cs_math_3_33_3_dot_product(const cs_real_t  n1[3],
                            const cs_real_t  t[3][3],
                            const cs_real_t  n2[3])
 {
-  cs_real_t n_t_n =
-    ( n1[0] * t[0][0] * n2[0] + n1[1] * t[1][0] * n2[0] + n1[2] * t[2][0] * n2[0]
-    + n1[0] * t[0][1] * n2[1] + n1[1] * t[1][1] * n2[1] + n1[2] * t[2][1] * n2[1]
-    + n1[0] * t[0][2] * n2[2] + n1[1] * t[1][2] * n2[2] + n1[2] * t[2][2] * n2[2]);
+  cs_real_t n_t_n
+    = (  n1[0]*t[0][0]*n2[0] + n1[1]*t[1][0]*n2[0] + n1[2]*t[2][0]*n2[0]
+       + n1[0]*t[0][1]*n2[1] + n1[1]*t[1][1]*n2[1] + n1[2]*t[2][1]*n2[1]
+       + n1[0]*t[0][2]*n2[2] + n1[1]*t[1][2]*n2[2] + n1[2]*t[2][2]*n2[2]);
   return n_t_n;
 }
 
@@ -394,7 +392,33 @@ cs_math_3_square_norm(const cs_real_t v[3])
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Normalise a vector of 3 real values.
+ * \brief  Normalize a vector of 3 real values.
+ *
+ * \deprecated: use \ref cs_math_3_normalize instead.
+ *
+ * \param[in]     vin    vector
+ * \param[out]    vout   normalized vector
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_math_3_normalise(const cs_real_t  vin[3],
+                    cs_real_t        vout[3])
+{
+  cs_real_t norm = cs_math_3_norm(vin);
+
+  cs_real_t inv_norm = ((norm > cs_math_zero_threshold) ?  1. / norm : 0);
+
+  vout[0] = inv_norm * vin[0];
+  vout[1] = inv_norm * vin[1];
+  vout[2] = inv_norm * vin[2];
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Normalise a vector of 3 real values.
+ *
+ * To normalize in-place, vin and vout may point to the same array.
  *
  * \param[in]     vin           vector
  * \param[out]    vout          normalized vector
@@ -402,8 +426,8 @@ cs_math_3_square_norm(const cs_real_t v[3])
 /*----------------------------------------------------------------------------*/
 
 static inline void
-cs_math_3_normalise(const cs_real_t  vin[3],
-                    cs_real_t        vout[restrict 3])
+cs_math_3_normalize(const cs_real_t  vin[3],
+                    cs_real_t        vout[3])
 {
   cs_real_t norm = cs_math_3_norm(vin);
 
@@ -417,11 +441,11 @@ cs_math_3_normalise(const cs_real_t  vin[3],
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Orthogonal projection of a vector with respect to a normalised
- * vector.
+ *        vector.
  *
- * \param[in]     n             normal vector direction
- * \param[in]     v             vector to be projected
- * \param[out]    vout          projection
+ * \param[in]   n     normal vector direction
+ * \param[in]   v     vector to be projected
+ * \param[out]  vout  projection
  */
 /*----------------------------------------------------------------------------*/
 
@@ -438,18 +462,18 @@ cs_math_3_orthogonal_projection(const cs_real_t  n[3],
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Add the dot product with a normal vector to the normal direction
- * to a vector.
+ *        to a vector.
  *
- * \param[in]     n             normalised face normal vector
- * \param[in]     factor        factor
- * \param[in,out] v             vector to be scaled
+ * \param[in]       n       normalised face normal vector
+ * \param[in]       factor  factor
+ * \param[in, out]  v       vector to be scaled
  */
 /*----------------------------------------------------------------------------*/
 
 static inline void
 cs_math_3_normal_scaling(const cs_real_t  n[3],
                          cs_real_t        factor,
-                         cs_real_3_t      v)
+                         cs_real_t        v[3])
 {
   cs_real_t v_dot_n = (factor -1.) * cs_math_3_dot_product(v, n);
   for (int i = 0; i < 3; i++)
@@ -464,14 +488,14 @@ cs_math_3_normal_scaling(const cs_real_t  n[3],
  *
  * \param[in]     n             normalised face normal vector
  * \param[in]     factor        factor
- * \param[in,out] t             vector to be scaled
+ * \param[in,out] t             matrix to be scaled
  */
 /*----------------------------------------------------------------------------*/
 
 static inline void
 cs_math_33_normal_scaling_add(const cs_real_t  n[3],
                               cs_real_t        factor,
-                              cs_real_33_t     t)
+                              cs_real_t        t[3][3])
 {
   cs_real_t n_t_n = (factor -1.) *
     ( n[0] * t[0][0] * n[0] + n[1] * t[1][0] * n[0] + n[2] * t[2][0] * n[0]
@@ -496,7 +520,7 @@ cs_math_33_normal_scaling_add(const cs_real_t  n[3],
 static inline void
 cs_math_33_3_product(const cs_real_t  m[3][3],
                      const cs_real_t  v[3],
-                     cs_real_3_t      mv)
+                     cs_real_t        mv[restrict 3])
 {
   mv[0] = m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2];
   mv[1] = m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2];
@@ -517,7 +541,7 @@ cs_math_33_3_product(const cs_real_t  m[3][3],
 static inline void
 cs_math_33_3_product_add(const cs_real_t  m[3][3],
                          const cs_real_t  v[3],
-                         cs_real_3_t      mv)
+                         cs_real_t        mv[restrict 3])
 {
   mv[0] += m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2];
   mv[1] += m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2];
@@ -538,7 +562,7 @@ cs_math_33_3_product_add(const cs_real_t  m[3][3],
 static inline void
 cs_math_33t_3_product(const cs_real_t  m[3][3],
                       const cs_real_t  v[3],
-                      cs_real_3_t      mv)
+                      cs_real_t        mv[restrict 3])
 {
   mv[0] = m[0][0]*v[0] + m[1][0]*v[1] + m[2][0]*v[2];
   mv[1] = m[0][1]*v[0] + m[1][1]*v[1] + m[2][1]*v[2];
@@ -677,9 +701,9 @@ cs_math_sym_33_determinant(const cs_real_6_t   m)
 /*!
  * \brief Compute the cross product of two vectors of 3 real values.
  *
- * \param[in]     u             vector of 3 real values
- * \param[in]     v             vector of 3 real values
- * \param[out]    uv            vector of 3 real values
+ * \param[in]     u    vector of 3 real values
+ * \param[in]     v    vector of 3 real values
+ * \param[out]    uv   cross-product of u an v
  */
 /*----------------------------------------------------------------------------*/
 
@@ -688,9 +712,9 @@ cs_math_sym_33_determinant(const cs_real_6_t   m)
 #endif
 
 static inline void
-cs_math_3_cross_product(const cs_real_t u[3],
-                        const cs_real_t v[3],
-                        cs_real_t       uv[restrict 3])
+cs_math_3_cross_product(const cs_real_t  u[3],
+                        const cs_real_t  v[3],
+                        cs_real_t        uv[restrict 3])
 {
   uv[0] = u[1]*v[2] - u[2]*v[1];
   uv[1] = u[2]*v[0] - u[0]*v[2];
@@ -701,11 +725,11 @@ cs_math_3_cross_product(const cs_real_t u[3],
 /*!
  * \brief Compute the triple product
  *
- * \param[in]     u             vector of 3 real values
- * \param[in]     v             vector of 3 real values
- * \param[in]     w             vector of 3 real values
+ * \param[in]     u   vector of 3 real values
+ * \param[in]     v   vector of 3 real values
+ * \param[in]     w   vector of 3 real values
  *
- * \return the scalar triple product
+ * \return the scalar triple product: (uxv).w
  */
 /*----------------------------------------------------------------------------*/
 
@@ -714,13 +738,13 @@ cs_math_3_cross_product(const cs_real_t u[3],
 #endif
 
 static inline cs_real_t
-cs_math_3_triple_product(const cs_real_t u[3],
-                         const cs_real_t v[3],
-                         const cs_real_t w[3])
+cs_math_3_triple_product(const cs_real_t  u[3],
+                         const cs_real_t  v[3],
+                         const cs_real_t  w[3])
 {
-  return (u[1]*v[2] - u[2]*v[1]) * w[0]
-    + (u[2]*v[0] - u[0]*v[2]) * w[1]
-    + (u[0]*v[1] - u[1]*v[0]) * w[2];
+  return    (u[1]*v[2] - u[2]*v[1]) * w[0]
+          + (u[2]*v[0] - u[0]*v[2]) * w[1]
+          + (u[0]*v[1] - u[1]*v[0]) * w[2];
 }
 
 /*----------------------------------------------------------------------------*/
@@ -829,8 +853,8 @@ cs_math_33_inv_cramer_sym_in_place(cs_real_t  a[3][3])
  * \remark Symmetric matrix coefficients are stored as follows:
  *         (s11, s22, s33, s12, s23, s13)
  *
- * \param[in]     s             symmetric matrix
- * \param[out]    sout          sout = 1/s1
+ * \param[in]     s      symmetric matrix
+ * \param[out]    sout   sout = 1/s1
  */
 /*----------------------------------------------------------------------------*/
 
@@ -859,19 +883,18 @@ cs_math_sym_33_inv_cramer(const cs_real_t  s[6],
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Compute the product of a matrix of 3x3 real values by a matrix of 3x3
- * real values.
+ * \brief Compute the product of two 3x3 real valued matrixes.
  *
- * \param[in]     m1            matrix of 3x3 real values
- * \param[in]     m2            matrix of 3x3 real values
- * \param[out]    mout          matrix of 3x3 real values
+ * \param[in]     m1     matrix of 3x3 real values
+ * \param[in]     m2     matrix of 3x3 real values
+ * \param[out]    mout   m1.m2 product
  */
 /*----------------------------------------------------------------------------*/
 
 static inline void
 cs_math_33_product(const cs_real_t  m1[3][3],
                    const cs_real_t  m2[3][3],
-                   cs_real_33_t     mout)
+                   cs_real_t        mout[3][3])
 {
   mout[0][0] = m1[0][0]*m2[0][0] + m1[0][1]*m2[1][0] + m1[0][2]*m2[2][0];
   mout[0][1] = m1[0][0]*m2[0][1] + m1[0][1]*m2[1][1] + m1[0][2]*m2[2][1];
@@ -888,8 +911,134 @@ cs_math_33_product(const cs_real_t  m1[3][3],
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Compute the product of a matrix of 3x3 real values by a matrix of 3x3
- * real values and add.
+ * \brief Compute transformation from relative to absolute
+ *        reference frame Q^t M Q
+ *
+ * \param[in]     m      matrix of 3x3 real values
+ * \param[in]     q      transformation matrix of 3x3 real values
+ * \param[out]    mout   Q^t M Q
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_math_33_transform_r_to_a(const cs_real_t  m[3][3],
+                            const cs_real_t  q[3][3],
+                            cs_real_t        mout[3][3])
+{
+  /* _m = M.Q */
+  cs_real_33_t _m;
+  _m[0][0] = m[0][0]*q[0][0] + m[0][1]*q[1][0] + m[0][2]*q[2][0];
+  _m[0][1] = m[0][0]*q[0][1] + m[0][1]*q[1][1] + m[0][2]*q[2][1];
+  _m[0][2] = m[0][0]*q[0][2] + m[0][1]*q[1][2] + m[0][2]*q[2][2];
+
+  _m[1][0] = m[1][0]*q[0][0] + m[1][1]*q[1][0] + m[1][2]*q[2][0];
+  _m[1][1] = m[1][0]*q[0][1] + m[1][1]*q[1][1] + m[1][2]*q[2][1];
+  _m[1][2] = m[1][0]*q[0][2] + m[1][1]*q[1][2] + m[1][2]*q[2][2];
+
+  _m[2][0] = m[2][0]*q[0][0] + m[2][1]*q[1][0] + m[2][2]*q[2][0];
+  _m[2][1] = m[2][0]*q[0][1] + m[2][1]*q[1][1] + m[2][2]*q[2][1];
+  _m[2][2] = m[2][0]*q[0][2] + m[2][1]*q[1][2] + m[2][2]*q[2][2];
+
+  /* mout = Q^t _m */
+  mout[0][0] = q[0][0]*_m[0][0] + q[1][0]*_m[1][0] + q[2][0]*_m[2][0];
+  mout[0][1] = q[0][0]*_m[0][1] + q[1][0]*_m[1][1] + q[2][0]*_m[2][1];
+  mout[0][2] = q[0][0]*_m[0][2] + q[1][0]*_m[1][2] + q[2][0]*_m[2][2];
+
+  mout[1][0] = q[0][1]*_m[0][0] + q[1][1]*_m[1][0] + q[2][1]*_m[2][0];
+  mout[1][1] = q[0][1]*_m[0][1] + q[1][1]*_m[1][1] + q[2][1]*_m[2][1];
+  mout[1][2] = q[0][1]*_m[0][2] + q[1][1]*_m[1][2] + q[2][1]*_m[2][2];
+
+  mout[2][0] = q[0][2]*_m[0][0] + q[1][2]*_m[1][0] + q[2][2]*_m[2][0];
+  mout[2][1] = q[0][2]*_m[0][1] + q[1][2]*_m[1][1] + q[2][2]*_m[2][1];
+  mout[2][2] = q[0][2]*_m[0][2] + q[1][2]*_m[1][2] + q[2][2]*_m[2][2];
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute transformation from absolute to relative
+ *        reference frame Q M Q^t
+ *
+ * \param[in]     m      matrix of 3x3 real values
+ * \param[in]     q      transformation matrix of 3x3 real values
+ * \param[out]    mout   Q M Q^t
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_math_33_transform_a_to_r(const cs_real_t  m[3][3],
+                            const cs_real_t  q[3][3],
+                            cs_real_t        mout[3][3])
+{
+  /* _m = M.Q^t */
+  cs_real_33_t _m;
+  _m[0][0] = m[0][0]*q[0][0] + m[0][1]*q[0][1] + m[0][2]*q[0][2];
+  _m[0][1] = m[0][0]*q[1][0] + m[0][1]*q[1][1] + m[0][2]*q[1][2];
+  _m[0][2] = m[0][0]*q[2][0] + m[0][1]*q[2][1] + m[0][2]*q[2][2];
+
+  _m[1][0] = m[1][0]*q[0][0] + m[1][1]*q[0][1] + m[1][2]*q[0][2];
+  _m[1][1] = m[1][0]*q[1][0] + m[1][1]*q[1][1] + m[1][2]*q[1][2];
+  _m[1][2] = m[1][0]*q[2][0] + m[1][1]*q[2][1] + m[1][2]*q[2][2];
+
+  _m[2][0] = m[2][0]*q[0][0] + m[2][1]*q[0][1] + m[2][2]*q[0][2];
+  _m[2][1] = m[2][0]*q[1][0] + m[2][1]*q[1][1] + m[2][2]*q[1][2];
+  _m[2][2] = m[2][0]*q[2][0] + m[2][1]*q[2][1] + m[2][2]*q[2][2];
+
+  /* mout = Q _m */
+  mout[0][0] = q[0][0]*_m[0][0] + q[0][1]*_m[1][0] + q[0][2]*_m[2][0];
+  mout[0][1] = q[0][0]*_m[0][1] + q[0][1]*_m[1][1] + q[0][2]*_m[2][1];
+  mout[0][2] = q[0][0]*_m[0][2] + q[0][1]*_m[1][2] + q[0][2]*_m[2][2];
+
+  mout[1][0] = q[1][0]*_m[0][0] + q[1][1]*_m[1][0] + q[1][2]*_m[2][0];
+  mout[1][1] = q[1][0]*_m[0][1] + q[1][1]*_m[1][1] + q[1][2]*_m[2][1];
+  mout[1][2] = q[1][0]*_m[0][2] + q[1][1]*_m[1][2] + q[1][2]*_m[2][2];
+
+  mout[2][0] = q[2][0]*_m[0][0] + q[2][1]*_m[1][0] + q[2][2]*_m[2][0];
+  mout[2][1] = q[2][0]*_m[0][1] + q[2][1]*_m[1][1] + q[2][2]*_m[2][1];
+  mout[2][2] = q[2][0]*_m[0][2] + q[2][1]*_m[1][2] + q[2][2]*_m[2][2];
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Extract from the given matrix its symmetric
+ *        and anti-symmetric part
+ *
+ * \param[in]     m        matrix of 3x3 real values
+ * \param[out]    m_sym    matrix of 3x3 real values (symmetric part)
+ * \param[out]    m_ant    matrix of 3x3 real values (anti-symmetric part)
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_math_33_extract_sym_ant(const cs_real_t  m[3][3],
+                           cs_real_t        m_sym[3][3],
+                           cs_real_t        m_ant[3][3])
+{
+  /* sym = 0.5 (m + m_transpose) */
+  m_sym[0][0] = 0.5 * (m[0][0] + m[0][0]);
+  m_sym[0][1] = 0.5 * (m[0][1] + m[1][0]);
+  m_sym[0][2] = 0.5 * (m[0][2] + m[2][0]);
+  m_sym[1][0] = 0.5 * (m[1][0] + m[0][1]);
+  m_sym[1][1] = 0.5 * (m[1][1] + m[1][1]);
+  m_sym[1][2] = 0.5 * (m[1][2] + m[2][1]);
+  m_sym[2][0] = 0.5 * (m[2][0] + m[0][2]);
+  m_sym[2][1] = 0.5 * (m[2][1] + m[1][2]);
+  m_sym[2][2] = 0.5 * (m[2][2] + m[2][2]);
+
+  /* ant = 0.5 (m - m_transpose) */
+  m_ant[0][0] = 0.5 * (m[0][0] - m[0][0]);
+  m_ant[0][1] = 0.5 * (m[0][1] - m[1][0]);
+  m_ant[0][2] = 0.5 * (m[0][2] - m[2][0]);
+  m_ant[1][0] = 0.5 * (m[1][0] - m[0][1]);
+  m_ant[1][1] = 0.5 * (m[1][1] - m[1][1]);
+  m_ant[1][2] = 0.5 * (m[1][2] - m[2][1]);
+  m_ant[2][0] = 0.5 * (m[2][0] - m[0][2]);
+  m_ant[2][1] = 0.5 * (m[2][1] - m[1][2]);
+  m_ant[2][2] = 0.5 * (m[2][2] - m[2][2]);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Add the product of two 3x3 real matrixes to a matrix.
  *
  * \param[in]     m1            matrix of 3x3 real values
  * \param[in]     m2            matrix of 3x3 real values
@@ -900,7 +1049,7 @@ cs_math_33_product(const cs_real_t  m1[3][3],
 static inline void
 cs_math_33_product_add(const cs_real_t  m1[3][3],
                        const cs_real_t  m2[3][3],
-                       cs_real_33_t     mout)
+                       cs_real_t        mout[restrict 3][3])
 {
   mout[0][0] += m1[0][0]*m2[0][0] + m1[0][1]*m2[1][0] + m1[0][2]*m2[2][0];
   mout[0][1] += m1[0][0]*m2[0][1] + m1[0][1]*m2[1][1] + m1[0][2]*m2[2][1];
@@ -919,8 +1068,9 @@ cs_math_33_product_add(const cs_real_t  m1[3][3],
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Compute the product of two symmetric matrices.
+ *
  * Warning: this is valid if and only if s1 and s2 commute (otherwise sout is
- * not symmetric).
+ *          not symmetric).
  *
  * \remark Symmetric matrix coefficients are stored as follows:
  *         (s11, s22, s33, s12, s23, s13)
@@ -953,7 +1103,7 @@ cs_math_sym_33_product(const cs_real_t s1[6],
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Compute a 6x6 matrix A, equivalent to a 3x3 matrix s, such as:
- * A*R_6 = R*s^t + s*R
+ *        A*R_6 = R*s^t + s*R
  *
  * \param[in]     s            3x3 matrix
  * \param[out]    sout         6x6 matrix
@@ -961,8 +1111,8 @@ cs_math_sym_33_product(const cs_real_t s1[6],
 /*----------------------------------------------------------------------------*/
 
 static inline void
-cs_math_reduce_sym_prod_33_to_66(const cs_real_t s[3][3],
-                                 cs_real_t       sout[restrict 6][6])
+cs_math_reduce_sym_prod_33_to_66(const cs_real_t  s[3][3],
+                                 cs_real_t        sout[restrict 6][6])
 {
   int tens2vect[3][3];
   int iindex[6], jindex[6];
@@ -1015,7 +1165,7 @@ cs_math_sym_33_double_product(const cs_real_t  s1[6],
                               const cs_real_t  s3[6],
                               cs_real_t        sout[restrict 3][3])
 {
-  cs_real_33_t _sout;
+  cs_real_t _sout[3][3];
 
   /* S11 */
   _sout[0][0] = s1[0]*s2[0] + s1[3]*s2[3] + s1[5]*s2[5];
@@ -1199,6 +1349,27 @@ cs_math_voltet(const cs_real_t   xv[3],
                const cs_real_t   xe[3],
                const cs_real_t   xf[3],
                const cs_real_t   xc[3]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Evaluate eigenvalues and eigenvectors
+ *         of a real symmetric matrix m1[3,3]: m1*m2 = lambda*m2
+ *
+ * Use of Jacobi method for symmetric matrices
+ * (adapted from the book Numerical Recipies in C, Chapter 11.1)
+ *
+ * \param[in]     m_in         matrix of 3x3 real values (initial)
+ * \param[in]     tol_err      absolute tolerance (sum of off-diagonal elements)
+ * \param[out]    eig_val      vector of 3 real values (eigenvalues)
+ * \param[out]    eig_vec      matrix of 3x3 real values (eigenvectors)
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_math_33_eig_val_vec(const cs_real_t  m_in[3][3],
+                       const cs_real_t  tol_err,
+                       cs_real_t        eig_val[restrict 3],
+                       cs_real_t        eig_vec[restrict 3][3]);
 
 /*----------------------------------------------------------------------------*/
 /*!

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -33,6 +33,7 @@
  *----------------------------------------------------------------------------*/
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -56,6 +57,7 @@
 #include "cs_parameters.h"
 #include "cs_parall.h"
 #include "cs_mesh.h"
+#include "cs_mesh_adjacencies.h"
 #include "cs_mesh_location.h"
 #include "cs_mesh_quantities.h"
 #include "cs_internal_coupling.h"
@@ -110,7 +112,7 @@ BEGIN_C_DECLS
 void
 cs_f_field_gradient_scalar(int                    f_id,
                            int                    use_previous_t,
-                           int                    imrgra,
+                           int                    imrgr0,
                            int                    inc,
                            int                    recompute_cocg,
                            cs_real_3_t  *restrict grad);
@@ -118,7 +120,7 @@ cs_f_field_gradient_scalar(int                    f_id,
 void
 cs_f_field_gradient_potential(int                    f_id,
                               int                    use_previous_t,
-                              int                    imrgra,
+                              int                    imrgr0,
                               int                    inc,
                               int                    recompute_cocg,
                               int                    hyd_p_flag,
@@ -128,14 +130,14 @@ cs_f_field_gradient_potential(int                    f_id,
 void
 cs_f_field_gradient_vector(int                     f_id,
                            int                     use_previous_t,
-                           int                     imrgra,
+                           int                     imrgr0,
                            int                     inc,
                            cs_real_33_t  *restrict grad);
 
 void
 cs_f_field_gradient_tensor(int                     f_id,
                            int                     use_previous_t,
-                           int                     imrgra,
+                           int                     imrgr0,
                            int                     inc,
                            cs_real_63_t  *restrict grad);
 
@@ -211,7 +213,7 @@ _field_interpolate_by_gradient(const cs_field_t   *f,
                 " not implemented for fields on location %s."),
               f->name, cs_mesh_location_type_name[f->location_id]);
 
-  /* Get the calculation option from the field */
+  /* Compute field cell gradient */
 
   cs_real_t *grad;
   BFT_MALLOC(grad, 3*dim*n_cells_ext, cs_real_t);
@@ -232,7 +234,7 @@ _field_interpolate_by_gradient(const cs_field_t   *f,
     bft_error(__FILE__, __LINE__, 0,
               _("Field gradient interpolation for field %s of dimension %d:\n"
                 " not implemented."),
-              f->name, f->dim);
+              f->name, dim);
 
   /* Now interpolated values */
 
@@ -244,7 +246,7 @@ _field_interpolate_by_gradient(const cs_field_t   *f,
                      point_coords[i][1] - cell_cen[cell_id][1],
                      point_coords[i][2] - cell_cen[cell_id][2]};
 
-    for (cs_lnum_t j = 0; j < f->dim; j++) {
+    for (int j = 0; j < dim; j++) {
       cs_lnum_t k = (cell_id*dim + j)*3;
       val[i*dim + j] =   f->val[cell_id*dim + j]
                        + d[0] * grad[k]
@@ -276,67 +278,72 @@ _local_extrema_scalar(const cs_real_t *restrict pvar,
 {
   const cs_mesh_t *m = cs_glob_mesh;
   const cs_lnum_t n_cells = m->n_cells;
-  const cs_lnum_t n_cells_ext = m->n_cells_with_ghosts;
-  const int n_i_groups = m->i_face_numbering->n_groups;
-  const int n_i_threads = m->i_face_numbering->n_threads;
-  const cs_lnum_t *restrict i_group_index = m->i_face_numbering->group_index;
+  const cs_lnum_t n_vertices = m->n_vertices;
 
-  const cs_lnum_t *restrict cell_cells_idx
-    = (const cs_lnum_t *restrict) m->cell_cells_idx;
-  const cs_lnum_t *restrict cell_cells_lst
-    = (const cs_lnum_t *restrict) m->cell_cells_lst;
-  const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
+  const cs_adjacency_t  *c2v = cs_mesh_adjacencies_cell_vertices();
+  const cs_lnum_t *c2v_idx = c2v->idx;
+  const cs_lnum_t *c2v_ids = c2v->ids;
 
-# pragma omp parallel for
-  for (cs_lnum_t ii = 0; ii < n_cells_ext; ii++) {
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
+  for (cs_lnum_t ii = 0; ii < n_cells; ii++) {
     local_max[ii] = pvar[ii];
     local_min[ii] = pvar[ii];
   }
 
-  /* Contribution from interior faces */
+  cs_real_t *v_min, *v_max;
+  BFT_MALLOC(v_min, n_vertices, cs_real_t);
+  BFT_MALLOC(v_max, n_vertices, cs_real_t);
 
-  for (int g_id = 0; g_id < n_i_groups; g_id++) {
-#   pragma omp parallel for
-    for (int t_id = 0; t_id < n_i_threads; t_id++) {
-      for (cs_lnum_t face_id = i_group_index[(t_id*n_i_groups + g_id)*2];
-          face_id < i_group_index[(t_id*n_i_groups + g_id)*2 + 1];
-          face_id++) {
+# pragma omp parallel for if (n_vertices > CS_THR_MIN)
+  for (cs_lnum_t ii = 0; ii < n_vertices; ii++) {
+    v_max[ii] = -HUGE_VAL;
+    v_min[ii] = HUGE_VAL;
+  }
 
-        cs_lnum_t ii = i_face_cells[face_id][0];
-        cs_lnum_t jj = i_face_cells[face_id][1];
+  /* Scatter min/max values to vertices */
 
-        cs_real_t pi = pvar[ii];
-        cs_real_t pj = pvar[jj];
-
-        local_max[ii] = CS_MAX(local_max[ii], pj);
-        local_max[jj] = CS_MAX(local_max[jj], pi);
-        local_min[ii] = CS_MIN(local_min[ii], pj);
-        local_min[jj] = CS_MIN(local_min[jj], pi);
-      }
+  for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+    cs_lnum_t s_id = c2v_idx[c_id];
+    cs_lnum_t e_id = c2v_idx[c_id+1];
+    cs_real_t _c_var = pvar[c_id];
+    for (cs_lnum_t j = s_id; j < e_id; j++) {
+      cs_lnum_t v_id = c2v_ids[j];
+      if (_c_var < v_min[v_id])
+        v_min[v_id] = _c_var;
+      if (_c_var > v_max[v_id])
+        v_max[v_id] = _c_var;
     }
   }
 
-  /* Contribution from extended neighborhood */
+  if (m->vtx_interfaces != NULL) {
+    cs_interface_set_min(m->vtx_interfaces,
+                         m->n_vertices,
+                         1,
+                         true,
+                         CS_REAL_TYPE,
+                         v_min);
+    cs_interface_set_max(m->vtx_interfaces,
+                         m->n_vertices,
+                         1,
+                         true,
+                         CS_REAL_TYPE,
+                         v_max);
+  }
 
-  if (halo_type == CS_HALO_EXTENDED) {
-#   pragma omp parallel for
-    for (cs_lnum_t ii = 0; ii < n_cells; ii++) {
-      for (cs_lnum_t cidx = cell_cells_idx[ii];
-           cidx < cell_cells_idx[ii + 1];
-           cidx++) {
-        cs_lnum_t jj = cell_cells_lst[cidx];
+  /* Gather min/max values from vertices */
 
-        cs_real_t pi = pvar[ii];
-        cs_real_t pj = pvar[jj];
-
-        local_max[ii] = CS_MAX(local_max[ii], pj);
-        local_max[jj] = CS_MAX(local_max[jj], pi);
-        local_min[ii] = CS_MIN(local_min[ii], pj);
-        local_min[jj] = CS_MIN(local_min[jj], pi);
-      }
+# pragma omp parallel for if (n_cells > CS_THR_MIN)
+  for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+    cs_lnum_t s_id = c2v_idx[c_id];
+    cs_lnum_t e_id = c2v_idx[c_id+1];
+    for (cs_lnum_t j = s_id; j < e_id; j++) {
+      cs_lnum_t v_id = c2v_ids[j];
+      if (v_min[v_id] < local_min[c_id])
+        local_min[c_id] = v_min[v_id];
+      if (v_max[v_id] > local_max[c_id])
+        local_max[c_id] = v_max[v_id];
     }
-  } /* End for extended neighborhood */
+  }
 
   /* Synchronisation */
   if (m->halo != NULL) {
@@ -358,7 +365,7 @@ _local_extrema_scalar(const cs_real_t *restrict pvar,
  * parameters:
  *   f_id           <-- field id
  *   use_previous_t <-- should we use values from the previous time step ?
- *   imrgra         <-- gradient reconstruction mode
+ *   imrgr0         <-- ignored
  *   inc            <-- if 0, solve on increment; 1 otherwise
  *   recompute_cocg <-- should COCG FV quantities be recomputed ?
  *   grad           --> gradient
@@ -367,7 +374,7 @@ _local_extrema_scalar(const cs_real_t *restrict pvar,
 void
 cs_f_field_gradient_scalar(int                    f_id,
                            int                    use_previous_t,
-                           int                    imrgra,
+                           int                    imrgr0,
                            int                    inc,
                            int                    recompute_cocg,
                            cs_real_3_t  *restrict grad)
@@ -391,7 +398,7 @@ cs_f_field_gradient_scalar(int                    f_id,
  * parameters:
  *   f_id           <-- field id
  *   use_previous_t <-- should we use values from the previous time step ?
- *   imrgra         <-- gradient reconstruction mode
+ *   imrgr0         <-- ignored
  *   halo_type      <-- halo type
  *   inc            <-- if 0, solve on increment; 1 otherwise
  *   recompute_cocg <-- should COCG FV quantities be recomputed ?
@@ -403,7 +410,7 @@ cs_f_field_gradient_scalar(int                    f_id,
 void
 cs_f_field_gradient_potential(int                    f_id,
                               int                    use_previous_t,
-                              int                    imrgra,
+                              int                    imrgr0,
                               int                    inc,
                               int                    recompute_cocg,
                               int                    hyd_p_flag,
@@ -412,9 +419,6 @@ cs_f_field_gradient_potential(int                    f_id,
 {
   bool _use_previous_t = use_previous_t ? true : false;
   bool _recompute_cocg = recompute_cocg ? true : false;
-
-  if (imrgra < 0)
-    imrgra = 0;
 
   const cs_field_t *f = cs_field_by_id(f_id);
 
@@ -434,7 +438,7 @@ cs_f_field_gradient_potential(int                    f_id,
  * parameters:
  *   f_id           <-- field id
  *   use_previous_t <-- should we use values from the previous time step ?
- *   imrgra         <-- gradient reconstruction mode
+ *   imrgr0         <-- ignored
  *   inc            <-- if 0, solve on increment; 1 otherwise
  *   recompute_cocg <-- should COCG FV quantities be recomputed ?
  *   grad           --> gradient
@@ -443,7 +447,7 @@ cs_f_field_gradient_potential(int                    f_id,
 void
 cs_f_field_gradient_vector(int                     f_id,
                            int                     use_previous_t,
-                           int                     imrgra,
+                           int                     imrgr0,
                            int                     inc,
                            cs_real_33_t  *restrict grad)
 {
@@ -464,7 +468,7 @@ cs_f_field_gradient_vector(int                     f_id,
  * parameters:
  *   f_id           <-- field id
  *   use_previous_t <-- should we use values from the previous time step ?
- *   imrgra         <-- gradient reconstruction mode
+ *   imrgr0         <-- ignored
  *   inc            <-- if 0, solve on increment; 1 otherwise
  *   recompute_cocg <-- should COCG FV quantities be recomputed ?
  *   grad           --> gradient
@@ -473,7 +477,7 @@ cs_f_field_gradient_vector(int                     f_id,
 void
 cs_f_field_gradient_tensor(int                     f_id,
                            int                     use_previous_t,
-                           int                     imrgra,
+                           int                     imrgr0,
                            int                     inc,
                            cs_real_63_t  *restrict grad)
 {
@@ -533,7 +537,7 @@ cs_field_gradient_scalar(const cs_field_t          *f,
                          cs_real_3_t      *restrict grad)
 {
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   static int key_cal_opt_id = -1;
   if (key_cal_opt_id < 0)
@@ -630,7 +634,7 @@ cs_field_gradient_potential(const cs_field_t          *f,
                             cs_real_3_t      *restrict grad)
 {
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   static int key_cal_opt_id = -1;
   if (key_cal_opt_id < 0)
@@ -716,7 +720,7 @@ cs_field_gradient_vector(const cs_field_t          *f,
                          cs_real_33_t     *restrict grad)
 {
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   static int key_cal_opt_id = -1;
   if (key_cal_opt_id < 0)
@@ -794,7 +798,7 @@ cs_field_gradient_tensor(const cs_field_t          *f,
                          cs_real_63_t     *restrict grad)
 {
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   static int key_cal_opt_id = -1;
   if (key_cal_opt_id < 0)

@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -255,7 +255,7 @@ _write_string(_ensight_file_t   f,
     strncpy(buf, s, 80);
     buf[80] = '\0';
     for (i = strlen(buf); i < 80; i++)
-      buf[i] = ' ';
+      buf[i] = '\0';
     cs_file_write_global(f.bf, buf, 1, 80);
   }
 }
@@ -2003,7 +2003,7 @@ _write_tesselated_connect_g(const fvm_to_ensight_writer_t  *w,
                                   &n_g_sub_elements,
                                   NULL);
 
-  min_block_size /= (n_g_sub_elements/n_g_elements) * stride;
+  min_block_size /= ((n_g_sub_elements*1.)/n_g_elements) * stride;
 
   /* Decode connectivity */
 

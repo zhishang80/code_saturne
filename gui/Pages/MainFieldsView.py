@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -58,7 +58,7 @@ from code_saturne.Base.QtPage import ComboModel, RegExpValidator
 from code_saturne.Base.QtPage import from_qvariant, to_text_string
 from code_saturne.model.Common import LABEL_LENGTH_MAX, GuiParam
 
-from MainFields import Ui_MainFields
+from code_saturne.Pages.MainFields import Ui_MainFields
 from code_saturne.model.MainFieldsModel import MainFieldsModel
 
 from code_saturne.model.LagrangianModel import LagrangianModel

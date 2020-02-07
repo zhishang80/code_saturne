@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -114,6 +114,29 @@ cs_lagr_gradients(int            time_id,
                          cs_glob_physical_constants->gravity[1],
                          cs_glob_physical_constants->gravity[2]};
 
+  /* Use pressure gradient of NEPTUNE_CFD if needed */
+  if (cs_field_by_name_try("velocity_1") != NULL) {
+    cs_real_t *cpro_pgradlagr = cs_field_by_name("lagr_pressure_gradient")->val;
+
+    for (cs_lnum_t iel = 0; iel < cs_glob_mesh->n_cells; iel++)
+      for (cs_lnum_t id = 0; id < 3; id++)
+        grad_pr[iel][id] = cpro_pgradlagr[3*iel + id];
+
+    cs_real_33_t *cpro_vgradlagr
+      = (cs_real_33_t *)(cs_field_by_name("lagr_velocity_gradient")->val);
+
+    if (cpro_vgradlagr != NULL) {
+      for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+        for (cs_lnum_t i = 0; i < 3; i++) {
+          for (cs_lnum_t j = 0; j < 3; j++)
+            grad_vel[c_id][i][j] = cpro_vgradlagr[c_id][i][j];
+       }
+     }
+    }
+
+    return;
+  }
+
   cs_real_t *wpres = NULL;
 
   /* Hydrostatic pressure algorithm? */
@@ -128,9 +151,11 @@ cs_lagr_gradients(int            time_id,
 
   /* retrieve 2/3 rho^{n} k^{n} from solved pressure field for EVM models */
   // FIXME if time_id = 1, we don't have k^{n-1}
-  if (   cs_glob_turb_model->itytur == 2
-      || cs_glob_turb_model->itytur == 5
-      || cs_glob_turb_model->itytur == 6) {
+  const cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
+  assert(turb_model != NULL);
+  if (   turb_model->itytur == 2
+      || turb_model->itytur == 5
+      || turb_model->itytur == 6) {
     BFT_MALLOC(wpres, n_cells_with_ghosts, cs_real_t);
 
     for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
@@ -149,7 +174,7 @@ cs_lagr_gradients(int            time_id,
   int tr_dim = 0;
   cs_lnum_t inc = 1;
   cs_lnum_t iccocg = 1;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
   cs_var_cal_opt_t var_cal_opt;
 
@@ -197,7 +222,7 @@ cs_lagr_gradients(int            time_id,
   /* Compute pressure gradient
    * ========================= */
 
-  cs_gradient_scalar("Work array",
+  cs_gradient_scalar("pressure [Lagrangian module]",
                      gradient_type,
                      halo_type,
                      inc,
@@ -232,8 +257,9 @@ cs_lagr_gradients(int            time_id,
   /* Compute velocity gradient
      ========================= */
 
-  if (   cs_glob_lagr_time_scheme->modcpl > 0
-      && cs_glob_time_step->nt_cur >= cs_glob_lagr_time_scheme->modcpl) {
+  if ( (  cs_glob_lagr_time_scheme->modcpl > 0
+        && cs_glob_time_step->nt_cur >= cs_glob_lagr_time_scheme->modcpl)
+      || cs_glob_lagr_model->shape > 0 ) {
 
     cs_field_gradient_vector(extra->vel,
                              time_id,

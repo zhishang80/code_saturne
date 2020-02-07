@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -109,7 +109,6 @@ use lagran
 use radiat
 use field
 use field_operator
-use ihmpre, only: iihmpr
 use mesh
 use parall
 use period
@@ -117,10 +116,8 @@ use cs_f_interfaces
 use atchem
 use darcy_module
 use cs_c_bindings
-use cs_cf_bindings
 use pointe, only: itypfb, pmapper_double_r1
 use atincl, only: kopint
-use cfpoin, only: hgn_relax_eq_st
 
 !===============================================================================
 
@@ -156,7 +153,7 @@ integer          iiscav
 integer          ifcvsl, iflmas, iflmab, f_oi_id
 integer          nswrgp, imligp, iwarnp
 integer          iconvp, idiffp, ndircp
-integer          nswrsp, ircflp, ischcp, isstpp, iescap
+integer          imrgrp, nswrsp, ircflp, ischcp, isstpp, iescap
 integer          imucpp, idftnp, iswdyp
 integer          iflid , f_id, st_prv_id, st_id,  keydri, iscdri
 integer          f_id_al
@@ -178,6 +175,7 @@ double precision temp, idifftp
 double precision turb_schmidt
 double precision xR, prdtl, alpha_theta
 double precision normp
+double precision l2norm, l2errork
 
 double precision rvoid(1)
 
@@ -210,6 +208,9 @@ double precision, dimension(:), pointer :: cpro_viscls, cpro_visct
 double precision, dimension(:), pointer :: cpro_tsscal
 double precision, dimension(:), pointer :: cpro_x2icla
 double precision, dimension(:), pointer :: cvar_var, cvara_var, cvara_varsca
+double precision, dimension(:), pointer :: cvark_var
+double precision, allocatable, dimension(:), target :: wcvark_var
+double precision, allocatable, dimension(:) :: errork
 double precision, allocatable, dimension(:) :: divflu
 ! Darcy arrays
 double precision, allocatable, dimension(:) :: diverg
@@ -392,23 +393,21 @@ do iel = 1, ncel
   smbrs(iel) = 0.d0
 enddo
 
-if (iihmpr.eq.1) then
-  if (iscal.ne.iscalt) then
-    call uitssc &
-    ( ippmod(idarcy), iflid  , cvar_var , smbrs  , rovsdt )
-  else
-    call uitsth &
-    ( iflid  , cvar_var , smbrs  , rovsdt )
-  endif
+if (iscal.ne.iscalt) then
+  call uitssc(ippmod(idarcy), iflid, cvar_var, smbrs, rovsdt)
+else
+  call uitsth(iflid, cvar_var, smbrs, rovsdt)
 endif
 
 call ustssc &
-!==========
 ( nvar   , nscal  , ncepdp , ncesmp ,                            &
   iscal  ,                                                       &
   icepdc , icetsm , itypsm ,                                     &
   dt     ,                                                       &
   ckupdc , smacel , smbrs  , rovsdt )
+
+! C version
+call user_source_terms(ivarfl(isca(iscal)), smbrs, rovsdt)
 
 ! Take into account radioactive decay rate (implicit source term)
 if (ippmod(idarcy).eq.1) then
@@ -454,12 +453,11 @@ endif
 ! Atmospheric chemistry
 ! In case of a semi-coupled resolution, computation of the explicit
 ! chemical source term to be considered during dynamical resolution
-! The first nespg user scalars are supposed to be chemical species
-if ((ichemistry.ge.1).and.(isepchemistry.eq.2)                    &
-     .and.(iscal.le.nespg).and.(ntcabs.gt.1)) then
-  call chem_source_terms(iscal, smbrs, rovsdt)
+if ((ichemistry.ge.1) .and. (isepchemistry.eq.2) .and. (ntcabs.ge.ntinit)) then
+  if ((isca_chem(1).le.iscal).and.(iscal.le.isca_chem(nespg))) then
+    call chem_source_terms(iscal, smbrs, rovsdt)
+  endif
 endif
-
 
 ! Precipitation/dissolution for lagrangian module
 ! Calculation of source terms du to precipitation and dissolution phenomena
@@ -672,8 +670,7 @@ if (nfbpcd.gt.0) then
   enddo
 
   call condensation_source_terms &
-  !=============================
-  (ncelet , ncel ,                                       &
+  (ncelet ,                                              &
    iscal  ,                                              &
    nfbpcd , ifbpcd  , itypcd(1,ivar) ,                   &
    0      , ivoid   , ivoid          ,                   &
@@ -705,8 +702,7 @@ if (icondv.eq.0) then
   enddo
 
   call condensation_source_terms &
-  !=============================
-  (ncelet , ncel ,                                       &
+  (ncelet ,                                              &
    iscal  ,                                              &
    0      , ivoid   , ivoid          ,                   &
    ncmast , ltmast  , itypst(1,ivar) ,                   &
@@ -760,6 +756,7 @@ if (itspdv.eq.1) then
 
     call field_get_key_struct_var_cal_opt(ivarfl(ivarsc), vcopt_varsc)
 
+    imrgrp = vcopt_varsc%imrgra
     nswrgp = vcopt_varsc%nswrgr
     imligp = vcopt_varsc%imligr
     iwarnp = vcopt_varsc%iwarni
@@ -768,7 +765,7 @@ if (itspdv.eq.1) then
     extrap = vcopt_varsc%extrag
 
     call gradient_s                                                          &
-     ( ivarfl(ivarsc)  , imrgra , inc    , iccocg , nswrgp , imligp ,        &
+     ( ivarfl(ivarsc)  , imrgrp , inc    , iccocg , nswrgp , imligp ,        &
        iwarnp          , epsrgp , climgp , extrap ,                          &
        cvara_varsca    , coefa_p, coefb_p,                                   &
        grad )
@@ -1252,11 +1249,22 @@ endif
 ! 3. Solving
 !===============================================================================
 
+if (iterns.ge.1) then
+  allocate(wcvark_var(ncelet))
+  cvark_var => wcvark_var
+  do iel = 1, ncelet
+    cvark_var(iel) = cvar_var(iel)
+  enddo
+else
+  call field_get_val_s(ivarfl(ivar), cvark_var)
+endif
+
 iconvp = vcopt%iconv
 idiffp = vcopt%idiff
 idftnp = vcopt%idften
 ndircp = vcopt%ndircl
 nswrsp = vcopt%nswrsm
+imrgrp = vcopt%imrgra
 nswrgp = vcopt%nswrgr
 imligp = vcopt%imligr
 ircflp = vcopt%ircflu
@@ -1284,12 +1292,12 @@ call field_get_coefbf_s(ivarfl(ivar), cofbfp)
 call codits &
 !==========
  ( idtvar , iterns , ivarfl(ivar)    , iconvp , idiffp , ndircp , &
-   imrgra , nswrsp , nswrgp , imligp , ircflp ,                   &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp ,                   &
    ischcp , isstpp , iescap , imucpp , idftnp , iswdyp ,          &
    iwarnp , normp  ,                                              &
    blencp , epsilp , epsrsp , epsrgp , climgp , extrap ,          &
    relaxp , thetv  ,                                              &
-   cvara_var       , cvar_var        ,                            &
+   cvara_var       , cvark_var       ,                            &
    coefap , coefbp , cofafp , cofbfp ,                            &
    imasfl , bmasfl ,                                              &
    viscf  , viscb  , viscf  , viscb  , viscce ,                   &
@@ -1299,7 +1307,7 @@ call codits &
    xcpp   , rvoid  )
 
 !===============================================================================
-! 4. clipping
+! 4. clipping and log
 !===============================================================================
 
 call clpsca(iscal)
@@ -1314,12 +1322,6 @@ if (ippmod(idarcy).eq.1) then
   if (sorption_scal%imxsol.ge.0) then
     call cs_gwf_precipitation(ivarfl(ivar))
   endif
-endif
-
-! Return to equilibrium source term step for volume, mass, energy fractions
-! in the compressible homogeneous two-phase model
-if (ippmod(icompf).gt.1.and.hgn_relax_eq_st.ge.0) then
-  call cs_cf_hgn_source_terms_step
 endif
 
 if (idilat.ge.4.and.itspdv.eq.1) then
@@ -1378,7 +1380,25 @@ if (vcopt%iwarni.ge.2) then
   write(nfecra,1200)chaine(1:16) ,sclnor
 endif
 
+! Log in case of PISO-like sub iterations
+if (iterns.ge.1.and.vcopt%iwarni.ge.1) then
+
+  allocate(errork(ncelet))
+  do iel = 1, ncel
+    errork(iel) = cvar_var(iel) - cvark_var(iel)
+  enddo
+
+  l2errork = sqrt(cs_gres(ncel, cell_f_vol, errork, errork))
+  deallocate(errork)
+
+  l2norm = sqrt(cs_gres(ncel, cell_f_vol, cvara_var, cvara_var))
+
+  write(nfecra,2601) ivarfl(ivar), iterns, l2errork, l2errork/l2norm, l2norm
+
+endif
+
 ! Free memory
+if (allocated(wcvark_var)) deallocate(wcvark_var)
 deallocate(w1)
 deallocate(smbrs, rovsdt)
 if (allocated(viscce)) deallocate(viscce)
@@ -1432,6 +1452,8 @@ if (allocated(diverg)) deallocate(diverg)
 '@                                                            ',/)
 
 #endif
+
+2601 format('PISO scalar',I10, 'iter=', I10, 'L2 error = ',E12.4,' L2 normalized error', E12.4, 'L2 nomr', E12.4 ,/)
 
 !----
 ! End

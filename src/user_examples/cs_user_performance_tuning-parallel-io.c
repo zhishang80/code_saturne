@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -40,27 +40,10 @@
 #include <string.h>
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_error.h"
-#include "bft_mem.h"
-#include "bft_printf.h"
-
-#include "cs_base.h"
-#include "cs_file.h"
-#include "cs_grid.h"
-#include "cs_matrix.h"
-#include "cs_matrix_default.h"
-#include "cs_parall.h"
-#include "cs_partition.h"
-#include "cs_renumber.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -147,7 +130,7 @@ cs_user_parallel_io(void)
 
   cs_file_set_default_comm(block_rank_step, block_min_size, cs_glob_mpi_comm);
 
-  cs_file_set_mpi_io_positionning(CS_FILE_MPI_INDIVIDUAL_POINTERS);
+  cs_file_set_mpi_io_positioning(CS_FILE_MPI_INDIVIDUAL_POINTERS);
 
   MPI_Info_free(&hints);
 

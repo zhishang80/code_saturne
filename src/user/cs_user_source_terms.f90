@@ -12,7 +12,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -41,6 +41,8 @@
 !===============================================================================
 !> \brief Additional right-hand side source terms for velocity components equation
 !> (Navier-Stokes)
+!>
+!> \deprecated Use \ref cs_user_source_terms instead.
 !>
 !> \section ustsnv_use  Usage
 !>
@@ -191,6 +193,7 @@ end subroutine ustsnv
 !> \brief    Additional right-hand side source terms for scalar equations (user
 !>     scalars and specific physics scalars).
 !>
+!> \deprecated Use \ref cs_user_source_terms instead.
 !>
 !> Usage
 !> -----
@@ -374,6 +377,7 @@ end subroutine ustssc
 !> \brief    Additional right-hand side source terms for vectorial equations
 !>           (user vectors and specific physics vectors).
 !>
+!> \deprecated Use \ref cs_user_source_terms instead.
 !>
 !> Usage
 !> -----
@@ -428,7 +432,7 @@ end subroutine ustssc
 !>
 
 !>
-!> STEP SOURCE TERMS
+!> STEEP SOURCE TERMS
 !>===================
 !> In case of a complex, non-linear source term, say F(f), for scalar f, the
 !> easiest method is to implement the source term explicitely.
@@ -557,6 +561,8 @@ end subroutine ustsvv
 
 !===============================================================================
 !> \brief Additional right-hand side source terms for turbulence models
+!>
+!> \deprecated Use \ref cs_user_source_terms instead.
 !>
 !> \section cs_user_turbulence_source_terms_use  Usage
 !>
@@ -703,6 +709,8 @@ end subroutine cs_user_turbulence_source_terms
 !===============================================================================
 !> \brief Additional right-hand side source terms for turbulence models and
 !>irijco =1
+!>
+!> \deprecated Use \ref cs_user_source_terms instead.
 !>
 !> \section cs_user_rij_source_terms_use  Usage
 !>

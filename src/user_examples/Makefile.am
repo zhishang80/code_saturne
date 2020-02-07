@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -83,7 +83,10 @@ cs_user_coupling-saturne.c \
 cs_user_coupling-syrthes.c \
 cs_user_coupling.c \
 cs_user_electric_scaling.c \
+cs_user_extra_operations-vorticity_field.c \
 cs_user_extra_operations-balance_by_zone.c \
+cs_user_extra_operations-boundary_forces.c \
+cs_user_extra_operations-nusselt_and_friction_calculation.c \
 cs_user_extra_operations-scalar_balance.c \
 cs_user_extra_operations-turbomachinery.c \
 cs_user_extra_operations-verif_cdo_diffusion.c \
@@ -91,6 +94,7 @@ cs_user_gwf-example.c \
 cs_user_head_losses.c \
 cs_user_hgn-relax_time_scale.c \
 cs_user_initialization-base.c \
+cs_user_initialization-medcoupling_remapper_3d.c \
 cs_user_lagr_boundary_conditions.c \
 cs_user_lagr_volume_conditions.c \
 cs_user_lagr_model.c \
@@ -118,6 +122,7 @@ cs_user_physical_properties.c \
 cs_user_porosity.c \
 cs_user_postprocess.c \
 cs_user_postprocess-profiles.c \
+cs_user_postprocess-probes-interpolate.c \
 cs_user_postprocess-sfc.c \
 cs_user_radiative_transfer.c \
 cs_user_radiative_transfer_bcs.c \
@@ -145,7 +150,6 @@ cs_user_boundary_mass_source_terms-condensation.f90 \
 cs_user_boundary_mass_source_terms-nzones_condensation.f90 \
 cs_user_extra_operations-energy_balance.f90 \
 cs_user_extra_operations-force_temperature.f90 \
-cs_user_extra_operations-global_efforts.f90 \
 cs_user_extra_operations-nusselt_calculation.f90 \
 cs_user_extra_operations-parallel_operations.f90 \
 cs_user_extra_operations-richards_flux.f90 \
@@ -174,10 +178,10 @@ cs_user_physical_properties-compressible_flow.f90 \
 cs_user_physical_properties-richards_sat.f90 \
 cs_user_physical_properties-richards_unsat.f90 \
 cs_user_physical_properties-scalar_drift.f90 \
-cs_user_source_terms-richards.f90 \
-cs_user_source_terms-scalar_in_a_channel.f90 \
-cs_user_source_terms.f90 \
-usatch_4spe5reac.f90 \
+cs_user_source_terms-base.c \
+cs_user_source_terms-richards.c \
+cs_user_source_terms-scalar_in_a_channel.c \
+cs_user_source_terms-turbulence.c \
 usthht.f90 \
 usvort.f90 \
 usvosy.f90
@@ -212,4 +216,5 @@ install-data-hook:
 	for file in $${c_user_examples}; do \
 	  $(SED) -e "N;s/$${stubvers}/$${version}/" < "$${file}" > "$${file}.tmp" && \
 	  mv "$${file}.tmp" "$${file}"; \
+	  $(SED) -i "/\/\*! \[.*\] \*\//d" "$${file}"; \
 	done

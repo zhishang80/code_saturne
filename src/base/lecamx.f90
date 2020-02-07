@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -111,7 +111,7 @@ integer          nberro, inierr, ivers(1)
 integer          ilu   , ierrch
 integer          nfmtsc, nfmtfl, nfmtch, nfmtcl
 integer          nfmtst
-integer          jale, jcavit, jvolfl
+integer          jale, jvolfl
 integer          f_id, iflmas, iflmab, iflvoi, iflvob
 integer          key_t_ext_id, icpext
 integer          iviext
@@ -161,7 +161,7 @@ call field_get_key_id("time_extrapolated", key_t_ext_id)
 ! 1. OUVERTURE DU FICHIER SUITE AUXILIAIRE
 !===============================================================================
 
-ficsui = 'auxiliary'
+ficsui = 'auxiliary.csc'
 call restart_create(ficsui, '', 0, rp)
 
 ! ---> Debut de la lecture
@@ -717,20 +717,6 @@ if (iphydr.eq.1) then
 endif
 
 !===============================================================================
-! 11. PRESSION HYDROSTATIQUE PREDITE
-!===============================================================================
-
-if (iphydr.eq.2) then
-
-  itysup = 1
-  nbval  = 1
-
-  call field_get_id('hydrostatic_pressure_prd', f_id)
-  call restart_read_field_vals(rp, f_id, 0, ierror)
-
-endif
-
-!===============================================================================
 ! 12.  Wall temperature associated to the condensation model
 !      with or wihtout the 1D thermal model tag1D
 !===============================================================================
@@ -751,7 +737,7 @@ if (icondb.eq.0) then
     nberro=nberro+ierror
 
     do ii = 1, nfbpcd
-      ifac= ifbpcd(ii)
+      ifac = ifbpcd(ii)
       iz  = izzftcd(ii)
       do kk = 1, znmur(iz)
         ztmur(ii,kk) =  tmurbf(ifac,kk)
@@ -1852,27 +1838,6 @@ return
 '@                                                            ',/,&
 '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
 '@                                                            ',/)
- 9220 format(                                                     &
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/,&
-'@ @@ ATTENTION : ERREUR A LA LECTURE DU FICHIER SUITE        ',/,&
-'@    =========                                     AUXILIAIRE',/,&
-'@                                                            ',/,&
-'@      ERREUR A LA LECTURE DE L''INDICATEUR DE MODELE DE     ',/,&
-'@                                                  CAVITATION',/,&
-'@                                                            ',/,&
-'@    Il se peut que le fichier suite relu corresponde a une  ',/,&
-'@      version anterieure de Code_Saturne, sans modele de    ',/,&
-'@                                                 cavitation.',/,&
-'@    Le calcul sera execute en reinitialisant toutes les     ',/,&
-'@      donnees du modele de cavitation.                      ',/,&
-'@    Verifier neanmoins que le fichier suite utilise n''a    ',/,&
-'@        pas ete endommage.                                  ',/,&
-'@                                                            ',/,&
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/)
  9221 format(                                                     &
 '@                                                            ',/,&
 '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
@@ -2046,25 +2011,6 @@ return
 '@      version of Code_Saturne, without the ALE method.      ',/,&
 '@    The run will be executed with reinitialising all        ',/,&
 '@      ALE data.                                             ',/,&
-'@                                                            ',/,&
-'@    Verify that the restart file used has not been damaged. ',/,&
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/)
- 9220 format(                                                     &
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/,&
-'@ @@ WARNING: ERROR WHILE READING THE AUXILIARY RESTART FILE ',/,&
-'@    =======                                                 ',/,&
-'@                                                            ',/,&
-'@      ERROR WHEN READING THE INDICATOR OF THE CAVITATION    ',/,&
-'@                                                      MODEL ',/,&
-'@                                                            ',/,&
-'@    It is possible that the file read corresponds to an old ',/,&
-'@      version of Code_Saturne, without the cavitation model.',/,&
-'@    The run will be executed with reinitialising all        ',/,&
-'@      cavitation model data.                                ',/,&
 '@                                                            ',/,&
 '@    Verify that the restart file used has not been damaged. ',/,&
 '@                                                            ',/,&

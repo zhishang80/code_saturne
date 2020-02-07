@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -136,6 +136,20 @@ cs_xdef_volume_create(cs_xdef_type_t    type,
     }
     break;
 
+  case CS_XDEF_BY_DOF_FUNCTION:
+    {
+      cs_xdef_dof_input_t  *a = (cs_xdef_dof_input_t *)input;
+      cs_xdef_dof_input_t  *b = NULL;
+
+      BFT_MALLOC(b, 1, cs_xdef_dof_input_t);
+      b->func = a->func;
+      b->loc = a->loc;
+      b->input = a->input;
+
+      d->input = b;
+    }
+    break;
+
   case CS_XDEF_BY_TIME_FUNCTION:
     {
       cs_xdef_time_func_input_t  *a = (cs_xdef_time_func_input_t *)input;
@@ -175,10 +189,26 @@ cs_xdef_volume_create(cs_xdef_type_t    type,
       cs_field_t  *f = (cs_field_t *)input;
 
       d->input = f;
+      assert(f != NULL);
+
+      const cs_mesh_location_type_t  loc_type =
+        cs_mesh_location_get_type(f->location_id);
 
       /* Update state flag */
-      if (f->location_id == cs_mesh_location_get_id_by_name(N_("cells")))
+      switch(loc_type) {
+
+      case CS_MESH_LOCATION_CELLS:
         d->state |= CS_FLAG_STATE_CELLWISE;
+        d->meta |= CS_FLAG_FULL_LOC;
+        break;
+      case CS_MESH_LOCATION_VERTICES:
+        d->meta |= CS_FLAG_FULL_LOC;
+        break;
+
+      default:
+        break; /* Nothing to do */
+      }
+
     }
     break;
 
@@ -233,7 +263,7 @@ cs_xdef_boundary_create(cs_xdef_type_t    type,
   d->z_id = z_id;
   d->state = state;
   d->meta = meta;
-  d->qtype = CS_QUADRATURE_BARY; // default value
+  d->qtype = CS_QUADRATURE_BARY; /* default value */
 
   switch (type) {
 
@@ -256,6 +286,20 @@ cs_xdef_boundary_create(cs_xdef_type_t    type,
 
       BFT_MALLOC(b, 1, cs_xdef_analytic_input_t);
       b->func = a->func;
+      b->input = a->input;
+
+      d->input = b;
+    }
+    break;
+
+  case CS_XDEF_BY_DOF_FUNCTION:
+    {
+      cs_xdef_dof_input_t  *a = (cs_xdef_dof_input_t *)input;
+      cs_xdef_dof_input_t  *b = NULL;
+
+      BFT_MALLOC(b, 1, cs_xdef_dof_input_t);
+      b->func = a->func;
+      b->loc = a->loc;
       b->input = a->input;
 
       d->input = b;
@@ -302,7 +346,7 @@ cs_xdef_boundary_create(cs_xdef_type_t    type,
     }
     break;
 
-  default: // analytic functions or more generic functions
+  default: /* analytic functions or more generic functions */
     d->input = input;
     break;
 
@@ -403,9 +447,10 @@ cs_xdef_free(cs_xdef_t     *d)
     BFT_FREE(d->input);
 
   }
-  else if (d->type == CS_XDEF_BY_TIME_FUNCTION ||
-           d->type == CS_XDEF_BY_VALUE ||
+  else if (d->type == CS_XDEF_BY_TIME_FUNCTION     ||
+           d->type == CS_XDEF_BY_VALUE             ||
            d->type == CS_XDEF_BY_ANALYTIC_FUNCTION ||
+           d->type == CS_XDEF_BY_DOF_FUNCTION      ||
            d->type == CS_XDEF_BY_QOV)
     BFT_FREE(d->input);
 
@@ -645,6 +690,9 @@ cs_xdef_log(const char          *prefix,
                 _p, cs_base_strtf(is_uniform), cs_base_strtf(is_cellwise),
                 cs_base_strtf(is_steady), d->meta);
 
+  /* Which support */
+  /* ============= */
+
   if (d->support == CS_XDEF_SUPPORT_VOLUME) {
 
     const cs_zone_t  *z = cs_volume_zone_by_id(d->z_id);
@@ -664,11 +712,18 @@ cs_xdef_log(const char          *prefix,
   else if (d->support == CS_XDEF_SUPPORT_TIME)
     cs_log_printf(CS_LOG_SETUP, "%s | Support: time\n", _p);
 
+  /* Type of definition */
+  /* ================== */
+
   switch (d->type) {
 
   case CS_XDEF_BY_ANALYTIC_FUNCTION:
     cs_log_printf(CS_LOG_SETUP, "%s | Definition by an analytical function\n",
                   _p);
+    break;
+
+  case CS_XDEF_BY_DOF_FUNCTION:
+    cs_log_printf(CS_LOG_SETUP, "%s | Definition by a DoF function\n", _p);
     break;
 
   case CS_XDEF_BY_ARRAY:

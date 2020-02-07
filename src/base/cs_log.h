@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -63,6 +63,35 @@ extern int cs_glob_log_frequency;
 /*============================================================================
  * Public function prototypes
  *============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Update "active" or "inactive" flag of default log.
+ *
+ * This does not prevent output to the log file, but the flag can be queried
+ * using \ref cs_log_default_is_active, so in most cases, this status
+ * should be checked before logging output
+ *
+ * \param[in]  activate  true to activate, false to deactivate.
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_log_default_activate(bool  activate);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Update "active" or "inactive" flag of default log.
+ *
+ * This does not prevent output to the log file, but the flag can be queried
+ * using \
+ *
+ * \return  true if active, false otherwise.
+ */
+/*----------------------------------------------------------------------------*/
+
+bool
+cs_log_default_is_active(void);
 
 /*----------------------------------------------------------------------------
  * Count printable length of a character string.

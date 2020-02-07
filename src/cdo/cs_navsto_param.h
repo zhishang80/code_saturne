@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -31,6 +31,10 @@
 
 #include "cs_boundary.h"
 #include "cs_equation_param.h"
+#include "cs_math.h"
+#include "cs_physical_constants.h"
+#include "cs_sles.h"
+#include "cs_turbulence_model.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -40,60 +44,137 @@ BEGIN_C_DECLS
  * Macro definitions
  *============================================================================*/
 
+/* Manage the naming of properties, variables and equations related to the
+ * Navier-Stokes module */
+
+#define CS_NAVSTO_LAMINAR_VISCOSITY  "laminar_viscosity"
+#define CS_NAVSTO_STREAM_EQNAME      "streamfunction_eq"
+
+/*!
+ * @name Flags specifying numerical options
+ * @{
+ */
+
+/* Value = 1 */
+#define CS_NAVSTO_FLAG_STEADY            (1 <<  0) /*!< Steady-state */
+
+/*!
+ * @}
+ * @name Flag specifying predefined post-processing
+ *
+ * \brief w denotes the vorticity * vector and u the velocity vector, k is the
+ *        kinetic energy defined by k := 1/2 * u \cdot u
+ *
+ * @{
+ */
+
+/* Value =   1 */
+#define CS_NAVSTO_POST_VELOCITY_DIVERGENCE (1 <<  0) /*!< div(u) */
+
+/* Value =   2 */
+#define CS_NAVSTO_POST_KINETIC_ENERGY      (1 <<  1) /*!< k := rho/2 u\cdot u */
+
+/* Value =   4 */
+#define CS_NAVSTO_POST_VORTICITY           (1 <<  2) /*!< w = curl(u) */
+
+/* Value =   8 */
+#define CS_NAVSTO_POST_VELOCITY_GRADIENT   (1 <<  3)
+
+/* Value =  16 */
+#define CS_NAVSTO_POST_STREAM_FUNCTION     (1 <<  4) /*!< -Lap(Psi) = w_z */
+
+/* Value =  32 */
+#define CS_NAVSTO_POST_HELICITY            (1 <<  5) /*!< u \cdot w */
+
+/* Value =  64 */
+#define CS_NAVSTO_POST_ENSTROPHY           (1 <<  6) /*!< w \cdot w */
+
+/*!
+ * @}
+ */
+
 /*============================================================================
  * Type definitions
  *============================================================================*/
 
-/*! \enum cs_navsto_param_model_t
- *  \brief Modelling related to the Navier-Stokes system of equations
+typedef cs_flag_t  cs_navsto_param_model_t;
+
+/*! \enum cs_navsto_param_model_bit_t
+ *  \brief Bit values for physical modelling related to the Navier-Stokes system
+ *  of equations
  *
  * \var CS_NAVSTO_MODEL_STOKES
  * Stokes equations (mass and momentum) with the classical choice of variables
- * i.e. velocity and pressure
+ * i.e. velocity and pressure. Mass density is assumed to be constant.
  *
  * \var CS_NAVSTO_MODEL_OSEEN
  * Like the incompressible Navier-Stokes equations (mass and momentum) but with
  * a velocity field which is given. Thus the advection term in the momentum
- * equation is linear. Unknowns: velocity and pressure
+ * equation is linear. Unknowns: velocity and pressure. Mass density is assumed
+ * to be constant.
  *
  * \var CS_NAVSTO_MODEL_INCOMPRESSIBLE_NAVIER_STOKES
  * Navier-Stokes equations: mass and momentum with a constant mass density
  *
- * \var CS_NAVSTO_MODEL_BOUSSINESQ_NAVIER_STOKES
- * Navier-Stokes equations: mass and momentum with a constant mass density
+ * \var CS_NAVSTO_MODEL_GRAVITY_EFFECTS
+ * Take into account the gravity effects (add a constant source term equal to
+ * rho*vect(g))
+ *
+ * \var CS_NAVSTO_MODEL_CORIOLIS_EFFECTS
+ * Take into account the Coriolis effects (add a source term)
+ *
+ * \var CS_NAVSTO_MODEL_BOUSSINESQ
+ * Gravity effects are taken into account as well as the effect of small
+ * variation of temperatures.
  * The gradient of temperature is assumed to have a small norm and the mass
  * density variates in a small range. In this case, an additional equation
- * related to the energy is considered.
+ * related to the temperature is considered and momentum source term is added.
  */
 
 typedef enum {
 
-  CS_NAVSTO_MODEL_STOKES,
-  CS_NAVSTO_MODEL_OSEEN,
-  CS_NAVSTO_MODEL_INCOMPRESSIBLE_NAVIER_STOKES,
-  CS_NAVSTO_MODEL_BOUSSINESQ_NAVIER_STOKES,
+  /* Main modelling for the dynamic
+     ------------------------------ */
 
-  CS_NAVSTO_N_MODELS
+  CS_NAVSTO_MODEL_STOKES                          = 1<<0, /* =   1 */
+  CS_NAVSTO_MODEL_OSEEN                           = 1<<1, /* =   2 */
+  CS_NAVSTO_MODEL_INCOMPRESSIBLE_NAVIER_STOKES    = 1<<2, /* =   4 */
 
-} cs_navsto_param_model_t;
+  /* Additional modelling bits
+     ------------------------- */
 
-/*! \enum cs_navsto_param_sles_t
+  CS_NAVSTO_MODEL_GRAVITY_EFFECTS                 = 1<<3, /* =   8 */
+  CS_NAVSTO_MODEL_CORIOLIS_EFFECTS                = 1<<4, /* =  16 */
+  CS_NAVSTO_MODEL_BOUSSINESQ                      = 1<<5  /* =  32 */
+
+} cs_navsto_param_model_bit_t;
+
+/*! \enum cs_navsto_sles_t
  *
  *  \brief High-level information about the way of settings the SLES for solving
- *  the Navier-Stokes system. When a the system is treated as a saddle-point
+ *  the Navier-Stokes system. When the system is treated as a saddle-point
  *  problem (monolithic approach in what follows), then one uses these
  *  notations: A_{00} is the upper-left block and A_{11} (should be 0 but the
- *  preconditionner may have entries for the approximation of the inverse of the
+ *  preconditioner may have entries for the approximation of the inverse of the
  *  Schur complement).
  *
- * \var CS_NAVSTO_SLES_EQ_WITHOUT_BLOCK
- * Associated keyword: "no_block"
  *
- * Use the same mechanism as for a stand-alone equation. In this case, the
- * setting relies on the function \ref cs_equation_set_sles and the different
- * options for solving a linear system such as the choice of the iterative
- * solver or the choice of the preconditionner or the type of residual
- * normalization
+ * \var CS_NAVSTO_SLES_ADDITIVE_GMRES_BY_BLOCK
+ * Associated keyword: "additive_gmres"
+ *
+ * Available choice when a monolithic approach is used (i.e. with the parameter
+ * CS_NAVSTO_COUPLING_MONOLITHIC is set as coupling algorithm) The Navier-Stokes
+ * system of equations is solved an additive preconditioner (block diagonal
+ * matrix where the block 00 is A_{00}) and the block 11 is set to the identity.
+ * Preconditioner/solver for the block 00 is set using the momentum equation.
+ * This option is only available with the support to the PETSc library up to now.
+ *
+ *
+ * \var CS_NAVSTO_SLES_BY_BLOCKS
+ * Associated keyword: "blocks"
+ *
+ * The Navier-Stokes system is split into a 3x3 block matrix for the velocity unknows
+ * and in a non-assembly way for the divergence/pressure gradient operators.
  *
  *
  * \var CS_NAVSTO_SLES_BLOCK_MULTIGRID_CG
@@ -109,17 +190,6 @@ typedef enum {
  * only available with the support to the PETSc library up to now.
  *
  *
- * \var CS_NAVSTO_SLES_ADDITIVE_GMRES_BY_BLOCK
- * Associated keyword: "additive_gmres"
- *
- * Available choice when a monolithic approach is used (i.e. with the parameter
- * CS_NAVSTO_COUPLING_MONOLITHIC is set as coupling algorithm) The Navier-Stokes
- * system of equations is solved an additive preconditioner (block diagonal
- * matrix where the block 00 is A_{00} preconditionned by one multigrid
- * iteration and the block 11 is set to the identity. This option is only
- * available with the support to the PETSc library up to now.
- *
- *
  * \var CS_NAVSTO_SLES_DIAG_SCHUR_GMRES
  * Associated keyword: "diag_schur_gmres"
  *
@@ -128,22 +198,19 @@ typedef enum {
  * Navier-Stokes system of equations is solved using a block diagonal
  * preconditioner where the block 00 is A_{00} preconditioned with one multigrid
  * iteration and the block 11 is an approximation of the Schur complement
- * preconditionned with one multigrid iteration. The main iterative solver is a
+ * preconditioned with one multigrid iteration. The main iterative solver is a
  * flexible GMRES. This option is only available with the support to the PETSc
  * library up to now.
  *
  *
- * \var CS_NAVSTO_SLES_UPPER_SCHUR_GMRES
- * Associated keyword: "upper_schur_gmres"
+ * \var CS_NAVSTO_SLES_EQ_WITHOUT_BLOCK
+ * Associated keyword: "no_block"
  *
- * Available choice when a monolithic approach is used (i.e. with the parameter
- * CS_NAVSTO_COUPLING_MONOLITHIC is set as coupling algorithm). The
- * Navier-Stokes system of equations is solved using a upper triangular block
- * preconditioner where the block 00 is A_{00} preconditioned with one multigrid
- * iteration and the block 11 is an approximation of the Schur complement
- * preconditionned with a minres. The main iterative solver is a flexible
- * GMRES. This option is only available with the support to the PETSc
- * library up to now.
+ * Use the same mechanism as for a stand-alone equation. In this case, the
+ * setting relies on the function \ref cs_equation_set_sles and the different
+ * options for solving a linear system such as the choice of the iterative
+ * solver or the choice of the preconditioner or the type of residual
+ * normalization
  *
  *
  * \var CS_NAVSTO_SLES_GKB
@@ -154,7 +221,7 @@ typedef enum {
  * Navier-Stokes system of equations is solved using a Golub-Kahan
  * bi-diagonalization. One assumes that the saddle-point system is symmetric.
  * By default, the block A_{00} may be augmented (this is not the default
- * choice) and is solved with a conjuguate gradient algorithm preconditionned
+ * choice) and is solved with a conjugate gradient algorithm preconditioned
  * with a multigrid. The residual is computed in the energy norm. This option is
  * only available with the support to the PETSc library up to now.
  *
@@ -164,52 +231,121 @@ typedef enum {
  * Available choice when a monolithic approach is used (i.e. with the parameter
  * CS_NAVSTO_COUPLING_MONOLITHIC is set as coupling algorithm). The
  * Navier-Stokes system of equations is solved using a Golub-Kahan
- * bi-diagonalization (GKB) as preconditionner of a flexible GMRES solver. The
+ * bi-diagonalization (GKB) as preconditioner of a flexible GMRES solver. The
  * GKB algorithm is solved with a reduced tolerance as well as the CG+Multigrid
  * used as an inner solver in the GKB algorithm. One assumes that the
  * saddle-point system is symmetric. The residual for the GKB part is computed
  * in the energy norm. This option is only available with the support to the
  * PETSc library up to now.
+ *
+ * \var CS_NAVSTO_SLES_GKB_SATURNE
+ * Associated keyword: "gkb_saturne"
+ *
+ * Available choice when a monolithic approach is used (i.e. with the parameter
+ * CS_NAVSTO_COUPLING_MONOLITHIC is set as coupling algorithm). The
+ * Navier-Stokes system of equations is solved using a Golub-Kahan
+ * bi-diagonalization.
+ * By default, the block A_{00} may be augmented (this is not the default
+ * choice) and is solved with the SLES settings given to the momentum equation
+ * A conjugate gradient algorithm preconditioned
+ * with a multigrid for Stokes for instance.
+ * The residual is computed in the energy norm.
+ *
+ *
+ * \var CS_NAVSTO_SLES_MULTIPLICATIVE_GMRES_BY_BLOCK
+ * Associated keyword: "multiplicative_gmres"
+ *
+ * Available choice when a monolithic approach is used (i.e. with the parameter
+ * CS_NAVSTO_COUPLING_MONOLITHIC is set as coupling algorithm) The Navier-Stokes
+ * system of equations is solved a multiplicative preconditioner (block diagonal
+ * matrix where the block 00 is A_{00}) and the block 11 is set to the identity.
+ * Block 01 is also considered in the block preconditioner.
+ * Preconditioner/solver for the block 00 is set using the momentum equation.
+ * This option is only available with the support to the PETSc library up to now.
+ *
+ *
+ * \var CS_NAVSTO_SLES_MUMPS
+ * Associated keyword: "mumps"
+ *
+ * Direct solver to solve systems arising from the discretization of the
+ * Navier-Stokes equations
+ *
+ *
+ * \var CS_NAVSTO_SLES_UPPER_SCHUR_GMRES
+ * Associated keyword: "upper_schur_gmres"
+ *
+ * Available choice when a monolithic approach is used (i.e. with the parameter
+ * CS_NAVSTO_COUPLING_MONOLITHIC is set as coupling algorithm). The
+ * Navier-Stokes system of equations is solved using a upper triangular block
+ * preconditioner where the block 00 is A_{00} preconditioned with one multigrid
+ * iteration and the block 11 is an approximation of the Schur complement
+ * preconditioned with a minres. The main iterative solver is a flexible
+ * GMRES. This option is only available with the support to the PETSc
+ * library up to now.
+ *
+ *
+ * \var CS_NAVSTO_SLES_UZAWA_AL
+ * Associated keyword: "uzawa_al"
+ * Resolution using an uzawa algorithm with an Augmented Lagrangian approach
  */
 
 typedef enum {
 
-  CS_NAVSTO_SLES_EQ_WITHOUT_BLOCK,
-  CS_NAVSTO_SLES_BLOCK_MULTIGRID_CG,
   CS_NAVSTO_SLES_ADDITIVE_GMRES_BY_BLOCK,
+  CS_NAVSTO_SLES_BLOCK_MULTIGRID_CG,
+  CS_NAVSTO_SLES_BY_BLOCKS,
   CS_NAVSTO_SLES_DIAG_SCHUR_GMRES,
-  CS_NAVSTO_SLES_UPPER_SCHUR_GMRES,
-  CS_NAVSTO_SLES_GKB_GMRES,
+  CS_NAVSTO_SLES_EQ_WITHOUT_BLOCK,
   CS_NAVSTO_SLES_GKB,
+  CS_NAVSTO_SLES_GKB_GMRES,
+  CS_NAVSTO_SLES_GKB_SATURNE,
+  CS_NAVSTO_SLES_MULTIPLICATIVE_GMRES_BY_BLOCK,
+  CS_NAVSTO_SLES_MUMPS,
+  CS_NAVSTO_SLES_UPPER_SCHUR_GMRES,
+  CS_NAVSTO_SLES_UZAWA_AL,
 
   CS_NAVSTO_SLES_N_TYPES
 
-} cs_navsto_param_sles_t;
+} cs_navsto_sles_t;
 
-/*! \enum cs_navsto_param_time_state_t
- *  \brief Status of the time for the Navier-Stokes system of equations
- *
- * \var CS_NAVSTO_TIME_STATE_UNSTEADY
- * The Navier-Stokes system of equations is time-dependent
- *
- * \var CS_NAVSTO_TIME_STATE_FULL_STEADY
- * The Navier-Stokes system of equations is solved without taking into account
- * the time effect
- *
- * \var CS_NAVSTO_TIME_STATE_LIMIT_STEADY
- * The Navier-Stokes system of equations is solved as a limit of a unsteady
- * process
+
+/*! \struct cs_navsto_param_sles_t
+ *  \brief Structure storing the parameters for solving the Navier-Stokes system
  */
 
-typedef enum {
+typedef struct {
 
-  CS_NAVSTO_TIME_STATE_FULL_STEADY,
-  CS_NAVSTO_TIME_STATE_LIMIT_STEADY,
-  CS_NAVSTO_TIME_STATE_UNSTEADY,
+  /*! \var strategy
+   * Choice of strategy for solving the Navier--Stokes system
+   */
+  cs_navsto_sles_t              strategy;
 
-  CS_NAVSTO_N_TIME_STATES
+  /*! \var algo_tolerance
+   *  Tolerance at which the Oseen/Stokes system is resolved (apply to the
+   *  residual of the coupling algorithm chosen to solve the Navier--Stokes
+   *  system)
+   */
+  cs_real_t                     algo_tolerance;
 
-} cs_navsto_param_time_state_t;
+  /*! \var algo_n_max_iter
+   * Maximal number of iterations of the coupling algorithm.
+   */
+  int                           algo_n_max_iter;
+
+  /*! \var picard_tolerance
+   *  Tolerance at which the Picard algorithm is resolved. One handles the
+   *  non-linearity arising from the advection term with the algorithm.
+   */
+  cs_real_t                     picard_tolerance;
+
+  /*! \var picard_n_max_iter
+   * Maximal number of iterations for the Picard algorithm used to handle
+   * the non-linearity arising from the advection term.
+   */
+  int                           picard_n_max_iter;
+
+} cs_navsto_param_sles_t;
+
 
 /*! \enum cs_navsto_param_coupling_t
  *  \brief Choice of algorithm for solving the system
@@ -257,12 +393,85 @@ typedef struct {
   /*! \var verbosity
    * Level of display of the information related to the Navier-Stokes system
    */
-  int                           verbosity;
+  int                         verbosity;
 
-  /*! \var dof_reduction_mode
-   *  How are defined the Degrees of freedom
+  /*! \var post_flag
+   * Flag storing which predefined post-processing has to be done
    */
-  cs_param_dof_reduction_t      dof_reduction_mode;
+  cs_flag_t                   post_flag;
+
+  /*!
+   * @name Physical modelling
+   * Which equations to solve ?  Properties and their related fields are
+   * allocated according to the choice of model for Navier-Stokes
+   * @{
+   */
+
+  /*! \var model
+   * Modelling related to the Navier-Stokes system of equations
+   */
+  cs_navsto_param_model_t     model;
+
+  /*! \var reference_pressure
+   *  Value of the reference pressure p0 (used for rescaling or during update
+   *  of physical quantities). By default: 0.
+   */
+
+  cs_real_t                   reference_pressure;
+
+  /*! \var phys_constants
+   * Main physical constants (gravity vector and coriolis source term). This
+   * structure is shared with the legacy part.
+   */
+  cs_physical_constants_t    *phys_constants;
+
+  /*! \var density
+   *  Density of the fluid, pointer to \ref cs_property_t used in several
+   *  terms in the Navier-Stokes equations
+   */
+
+  cs_property_t              *density;
+
+  /*! \var lami_viscosity
+   *  Laminar viscosity, pointer to \ref cs_property_t associated to the
+   *  diffusion term for the momentum equation
+   */
+
+  cs_property_t              *lami_viscosity;
+
+  /*!
+   * @}
+   * @name Turbulence modelling
+   * Set of parameters to handle turbulence modelling.
+   * @{
+   */
+
+  /*! \var turbulence
+   * Main set of parameters to handle turbulence modelling. This
+   * structure is shared with the legacy part.
+   */
+
+  cs_turb_model_t            *turbulence;
+
+  /*! \var rans_modelling
+   * Main set of parameters to handle RANS modelling. This
+   * structure is shared with the legacy part.
+   * RANS means Reynolds Average Navier-Stokes
+   */
+
+  cs_turb_rans_model_t       *rans_modelling;
+
+
+  /*!
+   * @name Numerical options
+   * Set of numerical options to build the linear system and how to solve it
+   * @{
+   */
+
+  /*! \var option_flag
+   * Flag storing high-level option related to the Navier-Stokes system
+   */
+  cs_flag_t                     option_flag;
 
   /*! \var time_scheme
    * Discretization scheme for time
@@ -279,30 +488,10 @@ typedef struct {
    */
   cs_param_space_scheme_t       space_scheme;
 
-  /*! \var model
-   * Modelling related to the Navier-Stokes system of equations
+  /*! \var dof_reduction_mode
+   *  How are defined the Degrees of freedom
    */
-  cs_navsto_param_model_t       model;
-
-  /*!
-   * \var has_gravity
-   * Take into account the gravity effect: true or false
-   *
-   * \var gravity
-   * Vector related to the gravity effect
-   */
-  bool                          has_gravity;
-  cs_real_3_t                   gravity;
-
-  /*! \var time_state
-   * Status of the time for the Navier-Stokes system of equations
-   */
-  cs_navsto_param_time_state_t  time_state;
-
-  /*! \var sles_strategy
-   * Choice of strategy for solving the SLES system
-   */
-  cs_navsto_param_sles_t        sles_strategy;
+  cs_param_dof_reduction_t      dof_reduction_mode;
 
   /*! \var coupling
    * Choice of algorithm for solving the system
@@ -316,46 +505,26 @@ typedef struct {
    */
   cs_real_t                     gd_scale_coef;
 
+  /*! \var adv_form
+   *  Type of formulation for the advection term
+   *
+   *  \var adv_scheme
+   *  Type of scheme for the advection term
+   */
+  cs_param_advection_form_t     adv_form;
+  cs_param_advection_scheme_t   adv_scheme;
+
   /*! \var qtype
    *  A \ref cs_quadrature_type_t indicating the type of quadrature to use in
    *  all routines involving quadratures
    */
   cs_quadrature_type_t          qtype;
 
-  /*! \var residual_tolerance
-   *  Tolerance at which the Navier--Stokes is resolved (apply to the residual
-   * of the coupling algorithm chosen to solve the Navier--Stokes system)
+
+  /*! \var sles_param
+   * Set of choices to control the resolution of the Navier--Stokes system
    */
-  cs_real_t                     residual_tolerance;
-
-  /*! \var max_algo_iter
-   * Maximal number of iteration of the coupling algorithm. Not useful for a
-   * monolithic approach. In this case, only the maximal number of iterations
-   * for the iterative solver is taken into account
-   */
-  int                           max_algo_iter;
-
-  /*!
-   * @}
-   * @name Physical properties
-   * Set of properties: properties and their related fields are allocated
-   * according to the choice of model for Navier-Stokes
-   * @{
-   */
-
-  /*! \var density
-   *  Density of the fluid, pointer to \ref cs_property_t used in several
-   *  terms in the Navier-Stokes equations
-   */
-
-  cs_property_t      *density;
-
-  /*! \var lami_viscosity
-   *  Laminar viscosity, pointer to \ref cs_property_t associated to the
-   *  diffusion term for the momentum equation
-   */
-
-  cs_property_t      *lami_viscosity;
+  cs_navsto_param_sles_t        sles_param;
 
   /*!
    * @}
@@ -370,7 +539,7 @@ typedef struct {
 
   /*! \var velocity_ic_is_owner
    *  True if the definitions are stored inside this structure, otherwise
-   *  the definitions are stored inside the a \ref cs_equation_param_t
+   *  the definitions are stored inside a \ref cs_equation_param_t
    *  structure dedicated to the momentum equation.
    *
    * \var n_velocity_ic_defs
@@ -383,7 +552,7 @@ typedef struct {
    *  divergence constraint.
    */
 
-  _Bool        velocity_ic_is_owner;
+  bool         velocity_ic_is_owner;
   int          n_velocity_ic_defs;
   cs_xdef_t  **velocity_ic_defs;
 
@@ -401,7 +570,7 @@ typedef struct {
    *  of the resulting pressure and subtract it
    */
 
-  _Bool        pressure_ic_is_owner;
+  bool         pressure_ic_is_owner;
   int          n_pressure_ic_defs;
   cs_xdef_t  **pressure_ic_defs;
 
@@ -433,7 +602,7 @@ typedef struct {
    * field
    */
 
-  _Bool        velocity_bc_is_owner;
+  bool         velocity_bc_is_owner;
   int          n_velocity_bc_defs;
   cs_xdef_t  **velocity_bc_defs;
 
@@ -450,7 +619,7 @@ typedef struct {
    *  pressure field.
    */
 
-  _Bool        pressure_bc_is_owner;
+  bool         pressure_bc_is_owner;
   int          n_pressure_bc_defs;
   cs_xdef_t  **pressure_bc_defs;
 
@@ -458,10 +627,47 @@ typedef struct {
 
 } cs_navsto_param_t;
 
+/*! \struct cs_navsto_algo_info_t
+ *  \brief Set of information related to the convergence of the iterative
+ *         algorithm (Picard or Uzawa for instance)
+ *
+ * \var cvg
+ * convergence or divergence status
+ *
+ * \var res
+ * value of the residual for the iterative algorithm
+ *
+ * \var n_algo_iter
+ * number of iterations for the algorithm (outer iterations)
+ *
+ * \var n_inner_iter
+ * cumulated number of inner iterations (sum over the outer iterations)
+ *
+ * \var last_inner_iter
+ * last number of iterations for the inner solver
+ */
+
+typedef struct {
+
+  cs_sles_convergence_state_t      cvg;
+  double                           res;
+  int                              n_algo_iter;
+  int                              n_inner_iter;
+  int                              last_inner_iter;
+
+} cs_navsto_algo_info_t;
 
 /*! \enum cs_navsto_key_t
  *  \brief List of available keys for setting the parameters of the
  *         Navier-Stokes system
+ *
+ * \var CS_NSKEY_ADVECTION_FORMULATION
+ * Set the type of formulation for the advection term, for example in the  Oseen
+ * problem . cf. cs_param.h
+ *
+ * \var CS_NSKEY_ADVECTION_SCHEME
+ * Set the type of scheme for the advection term, for example in the  Oseen
+ * problem . cf. cs_param.h
  *
  * \var CS_NSKEY_DOF_REDUCTION
  * Set how the DoFs are defined (similar to \ref CS_EQKEY_DOF_REDUCTION)
@@ -472,17 +678,23 @@ typedef struct {
  * algorithm or an Uzawa - Augmented Lagrangian method is used
  *
  * \var CS_NSKEY_MAX_ALGO_ITER
- * Set the maximal number of iteration of the coupling algorithm. Not useful
- * for a monolithic approach. In this case, only the maximal number of
- * iterations for the iterative solver is taken into account
+ * Set the maximal number of iteration for solving the coupled system.
+ *
+ * \var CS_NSKEY_MAX_PICARD_ITER
+ * Set the maximal number of Picard iterations for solving the non-linearity
+ * arising from the advection form
  *
  * \var CS_NSKEY_QUADRATURE
  * Set the type to use in all routines involving quadrature (similar to \ref
  * CS_EQKEY_BC_QUADRATURE)
  *
+ * \var CS_NSKEY_PICARD_TOLERANCE
+ * Tolerance at which the non-linearity arising from the advection term is
+ * resolved
+ *
  * \var CS_NSKEY_RESIDUAL_TOLERANCE
- * Tolerance at which the Navier--Stokes is resolved (apply to the residual
- * of the coupling algorithm chosen to solve the Navier--Stokes system)
+ * Tolerance at which the Oseen or Stokes system is resolved (apply to the
+ * residual of the coupling algorithm chosen to solve the Navier--Stokes system)
  *
  * \var CS_NSKEY_SLES_STRATEGY
  * Strategy for solving the SLES arising from the discretization of the
@@ -507,10 +719,14 @@ typedef struct {
 
 typedef enum {
 
+  CS_NSKEY_ADVECTION_FORMULATION,
+  CS_NSKEY_ADVECTION_SCHEME,
   CS_NSKEY_DOF_REDUCTION,
   CS_NSKEY_GD_SCALE_COEF,
   CS_NSKEY_MAX_ALGO_ITER,
+  CS_NSKEY_MAX_PICARD_ITER,
   CS_NSKEY_QUADRATURE,
+  CS_NSKEY_PICARD_TOLERANCE,
   CS_NSKEY_RESIDUAL_TOLERANCE,
   CS_NSKEY_SLES_STRATEGY,
   CS_NSKEY_SPACE_SCHEME,
@@ -528,6 +744,76 @@ typedef enum {
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Initialize a cs_navsto_algo_info_t structure
+ *
+ * \param[in]   ns_info   pointer to a cs_navsto_algo_info_t to initialize
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_navsto_algo_info_init(cs_navsto_algo_info_t   *ns_info)
+{
+  if (ns_info == NULL)
+    return;
+
+  ns_info->cvg = CS_SLES_ITERATING;
+  ns_info->res = cs_math_big_r;
+  ns_info->n_algo_iter = 0;
+  ns_info->n_inner_iter = 0;
+  ns_info->last_inner_iter = 0;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Print header before dumping information gathered in the structure
+ *         cs_navsto_algo_info_t
+ *
+ * \param[in]  algo_name     name of the algorithm
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_navsto_algo_info_header(const char   *algo_name)
+{
+  assert(algo_name != NULL);
+  cs_log_printf(CS_LOG_DEFAULT,
+                "%8s.It  -- Algo.Res   Inner    Cumul  ||div(u)||\n",
+                algo_name);
+  cs_log_printf_flush(CS_LOG_DEFAULT);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Print header before dumping information gathered in the structure
+ *         cs_navsto_algo_info_t
+ *
+ * \param[in]  algo_name     name of the algorithm
+ * \param[in]  ns_info       cs_navsto_algo_info_t structure
+ * \param[in]  div_l2        l2 norm of the divergence
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_navsto_algo_info_printf(const char                    *algo_name,
+                           const cs_navsto_algo_info_t    ns_info,
+                           double                         div_l2)
+{
+  assert(algo_name != NULL);
+  if (ns_info.n_algo_iter == 1)
+    cs_log_printf(CS_LOG_DEFAULT,
+                  "%8s.It%02d-- %9s  %5d  %6d  %6.4e\n",
+                  algo_name, ns_info.n_algo_iter, " ",
+                  ns_info.last_inner_iter, ns_info.n_inner_iter, div_l2);
+  else
+    cs_log_printf(CS_LOG_DEFAULT,
+                  "%8s.It%02d-- %5.3e  %5d  %6d  %6.4e\n",
+                  algo_name, ns_info.n_algo_iter, ns_info.res,
+                  ns_info.last_inner_iter, ns_info.n_inner_iter, div_l2);
+  cs_log_printf_flush(CS_LOG_DEFAULT);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief  Ask \ref cs_navsto_param_t structure if the settings correspond to
  *         a steady computation
  *
@@ -538,12 +824,12 @@ typedef enum {
 /*----------------------------------------------------------------------------*/
 
 static inline bool
-cs_navsto_param_is_steady(cs_navsto_param_t       *nsp)
+cs_navsto_param_is_steady(const cs_navsto_param_t       *nsp)
 {
   if (nsp == NULL)
     return true;
 
-  if (nsp->time_state == CS_NAVSTO_TIME_STATE_FULL_STEADY)
+  if (nsp->option_flag & CS_NAVSTO_FLAG_STEADY)
     return true;
   else
     return false;
@@ -560,18 +846,20 @@ cs_navsto_param_is_steady(cs_navsto_param_t       *nsp)
  *
  * \param[in]  boundaries     pointer to a cs_boundary_t structure
  * \param[in]  model          model related to the NS system to solve
- * \param[in]  time_state     state of the time for the NS equations
  * \param[in]  algo_coupling  algorithm used for solving the NS system
+ * \param[in]  option_flag    additional high-level numerical options
+ * \param[in]  post_flag      predefined post-processings
  *
  * \return a pointer to a new allocated structure
  */
 /*----------------------------------------------------------------------------*/
 
 cs_navsto_param_t *
-cs_navsto_param_create(const cs_boundary_t              *boundaries,
-                       cs_navsto_param_model_t           model,
-                       cs_navsto_param_time_state_t      time_state,
-                       cs_navsto_param_coupling_t        algo_coupling);
+cs_navsto_param_create(const cs_boundary_t             *boundaries,
+                       cs_navsto_param_model_t          model,
+                       cs_navsto_param_coupling_t       algo_coupling,
+                       cs_flag_t                        option_flag,
+                       cs_flag_t                        post_flag);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -642,6 +930,19 @@ cs_navsto_param_get_coupling_name(cs_navsto_param_coupling_t  coupling);
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Set the value to consider for the reference pressure
+ *
+ * \param[in]  nsp       pointer to a \ref cs_navsto_param_t structure
+ * \param[in]  pref      value of the reference pressure
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_navsto_set_reference_pressure(cs_navsto_param_t    *nsp,
+                                 cs_real_t             pref);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief  Define the initial condition for the velocity unknowns.
  *         This definition can be done on a specified mesh location.
  *         By default, the unknown is set to zero everywhere.
@@ -663,7 +964,7 @@ cs_navsto_add_velocity_ic_by_value(cs_navsto_param_t    *nsp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define the initial condition for the velocity unkowns.
+ * \brief  Define the initial condition for the velocity unknowns.
  *         This definition can be done on a specified mesh location.
  *         By default, the unknown is set to zero everywhere.
  *         Here the initial value is set according to an analytical function
@@ -707,7 +1008,7 @@ cs_navsto_add_pressure_ic_by_value(cs_navsto_param_t    *nsp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define the initial condition for the pressure unkowns.
+ * \brief  Define the initial condition for the pressure unknowns.
  *         This definition can be done on a specified mesh location.
  *         By default, the unknown is set to zero everywhere.
  *         Here the initial value is set according to an analytical function
@@ -896,8 +1197,21 @@ cs_navsto_add_source_term_by_array(cs_navsto_param_t    *nsp,
                                    const char           *z_name,
                                    cs_flag_t             loc,
                                    cs_real_t            *array,
-                                   _Bool                 is_owner,
+                                   bool                  is_owner,
                                    cs_lnum_t            *index);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Add a advection field for the Oseen problem
+ *
+ * \param[in, out]    nsp        pointer to a \ref cs_navsto_param_t
+ * \param[in, out]    adv_fld    pointer to a \ref cs_adv_field_t
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_navsto_add_oseen_field(cs_navsto_param_t   *nsp,
+                          cs_adv_field_t      *adv_fld);
 
 /*----------------------------------------------------------------------------*/
 

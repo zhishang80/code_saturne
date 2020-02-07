@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -37,14 +37,17 @@ CaseRun.png \
 CFDSTUDY.png \
 CheckCompilation.png \
 CloseGui.png \
+compiler-icon.png \
 edit-undo.png \
 edit-redo.png \
+editor-icon.png \
 ot-logo.png \
 Delete.png \
 Document.png \
 EditableDocument.png \
 EditFile.png \
 Executable.png \
+file_transfer.png \
 Folder.png \
 FolderRed.png \
 InfoCFDSTUDY.png \
@@ -59,8 +62,8 @@ MoveFile.png \
 MoveFolder.png \
 NewTreeCreate.png \
 OpenedFolder.png \
+run_button.png \
 RunScript.png \
-SaveAs.png \
 Save.png \
 SetTreeLocation.png \
 SMESH_Module_Export.png \
@@ -69,6 +72,7 @@ TmpFile.png \
 UnknownDocument.png \
 UpdateObjBrowser.png \
 ViewFile.png \
+viewer-icon.png \
 VISU_Module_Export.png \
 VISU_Plot_Export.png \
 VISU_Plot.png

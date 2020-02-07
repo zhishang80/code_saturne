@@ -3,8 +3,15 @@ Master (not on release branches yet)
 
 User changes:
 
-- Add the possibility to define in the GUI postprocessing meshes based on the
-  volume and boundary zones defined beforehand by the user.
+- Modify the GUI mathematical expressions syntax to allow only for C syntax for
+  if loops.
+
+- Add cs_mesh_remove_cells and cs_mesh_remove_cells_negative_volumes
+  functions to allow removal of selected or degenrate cells in preprocessing.
+
+- Add P1 interpolation function and associated example for probes output.
+
+- Correctly handle mixed code_saturne/neptune_cfd couplings in run script.
 
 - Add the possibility to compute a porosity from a file containing
   points (*.pts) coming from a 3D scan. To use it set the scan file
@@ -13,20 +20,90 @@ User changes:
 
 - Multigrid: simplify plotting behavior.
   * Only convergence of cycles is now plotted, as many smoother
-    operators do not compute the residual
+    operators do not compute the residual.
   * With a high enough verbosity, the residual after each level's
     smoother or solver application is logged.
 
+- Add the possibility to compute each term of the balance equations of
+  the Reynolds tensor and/or the turbulent flux of an additional transported
+  variable when performing an LES simulation.
+
 Numerics and physical modelling:
 
-- Make clipping of Reynolds stresses more robust for the coupled solver.
-  When there is a negative eigen value, Rij is now clipped with a term of
-  return to isotropy (hence preventing increase of turbulent kinetic energy).
+- The GMRES solver may now also be used for vector or tensor fields.
+  The maximum number of restarts is set at 40 instead of 75
+  (which is still quite high compared to most of the litterature).
+
+- Remove hydrostatic pressure gradient computation (iphydr = 2).
+
+- Wall pressure extrapolation is now considered advanced/deprecated,
+  and is not set through the GUI anymore.
+
+- LES: for dynamic Smagorinsky model, add a new filter for cases where
+  the full extended cell neighborhood is not available.
+
+- Add tensor gradient clipping.
+
+- Add local (single cell) gradient reconstruction options for
+  postprocessing.
+
+- Gradient reconstruction and extended cell neighborhood:
+  * allow new options for extended neighborhood reduction.
+
+- Merge Atmospheric module and Cooling towers module air properties.
+
+- Add the capability to solve CDO equations with an advection field
+  defined by the mass flux arising from the FV legacy scheme.
+
+- Add CDO edge-based schemes to solve vector-valued equations with curl terms
+
+- Add a Maxwell module to solve electrostatic with CDO vertex-based schemes and
+  magnetostatic equations with CDO edge-based schemes.
+
+- Add the resolution of Oseen and Navier-Stokes equations with CDO
+  face-based schemes (based on the work of Milani's PhD).
+
+- Add several new features for solving linear systems arising from a
+  discretization of (Navier--)Stokes with CDO face-based schemes:
+  Golub--Kahan biorthogonalization, Augmented Lagrangian--Uzawa
+  algorithm (in incremental form), MUMPS with the PETSc interface,
+  block preconditioning through PETSc
+
+- Add the first pieces of a thermal module based on CDO schemes.
+
+- Add new Hodge operators for vertex-based and face-based schemes based on a
+  bubble stabilization or a sub-stabilization.
 
 Architectural changes:
 
-- Allow sourcing environment before launching with the
-  --with-shell-env configure option.
+- Update Melissa output driver to current Melissa API (c8608e1a6, January 2020)
+  * Ensure components of multidimensional arrays are named distinctly, as
+    Melissa ignores field dimension.
+  * Add trace option to log main operations to file.
+  * Add dry_run options to simulate output without Melissa (activates trace)
+  * Add rank_step option to allow working with coarser communicators.
+  * When a single MPI rank would be used, use the serial API instead.
+  * If Melissa is build without MPI, use a ranks step so data is aggregated
+    to the first ranks (rank_step = n_ranks) and use serial API.
+
+- Addition of file extensions for both checkpoint (.csc) and mesh_input
+  files (.csm). Code_Saturne still accepts old files
+  (mesh_input/mesh_output/main/auxiliary/...) without the extensions.
+  The GUI now also accepts "mesh_input" as a folder containing
+  multiple mesh_input files, while waiting for a full integration of
+  the Code_Saturne mesh file format into the GUI mesh handling page.
+
+- All to all operation now all use the cs_all_to_all API, allowing better
+  instrumentation and choice of underlying all to all algorithm.
+
+- In field pointer API, CS_F_(e) and CS_FI_(e, 0) are now equivalent.
+
+- code_aster coupling: remove the "milieu" module and move its functionnality
+  into the main cs_ast_coupling.c code.
+
+- Simplify handling of SpMV tuning, as various contraints on the type
+  of matrix used for a given solver limited to use of the cross-type
+  tuning, while that tuning added significant complexity.
 
 - GUI: force SIP API version to 2 for PqQt4. This allows removing
   the "to_qvariant" wrapper function and makes code more readable;
@@ -34,9 +111,7 @@ Architectural changes:
   has loaded the default API, so compatibility with Salome
   versions 7 or older is dropped.
 
-- Move part of VoF module from Fortran 90 to C.
-
-- Added optional support for of CUDA in build system.
+- Added optional support for CUDA in build system.
   At this stage, only device info is added to system information,
   no compute kernels are added yet.
 
@@ -45,45 +120,37 @@ Default option changes:
 - Set k-epsilon turbulence models to uncoupled option by default
   (it was already uncoupled by default for all models except standard k-epsilon)
 
+- Change a default setting (GUI) of the compressible model:
+  for hydro. pressure treatment at walls (disabled by default now).
+
 Bug fixes:
 
-- Fix time stepping of VoF / Cavitation algo. (density in unsteady term of
-  momentum equation) and ensure variable density indicator (irovar) is set to 1
-  when VoF / cavitation algorithm is enabled. Idem for variable viscosity
-  indicator.
+- Fix launching of ncfd doxygen from GUI (help menu).
 
-- Fix update of density in VoF / Cavitation algorithm in case the convection
-  scheme for the void fraction is not upwind. Update was not ensuring proper
-  mass conservation at solver precision.
+- Fix crash in ALE using internal structures coupling.
 
-- Fix time stepping in pressure gradient weightening for VoF / Cavitation algo.
+- Fix reading of GUI setting of turbulent flux model for additional model
+  variables (specific physics).
 
 - Fix in turbulent isotropic diffusion (Shir model) with EB-RSM. The turbulent
   viscosity did not take into account the effect of the wall.
 
-- Fix for turbulent heat fluxes computation when Boussinesq hypothesis is used.
-  Variance was not taken into account.
+- Fix to set number of iterations to 0 by studymanager command line (option -n).
 
-- Fix momentum conservation for the variable density deprecated algorithm
-  with mass flux prediction (option idilat>=2, ipredfl=1). The density
-  which is coherent with the mass balance needs to be updated right after
-  mass flux prediction step.
-
-- Fix time stepping for buoyancy term. Compute it with last density value (EOS)
-  when using first order time stepping, to avoid a time shift.
-  No changes for 2nd order time stepping.
-
-- Use EOS density in momentum balance unsteady term for the weakly variable
-  density algorithm (idilat=1). Use it also in correction step to be coherent.
-  This algorithm is now as before changes on time stepping.
-
-- Fix update of density which is coherent with mass balance, postpone it after
-  velocity update for low Mach algorithm.
-
-Release 6.0.0 (unreleased)
---------------------------
+Release 6.0.0 (September 26 2019)
+---------------------------------
 
 User changes:
+
+- Changed Catalyst writer behavior:
+  * The name of the writer now only defines the name of the input referred by
+    the coprocessing scripts.
+  * All Catalyst coprocessing Python scripts present in the DATA (and execution)
+    directory are used, irrespective of their name.
+  This allows defining multiple pipelines with shared outputs.
+
+- Add the possibility to define in the GUI postprocessing meshes based on the
+  volume and boundary zones defined beforehand by the user.
 
 - Lagrangian module: add particle event structure and associated statistics.
   * This allow handling boundary statistics in a manner more consistent
@@ -103,9 +170,12 @@ User changes:
 - GUI: allow disabling paralel IO for MED output writer.
 
 - GUI: significant reorganization
+  * Run or submit page moved to pop-up dialog callable from toolbar
   * Folders replaced by active pages (with new icons reflecting this)
   * Preprocessor/calculation modes replaced by run type in mesh page
   * Many minor changes
+
+- GUI: add Volume of Fluid feature to GUI.
 
 - Save mesh_input in restart by default. To avoid using excess disk space when
   meshes do not change, use hard links where appropriate (and move mesh_output
@@ -125,7 +195,13 @@ User changes:
   and buoyant terms for DRSM models
   (the user only has to create "rij_production" and/or "rij_buoyancy" field).
 
-Physical modelling:
+- Keep user reconstruction sweeps number in case dynamic sweeping (iswdyn) is
+  enabled. Fix for issue #86.
+
+Physical modeling:
+
+- Add an option to disable dynamics in solid cells for internal coupling or for
+  porous modelling.
 
 - Add non-linear (quadratic) eddy viscosity model k-epsilon of Baglietto et al.
   * to enable it, set cs_glob_turb_model->iturb = 23
@@ -172,6 +248,10 @@ Physical modelling:
   displacement. To activate it use "cs_glob_ale = 2" in C or "iale = 2" in
   Fortran.
 
+- Make clipping of Reynolds stresses more robust for the coupled solver.
+  When there is a negative eigen value, Rij is now clipped with a term of
+  return to isotropy (hence preventing increase of turbulent kinetic energy).
+
 Default option changes:
 
 - Disable CS_FACE_RECONSTRUCTION_CLIP bad cells correction by default
@@ -180,7 +260,34 @@ Default option changes:
   on several verification test cases run on tetrahedral meshes
   (INTERNAL_COUPLING, PERMEABILITY_GRADIENT, PLANE_COUETTE_FLOW).
 
+- Change a default setting (GUI) of the compressible model:
+  for hydro. pressure treatment at walls (disabled by default now).
+
 Bug fixes:
+
+- Fix shifted index in imposed pressure outlet (GUI).
+
+- Fix restart from LES to LES (do not add noise on velocity) and
+  from RSM to LES.
+
+- Fix for wall boundary conditions with the compressible model / algorithm.
+  Always use a homogeneous Neumann on pressure for the mass balance step.
+  This fixes mass conservation for cases:
+  * with gravity and hydrostatic pressure treatment
+  * without gravity and without hydrostatic pressure treatment.
+  Note that the default behaviour (GUI) was to enable the hydro. pressure
+  treatment at walls. Hence in all cases with this default setting and no
+  gravity, this fix has no impact.
+
+- Fix hydrostatic equilibrium option of compressible model / algorithm.
+  Hydrostatic pressure was contributing twice to right hand side in mass
+  balance step.
+
+- Fix missing variable change for computed pressure with EVM in a
+  postprocessing utility function.
+
+- Fix for turbulent heat fluxes computation when Boussinesq hypothesis is used.
+  Variance was not taken into account.
 
 - Fixes for GMSH import.
   * Fix crashes for binary file import
@@ -193,14 +300,34 @@ Bug fixes:
 - Compressible: fix density time scheme in transported passive scalar/vector
   balance to ensure conservativity with compressible algorithm.
 
-- Fixes for time scheme of density in unsteady term of momentum, transported
-  scalars / vectors balances.
-  * Use density at time n in momentum balance unsteady term if mass flux is
-    predicted.
-  * Use EOS density in momentum balance unsteady term if mass accumulation is
-    not taken into account. This falls back to former algorithm in this case.
+- Fixes in time stepping:
+  * Fix momentum conservation for the variable density deprecated algorithm
+    with mass flux prediction (option idilat>=2, ipredfl=1). The density
+    which is coherent with the mass balance needs to be updated right after
+    mass flux prediction step.
+  * Fix time stepping for buoyancy term. Compute it with last density value
+    (EOS) when using first order time stepping, to avoid a time shift.
+  * Fixes for time scheme of density in unsteady term of momentum, transported
+    scalars / vectors balances, especially use density at time n in momentum
+    balance unsteady term if mass flux is predicted.
+  * Use EOS density in momentum balance unsteady term for the weakly variable
+    density algorithm (idilat=1). Use it also in correction step to be coherent.
+    This algorithm is now the same as pre v5.3 changes on time stepping.
+  * Update density which is coherent with mass balance after velocity update for
+    low Mach algorithm.
   * Use same time schemes for vector transport equation as for scalar transport
     equation.
+
+- Fix time stepping of VoF / Cavitation algo. (density in unsteady term of
+  momentum equation) and ensure variable density indicator (irovar) is set to 1
+  when VoF / cavitation algorithm is enabled. Idem for variable viscosity
+  indicator.
+
+- Fix update of density in VoF / Cavitation algorithm in case the convection
+  scheme for the void fraction is not upwind. Update was not ensuring proper
+  mass conservation at solver precision.
+
+- Fix time stepping in pressure gradient weighting for VoF / Cavitation algo.
 
 - Fixes for parallel runs in sedimentation source term with humid atmosphere
   model.
@@ -214,8 +341,13 @@ Numerics:
 
 Architectural changes:
 
+- Allow sourcing environment before launching with the
+  --with-shell-env configure option.
+
 - Scripts: add library dependency paths to LD_LIBRARY_PATH for better
   robustness when "rpath" does not have priority.
+
+- Update CGNS support for CGNS 3.4 compatibility.
 
 - Preprocessor: update Gmsh reader to handle GMSH v4.1 format.
 
@@ -225,6 +357,8 @@ Architectural changes:
 
 - Move Reynolds stress tensor transformation matrix (alpha in clca66)
   computation to C. C translation is taken from NEPTUNE_CFD.
+
+- Move part of VoF module from Fortran 90 to C.
 
 - Remove VOFI (VoF initialization) library detection as it is not used anymore.
 
@@ -492,7 +626,7 @@ Architectural changes:
 
 - Use matrix assembler instead of matrix extension function for
   internal coupling, to allow for a broader range of linear system
-  solvers and preconditionners.
+  solvers and preconditioners.
 
 - Add "Melissa" type writers for coupling with in-situ statistics
   Melissa server.
@@ -882,7 +1016,7 @@ schemes (Original SOLU, CENTER, Standard SOLU)
 - Handling of linear solver errors is improved to allow re-try with
   different solvers or parameters.
 
-- Default to multigrid-preconditionned conjugate gradient for
+- Default to multigrid-preconditioned conjugate gradient for
   most symetric linear systems.
 
 - Improve performance and possible precision of reduction operations.
@@ -2456,7 +2590,7 @@ Changes:
 - Non-symmetric matrix coefficients are now interleaved.
   (the Fortran API still allows non-interleaved matrixes as an option).
 
-- Remove synchronization of postprocessing with Code_Aster.
+- Remove synchronization of postprocessing with code_aster.
 
 - Add a particle deposition model to the Lagrangian module.
 

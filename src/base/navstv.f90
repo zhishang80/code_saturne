@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -93,7 +93,7 @@ use field_operator
 use cavitation
 use vof
 use cs_c_bindings
-use atincl, only: iatmst, imomst, iautom, imeteo
+use atincl, only: iatmst, iautom, imeteo
 
 !===============================================================================
 
@@ -117,7 +117,7 @@ integer          isou, ivar, iitsm
 integer          init, iautof
 integer          iflmas, iflmab
 integer          iflmb0
-integer          nswrgp, imligp, iwarnp
+integer          imrgrp, nswrgp, imligp, iwarnp
 integer          nbrval, iappel
 integer          ndircp, icpt
 integer          numcpl
@@ -125,7 +125,6 @@ double precision rnorm , rnormt, rnorma, rnormi, vitnor
 double precision dtsrom, unsrom, rhom, rovolsdt
 double precision epsrgp, climgp, extrap, xyzmax(3), xyzmin(3)
 double precision thetap, xdu, xdv, xdw
-double precision xxp0 , xyp0 , xzp0
 double precision rhofac, dtfac
 double precision xnrdis, xnrtmp
 double precision t1, t2, t3, t4
@@ -152,7 +151,6 @@ double precision, allocatable, dimension(:) :: secvif, secvib
 double precision, dimension(:,:), allocatable :: gradp
 double precision, dimension(:), allocatable :: coefa_dp, coefb_dp
 double precision, dimension(:), allocatable :: xinvro
-double precision, dimension(:,:), pointer :: grdphd
 double precision, dimension(:,:), pointer :: vel, vela
 double precision, dimension(:,:,:), pointer :: viscfi
 double precision, dimension(:), pointer :: viscbi
@@ -167,12 +165,10 @@ double precision, dimension(:,:), pointer :: trav
 double precision, dimension(:,:), pointer :: mshvel
 double precision, dimension(:,:), pointer :: disale
 double precision, dimension(:,:), pointer :: disala
-double precision, dimension(:,:), pointer :: cpro_momst
 double precision, dimension(:), pointer :: porosi
 double precision, dimension(:), pointer :: cvar_pr
 double precision, dimension(:), pointer :: cpro_prtot, c_estim
 double precision, dimension(:), pointer :: cvar_voidf, cvara_voidf
-double precision, dimension(:), pointer :: cvara_k
 double precision, dimension(:), pointer :: cpro_rho_mass
 double precision, dimension(:), pointer :: bpro_rho_mass
 double precision, dimension(:), pointer :: brom_eos, crom_eos
@@ -253,11 +249,6 @@ allocate(trav(3,ncelet))
 allocate(coefa_dp(ndimfb), coefb_dp(ndimfb))
 
 allocate(dfrcxt(3,ncelet))
-if (iphydr.eq.2) then
-  allocate(grdphd(ndim, ncelet))
-else
-  grdphd => rvoid2
-endif
 if (iand(vcopt_u%idften, ISOTROPIC_DIFFUSION).ne.0) then
   if (itytur.eq.3.and.irijnu.eq.1) then
     allocate(wvisfi(1,1,nfac), wvisbi(ndimfb))
@@ -437,21 +428,12 @@ if ((idilat.eq.2.or.idilat.eq.3).and. &
 endif
 
 !===============================================================================
-! 2. Hydrostatic pressure prediction in case of Low Mach compressible algorithm
-!===============================================================================
-
-if (iphydr.eq.2) then
-
-  call prehyd(grdphd, iterns)
-
-endif
-
-!===============================================================================
 ! 3. Pressure resolution and computation of mass flux for compressible flow
 !===============================================================================
 
 ! Note, for the compressible algorithm written in pressure increment,
-! this step is performed in the same time as the incompressible algorithm
+! this step is merged with the pressure correction step of the incompressible
+! algorithm
 if (ippmod(icompf).ge.0.and.ippmod(icompf).ne.3) then
 
   if(vcopt_p%iwarni.ge.1) then
@@ -494,7 +476,7 @@ call predvv &
   icepdc , icetsm , itypsm ,                                     &
   dt     , vel    , vela   , velk   ,                            &
   tslagr , coefau , coefbu , cofafu , cofbfu ,                   &
-  ckupdc , smacel , frcxt  , grdphd ,                            &
+  ckupdc , smacel , frcxt  ,                                     &
   trava  ,                   dfrcxt , dttens ,  trav  ,          &
   viscf  , viscb  , viscfi , viscbi , secvif , secvib ,          &
   w1     )
@@ -512,6 +494,7 @@ if (iprco.le.0) then
   inc    = 1
   iflmb0 = 1
   if (iale.ge.1) iflmb0 = 0
+  imrgrp = vcopt_u%imrgra
   nswrgp = vcopt_u%nswrgr
   imligp = vcopt_u%imligr
   iwarnp = vcopt_u%iwarni
@@ -520,7 +503,7 @@ if (iprco.le.0) then
 
   call inimav                                                     &
  ( ivarfl(iu)      , itypfl ,                                     &
-   iflmb0 , init   , inc    , imrgra , nswrgp , imligp ,          &
+   iflmb0 , init   , inc    , imrgrp , nswrgp , imligp ,          &
    iwarnp ,                                                       &
    epsrgp , climgp ,                                              &
    crom   , brom   ,                                              &
@@ -545,6 +528,7 @@ if (iprco.le.0) then
       inc    = 1
       iflmb0 = 1
       call field_get_key_struct_var_cal_opt(ivarfl(iuma), vcopt)
+      imrgrp = vcopt%imrgra
       nswrgp = vcopt%nswrgr
       imligp = vcopt%imligr
       iwarnp = vcopt%iwarni
@@ -556,7 +540,7 @@ if (iprco.le.0) then
 
       call inimav &
     ( ivarfl(iuma)    , itypfl ,                                     &
-      iflmb0 , init   , inc    , imrgra , nswrgp , imligp ,          &
+      iflmb0 , init   , inc    , imrgrp , nswrgp , imligp ,          &
       iwarnp ,                                                       &
       epsrgp , climgp ,                                              &
       crom, brom,                                                    &
@@ -769,8 +753,6 @@ if (iturbo.eq.2 .and. iterns.eq.1) then
 
       if (iphydr.eq.1) then
         call field_get_val_v_by_name('volume_forces', frcxt)
-      elseif (iphydr.eq.2) then
-        call resize_vec_real_array(grdphd)
       endif
 
       ! Update local pointers on "cells" fields
@@ -926,6 +908,7 @@ if (ippmod(icompf).lt.0.or.ippmod(icompf).eq.3) then
     call grdpor(inc)
 
     if (iphydr.eq.1.or.iifren.eq.1) inc = 1
+    imrgrp = vcopt_p%imrgra
     nswrgp = vcopt_p%nswrgr
     imligp = vcopt_p%imligr
     iwarnp = vcopt_p%iwarni
@@ -938,7 +921,7 @@ if (ippmod(icompf).lt.0.or.ippmod(icompf).eq.3) then
 
     if (ivofmt.eq.0) then
       call gradient_potential_s &
-       (ivarfl(ipr)     , imrgra , inc    , iccocg , nswrgp , imligp , &
+       (ivarfl(ipr)     , imrgrp , inc    , iccocg , nswrgp , imligp , &
         iphydr , iwarnp , epsrgp , climgp , extrap ,                   &
         dfrcxt ,                                                       &
         phi    , coefa_dp        , coefb_dp        ,                   &
@@ -950,7 +933,7 @@ if (ippmod(icompf).lt.0.or.ippmod(icompf).eq.3) then
       enddo
 
       call gradient_weighted_s &
-      ( ivarfl(ipr)     , imrgra , inc    , iccocg , nswrgp , imligp , &
+      ( ivarfl(ipr)     , imrgrp , inc    , iccocg , nswrgp , imligp , &
         iphydr, iwarnp  , epsrgp , climgp , extrap , dfrcxt ,          &
         phi    , xinvro , coefa_dp , coefb_dp ,                        &
         gradp  )
@@ -1007,9 +990,9 @@ if (ippmod(icompf).lt.0.or.ippmod(icompf).eq.3) then
       ! Update external forces for the computation of the gradients
       !$omp parallel do
       do iel=1,ncel
-        frcxt(1 ,iel) = frcxt(1 ,iel) + dfrcxt(1 ,iel)
-        frcxt(2 ,iel) = frcxt(2 ,iel) + dfrcxt(2 ,iel)
-        frcxt(3 ,iel) = frcxt(3 ,iel) + dfrcxt(3 ,iel)
+        frcxt(1 ,iel) = frcxt(1 ,iel) * (1 - isolid(iporos, iel)) + dfrcxt(1 ,iel)
+        frcxt(2 ,iel) = frcxt(2 ,iel) * (1 - isolid(iporos, iel)) + dfrcxt(2 ,iel)
+        frcxt(3 ,iel) = frcxt(3 ,iel) * (1 - isolid(iporos, iel)) + dfrcxt(3 ,iel)
       enddo
       if (irangp.ge.0.or.iperio.eq.1) then
         call synvin(frcxt)
@@ -1025,7 +1008,7 @@ if (ippmod(icompf).lt.0.or.ippmod(icompf).eq.3) then
           iautof = iautom(ifac)
         endif
 
-        if (isostd(ifac).eq.1.or.iatmst.eq.1.and.iautof.eq.1) then
+        if (isostd(ifac).eq.1.or.iatmst.ge.1.and.iautof.eq.1) then
           coefa_p(ifac) = coefa_p(ifac) + coefa_dp(ifac)
         endif
       enddo
@@ -1231,6 +1214,7 @@ if (iale.ge.1) then
     inc    = 1
     iflmb0 = 1
     call field_get_key_struct_var_cal_opt(ivarfl(iuma), vcopt)
+    imrgrp = vcopt%imrgra
     nswrgp = vcopt%nswrgr
     imligp = vcopt%imligr
     iwarnp = vcopt%iwarni
@@ -1242,7 +1226,7 @@ if (iale.ge.1) then
 
     call inimav &
   ( ivarfl(iuma)    , itypfl ,                                     &
-    iflmb0 , init   , inc    , imrgra , nswrgp , imligp ,          &
+    iflmb0 , init   , inc    , imrgrp , nswrgp , imligp ,          &
     iwarnp ,                                                       &
     epsrgp , climgp ,                                              &
     crom, brom,                                                    &
@@ -1441,6 +1425,7 @@ if (iestim(iescor).ge.0.or.iestim(iestot).ge.0) then
   inc    = 1
   iflmb0 = 1
   if (iale.ge.1) iflmb0 = 0
+  imrgrp = vcopt_u%imrgra
   nswrgp = vcopt_u%nswrgr
   imligp = vcopt_u%imligr
   iwarnp = vcopt_u%iwarni
@@ -1449,7 +1434,7 @@ if (iestim(iescor).ge.0.or.iestim(iestot).ge.0) then
 
   call inimav                                                     &
  ( ivarfl(iu)      , itypfl ,                                     &
-   iflmb0 , init   , inc    , imrgra , nswrgp , imligp ,          &
+   iflmb0 , init   , inc    , imrgrp , nswrgp , imligp ,          &
    iwarnp ,                                                       &
    epsrgp , climgp ,                                              &
    crom, brom,                                                    &
@@ -1511,7 +1496,7 @@ if (iestim(iescor).ge.0.or.iestim(iestot).ge.0) then
    icepdc , icetsm , itypsm ,                                     &
    dt     , vel    , vel    , velk   ,                            &
    tslagr , coefau , coefbu , cofafu , cofbfu ,                   &
-   ckupdc , smacel , frcxt  , grdphd ,                            &
+   ckupdc , smacel , frcxt  ,                                     &
    trava  ,                   dfrcxt , dttens , trav   ,          &
    viscf  , viscb  , viscfi , viscbi , secvif , secvib ,          &
    w1     )
@@ -1575,40 +1560,7 @@ endif
 ! NB: for Eddy Viscosity Models, TKE might be included in the solved pressure.
 
 if (ippmod(icompf).lt.0) then
-  call field_get_val_s(iprtot, cpro_prtot)
-  xxp0   = xyzp0(1)
-  xyp0   = xyzp0(2)
-  xzp0   = xyzp0(3)
-
-  if (iatmst.eq.0) then
-    do iel=1,ncel
-      cpro_prtot(iel)= cvar_pr(iel)               &
-           + ro0*( gx*(xyzcen(1,iel)-xxp0)               &
-           + gy*(xyzcen(2,iel)-xyp0)                     &
-           + gz*(xyzcen(3,iel)-xzp0) )                   &
-           + p0 - pred0
-    enddo
-  else
-    call field_get_val_v(imomst, cpro_momst)
-
-    do iel=1,ncel
-      cpro_prtot(iel)= cvar_pr(iel)                      &
-           + ro0*(gx*(xyzcen(1,iel)-xxp0)                &
-           + gy*(xyzcen(2,iel)-xyp0)                     &
-           + gz*(xyzcen(3,iel)-xzp0))                    &
-           + p0 - pred0                                  &
-           - cpro_momst(1,iel)*(xyzcen(1,iel)-xxp0)      &
-           - cpro_momst(2,iel)*(xyzcen(2,iel)-xyp0)      &
-           - cpro_momst(3,iel)*(xyzcen(3,iel)-xzp0)
-    enddo
-  endif
-  ! For Eddy Viscosity Models, "2/3 rho k" is included in the solved pressure
-  if ((itytur.eq.2 .or. itytur.eq.5 .or. iturb.eq.60).and. igrhok.ne.1) then
-    call field_get_val_s(ivarfl(ik), cvara_k)
-    do iel = 1, ncel
-      cpro_prtot(iel) = cpro_prtot(iel) - 2.d0 / 3.d0 * crom(iel) * cvara_k(iel)
-    enddo
-  endif
+  call navstv_total_pressure
 endif
 
 !===============================================================================
@@ -1784,7 +1736,6 @@ if (allocated(uvwk)) deallocate(uvwk)
 if (allocated(secvif)) deallocate(secvif, secvib)
 if (allocated(cpro_rho_tc)) deallocate(cpro_rho_tc)
 if (allocated(bpro_rho_tc)) deallocate(bpro_rho_tc)
-if (iphydr.eq.2) deallocate(grdphd)
 
 ! Free memory
 !--------------
@@ -1882,3 +1833,120 @@ deallocate(coefa_dp, coefb_dp)
 return
 
 end subroutine
+
+!===============================================================================
+! Local functions
+!===============================================================================
+
+!===============================================================================
+! Function:
+! ---------
+
+!> \brief Update total pressure (defined as a post-processed property).
+!
+!> For the compressible module, the solved pressure is already
+!> the total pressure.
+!
+!> Note: for Eddy Viscosity Models, the TKE may be included in the
+!> solved pressure.
+
+!-------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------------------
+! Arguments
+!______________________________________________________________________________.
+!  mode           name          role                                           !
+!______________________________________________________________________________!
+!_______________________________________________________________________________
+
+
+subroutine navstv_total_pressure
+
+!===============================================================================
+
+!===============================================================================
+! Module files
+!===============================================================================
+
+use paramx
+use atincl, only: iatmst, imomst
+use numvar
+use cstphy
+use cstnum
+use optcal
+use pointe
+use parall
+use paramx, only: isymet
+use ppincl
+use mesh
+use ptrglo
+use field
+
+!===============================================================================
+
+implicit none
+
+! Local variables
+
+integer          iel
+double precision xxp0 , xyp0 , xzp0
+
+double precision, dimension(:), pointer :: cpro_rho
+double precision, dimension(:,:), pointer :: cpro_momst
+double precision, dimension(:), pointer :: cvar_pr
+double precision, dimension(:), pointer :: cpro_prtot
+double precision, dimension(:), pointer :: cvara_k
+
+!===============================================================================
+! 0. Initialization
+!===============================================================================
+
+if (ipr.lt.1 .or. iprtot.lt.0) return
+
+call field_get_val_s(iprtot, cpro_prtot)
+call field_get_val_s(ivarfl(ipr), cvar_pr)
+
+xxp0   = xyzp0(1)
+xyp0   = xyzp0(2)
+xzp0   = xyzp0(3)
+
+if (iatmst.eq.0) then
+  do iel=1,ncel
+    cpro_prtot(iel) =  cvar_pr(iel)                        &
+                     + ro0*(  gx*(xyzcen(1,iel)-xxp0)      &
+                            + gy*(xyzcen(2,iel)-xyp0)      &
+                            + gz*(xyzcen(3,iel)-xzp0) )    &
+                     + p0 - pred0
+  enddo
+else
+  call field_get_val_v(imomst, cpro_momst)
+
+  do iel=1,ncel
+    cpro_prtot(iel) =   cvar_pr(iel)                             &
+                      + ro0*(  gx*(xyzcen(1,iel)-xxp0)           &
+                             + gy*(xyzcen(2,iel)-xyp0)           &
+                             + gz*(xyzcen(3,iel)-xzp0))          &
+                      + p0 - pred0                               &
+                      - cpro_momst(1,iel)*(xyzcen(1,iel)-xxp0)   &
+                      - cpro_momst(2,iel)*(xyzcen(2,iel)-xyp0)   &
+                      - cpro_momst(3,iel)*(xyzcen(3,iel)-xzp0)
+  enddo
+endif
+
+! For Eddy Viscosity Models, "2/3 rho k" is included in the solved pressure
+if ((itytur.eq.2 .or. itytur.eq.5 .or. iturb.eq.60).and. igrhok.ne.1) then
+  call field_get_val_s(ivarfl(ik), cvara_k)
+  call field_get_val_s(icrom, cpro_rho)
+  do iel = 1, ncel
+    cpro_prtot(iel) =   cpro_prtot(iel)                              &
+                      - 2.d0 / 3.d0 * cpro_rho(iel) * cvara_k(iel)
+  enddo
+endif
+
+!----
+! End
+!----
+
+return
+
+end subroutine navstv_total_pressure

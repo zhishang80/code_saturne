@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -549,6 +549,19 @@ cs_lagr_stat_type_from_attr_id(int attr_id);
 
 int
 cs_lagr_stat_type_to_attr_id(int  stat_type);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Determine a basic statistic type by its base name.
+ *
+ * \param[in]  name  particle statistics base name (without class id)
+ *
+ * \return  matching stat type id, or -1 if not found
+ */
+/*----------------------------------------------------------------------------*/
+
+int
+cs_lagr_stat_type_by_name(const char  *name);
 
 /*----------------------------------------------------------------------------*/
 /*!

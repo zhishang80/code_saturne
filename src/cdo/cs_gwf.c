@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -622,8 +622,13 @@ cs_gwf_activate(cs_property_type_t    pty_type,
 
   /* Add an advection field related to the darcian flux stemming from the
      Richards equation */
-  gw->adv_field = cs_advection_field_add("darcy_velocity",
-                                         CS_ADVECTION_FIELD_GWF);
+  cs_advection_field_status_t  adv_status =
+    CS_ADVECTION_FIELD_GWF | CS_ADVECTION_FIELD_TYPE_SCALAR_FLUX;
+
+  if (!(flag & CS_GWF_RICHARDS_UNSTEADY)) /* Steady-state Richards eq. */
+    adv_status |= CS_ADVECTION_FIELD_STEADY;
+
+  gw->adv_field = cs_advection_field_add(CS_GWF_ADVECTION_NAME, adv_status);
 
   /* Add a property related to the diffusion term of the Richards eq. */
   gw->permeability = cs_property_add("permeability", pty_type);
@@ -736,19 +741,19 @@ cs_gwf_log_setup(void)
                   "  * GWF | Rescale head w.r.t zero mean value\n");
 
   /* Display information on the post-processing options */
-  _Bool  post_capacity = (gw->post_flag & CS_GWF_POST_CAPACITY) ? true : false;
-  _Bool  post_moisture = (gw->post_flag & CS_GWF_POST_MOISTURE) ? true : false;
-  _Bool  post_perm = (gw->post_flag & CS_GWF_POST_PERMEABILITY) ? true : false;
+  bool  post_capacity = (gw->post_flag & CS_GWF_POST_CAPACITY) ? true : false;
+  bool  post_moisture = (gw->post_flag & CS_GWF_POST_MOISTURE) ? true : false;
+  bool  post_perm = (gw->post_flag & CS_GWF_POST_PERMEABILITY) ? true : false;
   cs_log_printf(CS_LOG_SETUP, "  * GWF | Post: Capacity %s Moisture %s"
                 " Permeability %s\n",
                 cs_base_strtf(post_capacity), cs_base_strtf(post_moisture),
                 cs_base_strtf(post_perm));
 
-  _Bool  do_balance =
+  bool  do_balance =
     (gw->post_flag & CS_GWF_POST_DARCY_FLUX_BALANCE) ? true : false;
-  _Bool  do_divergence =
+  bool  do_divergence =
     (gw->post_flag & CS_GWF_POST_DARCY_FLUX_DIVERGENCE) ? true : false;
-  _Bool  post_boundary =
+  bool  post_boundary =
     (gw->post_flag & CS_GWF_POST_DARCY_FLUX_AT_BOUNDARY) ? true : false;
   cs_log_printf(CS_LOG_SETUP,
                 "  * GWF | Darcy Flux: Balance %s Divergence %s"
@@ -785,8 +790,7 @@ cs_gwf_set_post_options(cs_flag_t       post_flag)
 
   gw->post_flag = post_flag;
   if (gw->post_flag & CS_GWF_POST_DARCY_FLUX_AT_BOUNDARY)
-    cs_advection_field_set_option(gw->adv_field,
-                                  CS_ADVKEY_DEFINE_AT_BOUNDARY_FACES);
+    gw->adv_field->status |= CS_ADVECTION_FIELD_DEFINE_AT_BOUNDARY_FACES;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -812,41 +816,12 @@ cs_gwf_set_gravity_vector(const cs_real_3_t      gvec)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Advanced setting: indicate where the darcian flux is stored
- *
- *         cs_flag_dual_face_byc is the default setting for Vb (default space
- *         scheme) whereas cs_flag_primal_cell should be prefered for other
- *         schemes
- *
- * \param[in]  location_flag      where the flux is defined
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_gwf_set_darcian_flux_location(cs_flag_t      location_flag)
-{
-  cs_gwf_t  *gw = cs_gwf_main_structure;
-
-  if (gw == NULL) bft_error(__FILE__, __LINE__, 0, _(_err_empty_gw));
-
-  gw->flux_location = location_flag;
-
-  if (cs_flag_test(gw->flux_location, cs_flag_dual_face_byc))
-    cs_advection_field_set_type(gw->adv_field,
-                                CS_ADVECTION_FIELD_TYPE_FLUX);
-  else if (cs_flag_test(gw->flux_location, cs_flag_primal_cell))
-    cs_advection_field_set_type(gw->adv_field,
-                                CS_ADVECTION_FIELD_TYPE_VELOCITY);
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief  Add a new equation related to the groundwater flow module
  *         This equation is a particular type of unsteady advection-diffusion
  *         reaction eq.
  *         Tracer is advected thanks to the darcian velocity and
  *         diffusion/reaction parameters result from a physical modelling.
- *         Terms are activated according to the settings.
+ *         Terms solved in the equation are activated according to the settings.
  *
  * \param[in]  eq_name    name of the tracer equation
  * \param[in]  var_name   name of the related variable
@@ -986,7 +961,7 @@ cs_gwf_init_setup(void)
               __func__);
 
   const bool has_previous = cs_equation_is_steady(gw->richards) ? false : true;
-  const int  field_mask = CS_FIELD_INTENSIVE | CS_FIELD_VARIABLE;
+  const int  field_mask = CS_FIELD_INTENSIVE | CS_FIELD_VARIABLE | CS_FIELD_CDO;
   const int  c_loc_id = cs_mesh_location_get_id_by_name("cells");
   const int  v_loc_id = cs_mesh_location_get_id_by_name("vertices");
   const int  log_key = cs_field_key_id("log");
@@ -1046,7 +1021,7 @@ cs_gwf_init_setup(void)
     gw->flag |= CS_GWF_SOIL_ALL_SATURATED;
 
   /* Create a moisture field attached to cells */
-  int  pty_mask = CS_FIELD_INTENSIVE | CS_FIELD_PROPERTY;
+  int  pty_mask = CS_FIELD_INTENSIVE | CS_FIELD_PROPERTY | CS_FIELD_CDO;
   gw->moisture_field = cs_field_create("moisture_content",
                                        pty_mask,
                                        c_loc_id,
@@ -1061,28 +1036,15 @@ cs_gwf_init_setup(void)
   if (!(gw->flag & CS_GWF_SOIL_ALL_SATURATED) ||
       gw->post_flag & CS_GWF_POST_PERMEABILITY) {
 
-    /* Set the values for the permeability and the moisture content
-       and if needed set also the value of the soil capacity */
-    int  permeability_dim;
-    switch (gw->permeability->type) {
-
-    case CS_PROPERTY_ISO:
+    /* Set the dimension of the permeability */
+    int  permeability_dim = 0;  /* not set by default */
+    if (gw->permeability->type & CS_PROPERTY_ISO)
       permeability_dim = 1;
-      break;
-    case CS_PROPERTY_ORTHO:
+    else if (gw->permeability->type & CS_PROPERTY_ORTHO)
       permeability_dim = 3;
-      break;
-    case CS_PROPERTY_ANISO:
+    else if (gw->permeability->type & CS_PROPERTY_ANISO)
       permeability_dim = 9;
-      break;
-
-    default:
-      permeability_dim = 0;  /* avoid warning */
-      bft_error(__FILE__, __LINE__, 0, "%s: Invalid type of property for %s.",
-                __func__, cs_property_get_name(gw->permeability));
-      break;
-
-    } /* Switch on property type */
+    assert(permeability_dim != 0);
 
     gw->permea_field = cs_field_create("permeability",
                                        pty_mask,
@@ -1212,18 +1174,20 @@ cs_gwf_finalize_setup(const cs_cdo_connect_t     *connect,
                                         false, /* transfer ownership */
                                         c2e->idx);
 
-        /* Set the type of advection field */
-        cs_advection_field_set_type(gw->adv_field,
-                                    CS_ADVECTION_FIELD_TYPE_FLUX);
+        /* Reset the type of advection field */
+        if (gw->adv_field->status & CS_ADVECTION_FIELD_TYPE_VELOCITY_VECTOR)
+          gw->adv_field->status -= CS_ADVECTION_FIELD_TYPE_VELOCITY_VECTOR;
+        gw->adv_field->status |= CS_ADVECTION_FIELD_TYPE_SCALAR_FLUX;
 
       }
       else if (cs_flag_test(gw->flux_location, cs_flag_primal_cell)) {
 
         cs_advection_field_def_by_field(gw->adv_field, cell_adv_field);
 
-        /* Set the type of advection field */
-        cs_advection_field_set_type(gw->adv_field,
-                                    CS_ADVECTION_FIELD_TYPE_VELOCITY);
+        /* Reset the type of advection field */
+        if (gw->adv_field->status & CS_ADVECTION_FIELD_TYPE_SCALAR_FLUX)
+          gw->adv_field->status -= CS_ADVECTION_FIELD_TYPE_SCALAR_FLUX;
+        gw->adv_field->status |= CS_ADVECTION_FIELD_TYPE_VELOCITY_VECTOR;
 
       }
       else
@@ -1599,11 +1563,11 @@ cs_gwf_integrate_tracer(const cs_cdo_connect_t     *connect,
 
         const cs_lnum_t  c_id = (z->elt_ids == NULL) ? i : z->elt_ids[i];
 
-        /* Shares between cell and vertex unknows:
+        /* Shares between cell and vertex unknowns:
            - the cell unknown stands for 1/4 of the cell volume
            - the vertex unknown stands for 3/4 of the dual cell volume
          */
-        cs_real_t  _int_value = 0.25*c_vals[c_id];
+        cs_real_t  _int_value = 0.25*cdoq->cell_vol[c_id]*c_vals[c_id];
         for (cs_lnum_t j = c2v->idx[c_id]; j < c2v->idx[c_id+1]; j++) {
           _int_value += 0.75 * cdoq->dcell_vol[j] * v_vals[c2v->ids[j]];
         }
@@ -1622,7 +1586,7 @@ cs_gwf_integrate_tracer(const cs_cdo_connect_t     *connect,
 
   } /* End of switch */
 
-  /* Parallel synchronisation */
+  /* Parallel synchronization */
   if (cs_glob_n_ranks > 1)
     cs_parall_sum(1, CS_REAL_TYPE, &int_value);
 
@@ -1666,8 +1630,8 @@ cs_gwf_extra_op(const cs_cdo_connect_t      *connect,
   const cs_equation_t  *richards = gw->richards;
   const cs_equation_param_t  *eqp = cs_equation_get_param(richards);
 
-  _Bool  *is_counted = NULL;
-  BFT_MALLOC(is_counted, n_b_faces, _Bool);
+  bool  *is_counted = NULL;
+  BFT_MALLOC(is_counted, n_b_faces, bool);
 # pragma omp parallel for if (n_b_faces > CS_THR_MIN)
   for (int i = 0; i < n_b_faces; i++) is_counted[i] = false;
 
@@ -1714,7 +1678,7 @@ cs_gwf_extra_op(const cs_cdo_connect_t      *connect,
 
   } /* Loop on BC definitions */
 
-  _Bool  display = false;
+  bool  display = false;
   balances[eqp->n_bc_defs] = 0.;
   for (cs_lnum_t bf_id = 0; bf_id < n_b_faces; bf_id++) {
     if (is_counted[bf_id] == false) {

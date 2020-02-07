@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -214,13 +214,7 @@ cs_mesh_deform_activate(void)
 
     /* System to solve is SPD by construction */
     cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
-
-#if defined(HAVE_PETSC)  /* Modify the default settings */
-    cs_equation_set_param(eqp, CS_EQKEY_SOLVER_FAMILY, "petsc");
     cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "amg");
-#else
-    cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "jacobi");
-#endif
 
   }
 
@@ -301,6 +295,7 @@ cs_mesh_deform_setup(cs_domain_t  *domain)
       cs_equation_enforce_vertex_dofs(eqp,
                                       _n_fixed_vertices,
                                       _fixed_vtx_ids,
+                                      NULL, /* reference value */
                                       fixed_vtx_values);
 
       BFT_FREE(fixed_vtx_values);

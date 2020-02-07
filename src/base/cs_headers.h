@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -28,6 +28,14 @@
 /*----------------------------------------------------------------------------
  * Local headers
  *----------------------------------------------------------------------------*/
+
+/* Disable some compiler warnings */
+
+#if defined __INTEL_COMPILER
+#pragma warning disable 2259
+#endif
+
+/* Include headers by groups */
 
 #include "cs_bft_headers.h"
 #include "cs_base_headers.h"

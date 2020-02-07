@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -56,6 +56,7 @@
 #include <MEDCouplingField.hxx>
 #include <MEDCouplingFieldFloat.hxx>
 #include <MEDCouplingFieldDouble.hxx>
+#include <MEDFileFieldMultiTS.hxx>
 
 #include <MEDCouplingRemapper.hxx>
 
@@ -106,6 +107,11 @@ struct _cs_medcoupling_remapper_t {
   MEDCouplingUMesh         *bbox_source_mesh;
 
   MEDCouplingFieldDouble  **source_fields;
+
+  /* Time step values in the file */
+  int                       ntsteps;
+  int                     **iter_order;
+  cs_real_t                *time_steps;
 
   MEDCouplingRemapper      *remapper;     /* MEDCoupling remapper */
 
@@ -180,19 +186,18 @@ _cs_medcoupling_read_field_real(const char  *medfile_path,
  * \param[in] order            iteration order to load
  *
  * \return  pointer to the new cs_medcoupling_remapper_t struct
- *
  */
 /*----------------------------------------------------------------------------*/
 
 static cs_medcoupling_remapper_t *
-_create_remapper(const char   *name,
-                 int           elt_dim,
-                 const char   *select_criteria,
-                 const char   *medfile_path,
-                 int           n_fields,
-                 const char  **field_names,
-                 int           iteration,
-                 int           order)
+_create_remapper(const char                        *name,
+                 int                                elt_dim,
+                 const char                        *select_criteria,
+                 const char                        *medfile_path,
+                 int                                n_fields,
+                 const char                       **field_names,
+                 int                                iteration,
+                 int                                order)
 {
   cs_medcoupling_remapper_t *r = NULL;
   BFT_MALLOC(r, 1, cs_medcoupling_remapper_t);
@@ -221,6 +226,25 @@ _create_remapper(const char   *name,
   cs_mesh_t *parent_mesh = cs_glob_mesh;
   cs_medcoupling_mesh_copy_from_base(parent_mesh, new_mesh, 1);
   r->target_mesh = new_mesh;
+
+  /* Get the time step values from the file */
+  MCAuto<MEDFileAnyTypeFieldMultiTS> tf(MEDFileAnyTypeFieldMultiTS::New(medfile_path,
+                                                                        field_names[0]));
+
+  std::vector<double> t2s;
+  std::vector< std::pair<int,int> > ito = tf->getTimeSteps(t2s);
+
+  r->ntsteps = ito.size();
+  BFT_MALLOC(r->iter_order, r->ntsteps, int *);
+  for (int ii = 0; ii < ito.size(); ii++)
+    BFT_MALLOC(r->iter_order[ii], 2, int);
+  BFT_MALLOC(r->time_steps, r->ntsteps, cs_real_t);
+
+  for (int ii = 0; ii < ito.size(); ii++) {
+    r->iter_order[ii][0] = ito[ii].first;
+    r->iter_order[ii][1] = ito[ii].second;
+    r->time_steps[ii]    = t2s[ii];
+  }
 
   // MEDCoupling remapper (sequential interpolation)
 
@@ -269,7 +293,6 @@ _create_remapper(const char   *name,
  * \param[in] field_names      names of the fields to load
  * \param[in] iteration        time iteration to load
  * \param[in] order            iteration order to load
- *
  */
 /*----------------------------------------------------------------------------*/
 
@@ -322,27 +345,29 @@ _copy_values_no_bbox(cs_medcoupling_remapper_t  *r,
                      int                         field_id,
                      double                      default_val)
 {
+  cs_real_t *new_vals = NULL;
+
   cs_lnum_t n_elts = r->target_mesh->n_elts;
-
-  cs_real_t *new_vals;
-  BFT_MALLOC(new_vals, n_elts, cs_real_t);
-
-  for (int i = 0; i < n_elts; i++) {
-    new_vals[i] = default_val;
-  }
 
   if (n_elts > 0) {
 
     MEDCouplingFieldDouble *source_field = r->source_fields[field_id];
     source_field->setNature(IntensiveMaximum);
 
-    MEDCouplingFieldDouble *target_field
+    MEDCouplingFieldDouble  *target_field
       = r->remapper->transferField(source_field, default_val);
 
+    cs_lnum_t dim    = target_field->getNumberOfComponents();
+    cs_lnum_t n_vals = (cs_lnum_t)dim * n_elts;
+
+    BFT_MALLOC(new_vals, n_vals, cs_real_t);
+    for (cs_lnum_t i = 0; i < n_vals; i++) {
+      new_vals[i] = default_val;
+    }
 
     const double *val_ptr = target_field->getArray()->getConstPointer();
 
-    for (int i = 0; i < n_elts; i++) {
+    for (cs_lnum_t i = 0; i < n_vals; i++) {
       new_vals[i] = val_ptr[i];
     }
   }
@@ -371,13 +396,10 @@ _copy_values_with_bbox(cs_medcoupling_remapper_t  *r,
   cs_lnum_t n_elts = r->target_mesh->n_elts;
   cs_lnum_t n_elts_loc = cs_glob_mesh->n_cells;
 
-  cs_real_t *new_vals;
-  BFT_MALLOC(new_vals, n_elts_loc, cs_real_t);
-  for (int i = 0; i < n_elts_loc; i++) {
-    new_vals[i] = default_val;
-  }
+  cs_real_t *new_vals = NULL;
 
   if (n_elts > 0) {
+
     // List of subcells intersecting the local mesh bounding box
     const cs_real_t *rbbox = r->target_mesh->bbox;
 
@@ -387,13 +409,22 @@ _copy_values_with_bbox(cs_medcoupling_remapper_t  *r,
     // Construct the subfields based on the subcells list
     MEDCouplingFieldDouble *source_field
       = r->source_fields[field_id]->buildSubPart(subcells);
-
-    // Set the nature of the field
-    source_field->setNature(IntensiveMaximum); /* TODO options */
+    source_field->setNature(IntensiveMaximum);
 
     // Interpolate the new values
     MEDCouplingFieldDouble *target_field
       = r->remapper->transferField(source_field, default_val);
+
+    cs_lnum_t dim    = target_field->getNumberOfComponents();
+    cs_lnum_t n_vals = (cs_lnum_t)dim * n_elts_loc;
+
+    BFT_MALLOC(new_vals, n_vals, cs_real_t);
+    for (cs_lnum_t i = 0; i < n_vals; i++) {
+      new_vals[i] = default_val;
+    }
+
+    // Set the nature of the field
+    source_field->setNature(IntensiveMaximum); /* TODO options */
 
     // Generate the output array
     const double *val_ptr = target_field->getArray()->getConstPointer();
@@ -404,12 +435,24 @@ _copy_values_with_bbox(cs_medcoupling_remapper_t  *r,
     if (r_elt_list != NULL) {
       const cs_lnum_t *r_new_connec = r->target_mesh->new_to_old;
 
-      for (int i = 0; i < npts; i++) {
-        int e_id = r_new_connec[i];
-        new_vals[e_id] = val_ptr[i];
+      if (dim == 1) {
+        for (cs_lnum_t i = 0; i < npts; i++) {
+          cs_lnum_t e_id = r_new_connec[i];
+          new_vals[e_id] = val_ptr[i];
+        }
       }
-    } else {
-      for (int i = 0; i < npts; i++) {
+      else {
+        cs_lnum_t n = npts/dim;
+        for (cs_lnum_t i = 0; i < n; i++) {
+          cs_lnum_t e_id = r_new_connec[i];
+          for (cs_lnum_t j = 0; j < dim; j++)
+            new_vals[e_id*dim + j] = val_ptr[i*dim + j];
+        }
+      }
+    }
+
+    else {
+      for (cs_lnum_t i = 0; i < npts; i++) {
         new_vals[i] = val_ptr[i];
       }
     }
@@ -438,9 +481,6 @@ _setup_no_bbox(cs_medcoupling_remapper_t *r)
 
     source_field->setNature(IntensiveMaximum);
 
-    r->remapper->setPrecision(1.e-12);
-    r->remapper->setIntersectionType(INTERP_KERNEL::Triangulation);
-
     r->remapper->prepare(source_field->getMesh(),
                          r->target_mesh->med_mesh,
                          r->interp_method);
@@ -452,7 +492,6 @@ _setup_no_bbox(cs_medcoupling_remapper_t *r)
  * \brief update the interpolation matrix using the reduced bbox
  *
  * \param[in] r  pointer to the cs_medcoupling_remapper_t struct
- *
  */
 /*----------------------------------------------------------------------------*/
 
@@ -475,14 +514,44 @@ _setup_with_bbox(cs_medcoupling_remapper_t  *r)
     source_field->setNature(IntensiveMaximum); /* TODO options */
 
     // Update the remapper structure and interpolation matrix
-    // TODO allow settings for precision and interpolation type
-    r->remapper->setPrecision(1.e-12);
-    r->remapper->setIntersectionType(INTERP_KERNEL::Triangulation);
 
     r->remapper->prepare(source_field->getMesh(),
                          r->target_mesh->med_mesh,
                          r->interp_method);
+
   }
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Destroy a remapper
+ *
+ * \param[in] r a remapper
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+_cs_medcoupling_remapper_destroy(cs_medcoupling_remapper_t *r)
+{
+
+  BFT_FREE(r->name);
+  BFT_FREE(r->medfile_path);
+  BFT_FREE(r->bbox_source_mesh);
+  BFT_FREE(r->remapper);
+
+  for (int i = 0; i < r->n_fields; i++) {
+    BFT_FREE(r->field_names[i]);
+    BFT_FREE(r->source_fields[i]);
+  }
+  BFT_FREE(r->field_names);
+  BFT_FREE(r->source_fields);
+
+  cs_medcoupling_mesh_destroy(r->target_mesh);
+
+  BFT_FREE(r);
+
+  return;
+
 }
 
 /*----------------------------------------------------------------------------*/
@@ -511,7 +580,8 @@ cs_medcoupling_remapper_by_id(int  r_id)
   if (r_id < _n_remappers) {
     cs_medcoupling_remapper_t *r = _remapper[r_id];
     return r;
-  } else {
+  }
+  else {
     return NULL;
   }
 }
@@ -532,10 +602,8 @@ cs_medcoupling_remapper_by_name_try(const char  *name)
   if (_n_remappers > 0) {
     for (int r_id = 0; r_id < _n_remappers; r_id++) {
       const char *r_name = _remapper[r_id]->name;
-      if (strcmp(r_name, name) == 0) {
+      if (strcmp(r_name, name) == 0)
         return _remapper[r_id];
-
-      }
     }
   }
 
@@ -608,6 +676,70 @@ cs_medcoupling_remapper_set_iteration(cs_medcoupling_remapper_t  *r,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief set non-default options for a remapper
+ *
+ * \param[in] r      pointer to the cs_medcoupling_remapper_t struct
+ * \param[in] key    pointer to string representing key
+ *                   currently handled: one of {Precision, IntersectionType}
+ * \param[in] value  pointer to string representing value:
+ *                   - for Precision: floating-point value (default: 1e-12)
+ *                   - for IntersectionType: one of {Triangulation, Convex,
+ *                     Geometric2D, PointLocator, Barycentric,
+ *                     BarycentricGeo2D, MappedBarycentric}
+ *                     (see MEDCoupling INTERP_KERNEL documentation)
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_set_options(cs_medcoupling_remapper_t  *r,
+                                    const char                  key[],
+                                    const char                  value[])
+{
+  if (key == NULL || value == NULL)
+    return;
+
+  if (strcmp(key, "Precision") == 0) {
+    double epsilon = atof(value);
+    if (epsilon > 0)
+      r->remapper->setPrecision(epsilon);
+    else
+      bft_printf
+        (_("\nWarning: MEDCoupling remapper requires positive precision,\n"
+           "           not \"%s\" (ignored).\n"),
+         value);
+  }
+
+  else if (strcmp(key, "IntersectionType") == 0) {
+    if (strcmp(value, "Triangulation") == 0)
+      r->remapper->setIntersectionType(INTERP_KERNEL::Triangulation);
+    else if (strcmp(value, "Convex") == 0)
+      r->remapper->setIntersectionType(INTERP_KERNEL::Convex);
+    else if (strcmp(value, "Geometric2D") == 0)
+      r->remapper->setIntersectionType(INTERP_KERNEL::Geometric2D);
+    else if (strcmp(value, "PointLocator") == 0)
+      r->remapper->setIntersectionType(INTERP_KERNEL::PointLocator);
+    else if (strcmp(value, "Barycentric") == 0)
+      r->remapper->setIntersectionType(INTERP_KERNEL::Barycentric);
+    else if (strcmp(value, "BarycentricGeo2D") == 0)
+      r->remapper->setIntersectionType(INTERP_KERNEL::BarycentricGeo2D);
+    else if (strcmp(value, "MappedBarycentric") == 0)
+      r->remapper->setIntersectionType(INTERP_KERNEL::MappedBarycentric);
+    else
+      bft_printf
+        (_("\nWarning: unknown MEDCoupling remapper intersection type\n"
+           "           \"%s\" (ignored).\n"),
+         value);
+  }
+
+  else
+    bft_printf
+      (_("\nWarning: unknown or unsupported MEDCoupling remapper option type\n"
+         "           \"%s\" (ignored).\n"),
+       key);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief update the interpolation matrix of the remapper
  *
  * \param[in] r            pointer to the cs_medcoupling_remapper_t struct
@@ -618,6 +750,9 @@ void
 cs_medcoupling_remapper_setup(cs_medcoupling_remapper_t  *r)
 {
   cs_lnum_t n_elts = r->target_mesh->n_elts;
+
+  r->remapper->setPrecision(1.e-12);
+  r->remapper->setIntersectionType(INTERP_KERNEL::PointLocator);
 
   if (n_elts > 0) {
     // List of subcells intersecting the local mesh bounding box
@@ -700,6 +835,139 @@ cs_medcoupling_remapper_rotate(cs_medcoupling_remapper_t  *r,
 {
   for (int i = 0; i < r->n_fields; i++) {
     r->source_fields[i]->getMesh()->rotate(invariant, axis, angle);
+  }
+}
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Retrieve the two closest time steps indexes.
+ *
+ * The returned value is int[2].
+ * If the requested time value if outside the time bounds stored in the file,
+ * the both values are identical (first or last value), and a warning is printed
+ * in the listing file.
+ *
+ * \param[in]      r    pointer to remapper object
+ * \param[in]      t    requested time value
+ * \param[in,out]  id1  first returned index
+ * \param[in,out]  id2  second returned index
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_find_time_index(cs_medcoupling_remapper_t *r,
+                                        cs_real_t                  t,
+                                        int                       *id1,
+                                        int                       *id2)
+{
+
+  if (t < r->time_steps[0]) {
+    *id1 = 0;
+    *id2 = 0;
+
+  } else if (t > r->time_steps[r->ntsteps-1]) {
+    *id1 = r->ntsteps-1;
+    *id2 = r->ntsteps-1;
+
+  } else {
+    for (int i = 0; i < r->ntsteps-1; i++) {
+      if (t >= r->time_steps[i] && t < r->time_steps[i+1]) {
+        *id1 = i;
+        *id2 = i+1;
+        break;
+      }
+    }
+  }
+
+  return;
+}
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Retrieve the two closest time steps indexes.
+ *
+ * The returned value is int[2].
+ * If the requested time value if outside the time bounds stored in the file,
+ * the both values are identical (first or last value), and a warning is printed
+ * in the listing file.
+ *
+ * \param[in]      r    pointer to remapper object
+ * \param[in]      id   requested index
+ * \param[in,out]  t    corresponding time value
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_get_time_from_index(cs_medcoupling_remapper_t *r,
+                                            int                        id,
+                                            cs_real_t                 *t)
+{
+  *t = r->time_steps[id];
+  return;
+}
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Retrieve the two closest time steps indexes.
+ *
+ * The returned value is int[2].
+ * If the requested time value if outside the time bounds stored in the file,
+ * the both values are identical (first or last value), and a warning is printed
+ * in the listing file.
+ *
+ * \param[in]      r      pointer to remapper object
+ * \param[in]      id     requested time index
+ * \param[in,out]  iter   index iteration
+ * \param[in,out]  order  index iteration order
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_get_iter_order_from_index(cs_medcoupling_remapper_t *r,
+                                                  int                        id,
+                                                  int                       *it,
+                                                  int                       *order)
+{
+
+  *it    = r->iter_order[id][0];
+  *order = r->iter_order[id][1];
+
+  return;
+}
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Destroy all remappers
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_destroy_all(void)
+{
+
+  for (int r_id = 0; r_id < _n_remappers; r_id++)
+    _cs_medcoupling_remapper_destroy(_remapper[r_id]);
+
+  return;
+
+}
+
+/*----------------------------------------------------------------------------*/
+/*! \brief Load the time value corresponding to id.
+ *
+ * \param[in]      r      pointer to remapper object
+ * \param[in]      id     requested time index
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_medcoupling_remapper_update_time_value(cs_medcoupling_remapper_t *r,
+                                          int                        id)
+{
+  int it    = r->iter_order[id][0];
+  int order = r->iter_order[id][1];
+
+  for (int ii = 0; ii < r->n_fields; ii++) {
+    r->source_fields[ii] = _cs_medcoupling_read_field_real(r->medfile_path,
+                                                           r->field_names[ii],
+                                                           it,
+                                                           order);
   }
 }
 

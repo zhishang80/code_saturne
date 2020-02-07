@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -83,7 +83,7 @@ BEGIN_C_DECLS
   elements which may be on parallel boundaries, such as vertices, edges,
   and faces).
 
-  Elements and their periodic matches allways have distinct global ids;
+  Elements and their periodic matches always have distinct global ids;
  */
 
 /*! \cond DOXYGEN_SHOULD_SKIP_THIS */
@@ -220,7 +220,7 @@ _interface_set_partition_ids(const cs_interface_set_t  *ifs,
                          CS_GNUM_TYPE,
                          g_id);
 
-  /* Now count and mark fo global elements */
+  /* Now count and mark of global elements */
 
   l_range[0] = 0;
   l_range[1] = 0;

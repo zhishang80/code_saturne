@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -52,7 +52,6 @@ use pointe
 use entsor
 use parall
 use period
-use ihmpre
 use ppppar
 use ppthch
 use ppincl
@@ -62,6 +61,7 @@ use cfpoin, only:ithvar
 use cs_c_bindings
 use cs_cf_bindings
 use cs_f_interfaces
+use vof
 
 use, intrinsic :: iso_c_binding
 
@@ -179,11 +179,7 @@ enddo
 ! - Interface Code_Saturne
 !   ======================
 
-if (iihmpr.eq.1) then
-
-  call uiiniv (isuite, ippmod(idarcy), ithvar)
-
-endif
+call uiiniv (isuite, ippmod(idarcy), ithvar)
 
 !   - Sous-programme utilisateur
 !     ==========================
@@ -194,7 +190,7 @@ if (ippmod(iphpar).eq.0) then
 
   !     Avec l'interface, il peut y avoir eu initialisation,
   !       meme si usiniv n'est pas utilise.
-  if (isuite.eq.0 .and. iihmpr.eq.1) then
+  if (isuite.eq.0) then
     iusini = 1
   endif
 
@@ -213,6 +209,16 @@ else
 endif
 
 call user_initialization()
+
+! VoF algorithm
+if (ivofmt.gt.0) then
+  call vof_compute_linear_rho_mu
+  ! density is stored at the two previous time steps
+  call field_current_to_previous(icrom)
+  call field_current_to_previous(ibrom)
+  call field_current_to_previous(icrom)
+  call field_current_to_previous(ibrom)
+endif
 
 if (ippmod(icompf).ge.0.and.(    isuite.eq.0                 &
                              .or.isuite.eq.1.and.ileaux.eq.0)) then
@@ -281,13 +287,7 @@ if (ippmod(icompf).lt.0.and.ippmod(idarcy).lt.0) then
                     + pred0 - p0
     enddo
   elseif (isuite.eq.0.or.ileaux.eq.0) then
-    do iel = 1, ncel
-      cpro_prtot(iel) =  cvar_pr(iel)                  &
-                       + ro0*( gx*(xyzcen(1,iel)-xxp0) &
-                       + gy*(xyzcen(2,iel)-xyp0)       &
-                       + gz*(xyzcen(3,iel)-xzp0) )     &
-                       + p0 - pred0
-    enddo
+    call navstv_total_pressure
   endif
 
 else if ((ippmod(idarcy).ge.0).and.(darcy_gravity.ge.1)) then

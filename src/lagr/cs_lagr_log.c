@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -45,7 +45,6 @@
  *----------------------------------------------------------------------------*/
 
 #include "bft_printf.h"
-#include "bft_error.h"
 #include "bft_mem.h"
 
 #include "cs_log.h"
@@ -235,6 +234,19 @@ _log_setup_injection(cs_log_t  log)
                         "    density: %g\n"),
                       zis->diameter, zis->diameter_variance, zis->density);
 
+
+        if (cs_glob_lagr_model->shape == 1) {
+          cs_log_printf(log,
+                        _("    shape parameter: %g\n"),
+                        zis->shape);
+        }
+
+        if (cs_glob_lagr_model->shape == 2) {
+          cs_log_printf(log,
+                        _("    ellipsoid radii: [%g, %g, %g]\n"),
+                        zis->radii[0], zis->radii[1], zis->radii[2]);
+        }
+
         if (zis->flow_rate > 0)
           cs_log_printf(log,
                         _("    flow rate: %g\n"),
@@ -419,9 +431,9 @@ cs_lagr_log_setup(void)
      cs_glob_lagr_time_scheme->modcpl);
 
   if (cs_glob_lagr_time_scheme->modcpl) {
-    const char c_dir[] = "xyze";
+    const char c_dir[] = "xyz*";
     int _idirla = cs_glob_lagr_time_scheme->idirla;
-    assert(_idirla > -1 && _idirla < 4);
+    assert(_idirla > -1 && _idirla < 5);
     cs_log_printf
       (CS_LOG_SETUP,
        _("    complete model main flow direction: %c\n"),

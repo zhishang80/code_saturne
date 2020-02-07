@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -84,30 +84,34 @@ class NumericalParamGlobalView(QWidget, Ui_NumericalParamGlobalForm):
         self.lineEditSRROM.hide()
 
         # Combo models
-        self.modelEXTRAG = ComboModel(self.comboBoxEXTRAG,2,1)
-        self.modelIMRGRA = ComboModel(self.comboBoxIMRGRA,7,1)
+        self.modelGradientType = ComboModel(self.comboBoxGradientType, 5, 1)
+        self.modelGradientType.addItem(self.tr("Automatic"), 'default')
+        self.modelGradientType.addItem(self.tr("Green-Gauss with iterative handling of non-orthogonalities"),
+                                       'green_iter')
+        self.modelGradientType.addItem(self.tr("Least squares"), 'lsq')
+        self.modelGradientType.addItem(self.tr("Green-Gauss with least squares gradient face values"),
+                                       'green_lsq')
+        self.modelGradientType.addItem(self.tr("Green-Gauss with vertex interpolated face values"),
+                                       'green_vtx')
 
-        self.modelEXTRAG.addItem(self.tr("Neumann 1st order"), 'neumann')
-        self.modelEXTRAG.addItem(self.tr("Extrapolation"), 'extrapolation')
-
-        self.modelIMRGRA.addItem(self.tr("Iterative handling of non-orthogonalities"),'0')
-        self.modelIMRGRA.addItem(self.tr("Least squares method over neighboring cells"),'1')
-        self.modelIMRGRA.addItem(self.tr("Least squares method over extended cell neighborhood"),'2')
-        self.modelIMRGRA.addItem(self.tr("Least squares method over partial extended cell neighborhood"),'3')
-        self.modelIMRGRA.addItem(self.tr("Iterative method with least squares initialization"),'4')
-        self.modelIMRGRA.addItem(self.tr("Iterative method with least squares initialization and extended neighbordood"),'5')
-        self.modelIMRGRA.addItem(self.tr("Iterative method with least squares initialization and partial extended neighbordood"),'6')
-
-        self.comboBoxEXTRAG.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        self.modelExtNeighbors = ComboModel(self.comboBoxExtNeighbors, 5, 1)
+        self.modelExtNeighbors.addItem(self.tr("Automatic"), 'default')
+        self.modelExtNeighbors.addItem(self.tr("None (face adjacent only)"), 'none')
+        self.modelExtNeighbors.addItem(self.tr("Full (all vertex adjacent)"), 'complete')
+        self.modelExtNeighbors.addItem(self.tr("Opposite adjacent cell centers"),
+                                       'cell_center_opposite')
+        self.modelExtNeighbors.addItem(self.tr("Non-orthogonal faces threshold (legacy)"),
+                                       'non_ortho_max')
 
         # Connections
         self.checkBoxIVISSE.clicked.connect(self.slotIVISSE)
+
         self.checkBoxIPUCOU.clicked.connect(self.slotIPUCOU)
-        self.checkBoxICFGRP.clicked.connect(self.slotICFGRP)
         self.checkBoxImprovedPressure.clicked.connect(self.slotImprovedPressure)
-        self.comboBoxEXTRAG.activated[str].connect(self.slotEXTRAG)
+        self.checkBoxICFGRP.clicked.connect(self.slotICFGRP)
         self.lineEditRELAXP.textChanged[str].connect(self.slotRELAXP)
-        self.comboBoxIMRGRA.activated[str].connect(self.slotIMRGRA)
+        self.comboBoxGradientType.activated[str].connect(self.slotGradientType)
+        self.comboBoxExtNeighbors.activated[str].connect(self.slotExtNeighbors)
         self.lineEditSRROM.textChanged[str].connect(self.slotSRROM)
 
         # Validators
@@ -130,7 +134,8 @@ class NumericalParamGlobalView(QWidget, Ui_NumericalParamGlobalForm):
 
         import code_saturne.model.FluidCharacteristicsModel as FluidCharacteristics
         fluid = FluidCharacteristics.FluidCharacteristicsModel(self.case)
-        modl_atmo, modl_joul, modl_thermo, modl_gas, modl_coal, modl_comp = fluid.getThermoPhysicalModel()
+        modl_atmo, modl_joul, modl_thermo, modl_gas, modl_coal, modl_comp, modl_hgn = \
+            fluid.getThermoPhysicalModel()
 
         if self.model.getHydrostaticPressure() == 'on':
             self.checkBoxImprovedPressure.setChecked(True)
@@ -138,8 +143,15 @@ class NumericalParamGlobalView(QWidget, Ui_NumericalParamGlobalForm):
             self.checkBoxImprovedPressure.setChecked(False)
 
         self.lineEditRELAXP.setText(str(self.model.getPressureRelaxation()))
-        self.modelEXTRAG.setItem(str_model=self.model.getWallPressureExtrapolation())
-        self.modelIMRGRA.setItem(str_model=str(self.model.getGradientReconstruction()))
+        self.modelGradientType.setItem(str_model=str(self.model.getGradientReconstruction()))
+        self.modelExtNeighbors.setItem(str_model=str(self.model.getExtendedNeighborType()))
+
+        if self.model.getGradientReconstruction() == 'green_iter':
+            self.labelExtNeighbors.hide()
+            self.comboBoxExtNeighbors.hide()
+
+        from code_saturne.model.TimeStepModel import TimeStepModel
+        idtvar = TimeStepModel(self.case).getTimePassing()
 
         if modl_joul != 'off' or modl_gas != 'off' or modl_coal != 'off':
             self.labelSRROM.show()
@@ -147,27 +159,24 @@ class NumericalParamGlobalView(QWidget, Ui_NumericalParamGlobalForm):
             self.lineEditSRROM.setText(str(self.model.getDensityRelaxation()))
 
         if modl_comp != 'off':
-            self.labelICFGRP.show()
             self.checkBoxICFGRP.show()
             if self.model.getHydrostaticEquilibrium() == 'on':
                 self.checkBoxICFGRP.setChecked(True)
             else:
                 self.checkBoxICFGRP.setChecked(False)
             self.checkBoxIPUCOU.hide()
-            self.labelIPUCOU.hide()
             self.lineEditRELAXP.hide()
             self.labelRELAXP.hide()
             self.checkBoxImprovedPressure.hide()
-            self.labelImprovedPressure.hide()
         else:
-            self.labelICFGRP.hide()
             self.checkBoxICFGRP.hide()
-            self.checkBoxIPUCOU.show()
-            self.labelIPUCOU.show()
+            if idtvar == -1:
+                self.checkBoxIPUCOU.setEnabled(False)
+            else:
+                self.checkBoxIPUCOU.show()
             self.lineEditRELAXP.show()
             self.labelRELAXP.show()
             self.checkBoxImprovedPressure.show()
-            self.labelImprovedPressure.show()
 
         # Update the Tree files and folders
         self.browser.configureTree(self.case)
@@ -220,16 +229,6 @@ class NumericalParamGlobalView(QWidget, Ui_NumericalParamGlobalForm):
 
 
     @pyqtSlot(str)
-    def slotEXTRAG(self, text):
-        """
-        Set value for parameter EXTRAG
-        """
-        extrag = self.modelEXTRAG.dicoV2M[str(text)]
-        self.model.setWallPressureExtrapolation(extrag)
-        log.debug("slotEXTRAG-> %s" % extrag)
-
-
-    @pyqtSlot(str)
     def slotRELAXP(self, text):
         """
         Set value for parameter RELAXP
@@ -252,13 +251,30 @@ class NumericalParamGlobalView(QWidget, Ui_NumericalParamGlobalForm):
 
 
     @pyqtSlot(str)
-    def slotIMRGRA(self, text):
+    def slotGradientType(self, text):
         """
-        Set value for parameter IMRGRA
+        Set value for parameter GradientType
         """
-        imrgra = self.modelIMRGRA.dicoV2M[str(text)]
-        self.model.setGradientReconstruction(int(imrgra))
-        log.debug("slotIMRGRA-> %s" % imrgra)
+        grd_type = self.modelGradientType.dicoV2M[str(text)]
+        self.model.setGradientReconstruction(grd_type)
+        log.debug("slotGradientType-> %s" % grd_type)
+
+        if grd_type == 'green_iter':
+            self.labelExtNeighbors.hide()
+            self.comboBoxExtNeighbors.hide()
+        else:
+            self.labelExtNeighbors.show()
+            self.comboBoxExtNeighbors.show()
+
+
+    @pyqtSlot(str)
+    def slotExtNeighbors(self, text):
+        """
+        Set extended neighborhood type
+        """
+        enh_type = self.modelExtNeighbors.dicoV2M[str(text)]
+        self.model.setExtendedNeighborType(enh_type)
+        log.debug("slotExtNeighbors-> %s" % enh_type)
 
 
     def tr(self, text):

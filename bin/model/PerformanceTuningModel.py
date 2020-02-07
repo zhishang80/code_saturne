@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -58,9 +58,9 @@ class PerformanceTuningModel(Model):
         Constuctor.
         """
         self.case = case
-        node_mgt = self.case.xmlInitNode('calculation_management')
-        self.node_part = node_mgt.xmlInitNode('partitioning')
-        self.node_io = node_mgt.xmlInitNode('block_io')
+        self.node_mgt = self.case.xmlInitNode('calculation_management')
+        self.node_part = self.node_mgt.xmlInitNode('partitioning')
+        self.node_io = self.node_mgt.xmlInitNode('block_io')
 
 
     def _defaultPartitionValues(self):
@@ -348,6 +348,32 @@ class PerformanceTuningModel(Model):
                 node.xmlRemoveNode()
         else:
             self.node_io.xmlSetData('min_block_size', min_size)
+
+
+    @Variables.noUndo
+    def getAllToAll(self):
+        """
+        Get all to all type.
+        """
+        val = self.node_mgt.xmlGetString('all_to_all')
+        if not val:
+            val = 'default'
+
+        return val
+
+
+    @Variables.undoLocal
+    def setAllToAll(self, p):
+        """
+        Set all to all type.
+        """
+        self.isInList(p, ('default', 'crystal router'))
+        if p == 'default':
+            node = self.node_mgt.xmlGetNode('all_to_all')
+            if node:
+                node.xmlRemoveNode()
+        else:
+            self.node_mgt.xmlSetData('all_to_all', p)
 
 
 #-------------------------------------------------------------------------------

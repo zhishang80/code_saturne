@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -58,22 +58,22 @@ BEGIN_C_DECLS
  * \brief This function is used to compute user defined values for fields over a
  * given boundary zone
  *
+ * \param[in]  zone         pointer to cs_zone_t structure related to boundary
  * \param[in]  field_name   name of the field (const char *)
  * \param[in]  condition    condition type (const char *)
- * \param[in]  bz           pointer to cs_zone_t structure related to boundary
  *
  * \return a pointer to an array of cs_real_t values
  */
 /*----------------------------------------------------------------------------*/
 
 cs_real_t *
-cs_meg_boundary_function(const char       *field_name,
-                         const char       *condition,
-                         const cs_zone_t  *bz)
+cs_meg_boundary_function(const cs_zone_t  *zone,
+                         const char       *field_name,
+                         const char       *condition)
 {
   CS_UNUSED(field_name);
   CS_UNUSED(condition);
-  CS_UNUSED(bz);
+  CS_UNUSED(zone);
 
   return NULL; /* avoid a compilation warning */
 }

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -35,85 +35,6 @@ This module contains the following classes and function:
 #-------------------------------------------------------------------------------
 
 import logging
-
-#-------------------------------------------------------------------------------
-# EOS
-#-------------------------------------------------------------------------------
-
-EOS = 1
-try:
-   import eosAva
-except:
-   EOS = 0
-else :
-   import eosAva
-
-#-------------------------------------------------------------------------------
-# Coolprop
-#-------------------------------------------------------------------------------
-
-import cs_config
-
-coolprop_fluids = []
-coolprop_warn = False
-
-if cs_config.config().libs['coolprop'].have != "no" and not coolprop_fluids:
-
-   try:
-      import sys
-      sys.path.insert(0, cs_config.config().libs['coolprop'].flags['pythonpath'])
-      import CoolProp
-      sys.path.pop(0)
-      seld.coolprop_fluids = []
-      for f in CoolProp.__fluids__:
-         coolprop_fluids.append(f)
-      coolprop_fluids.sort()
-
-   except Exception:  # CoolProp might be available but not its Python bindings
-
-      if cs_config.config().libs['coolprop'].have != "gui_only":
-         """
-         import traceback
-         exc_info = sys.exc_info()
-         bt = traceback.format_exception(*exc_info)
-         for l in bt:
-            print(l)
-         del exc_info
-         print("Warning: CoolProp Python bindings not available or usable")
-         print("         list of fluids based on CoolProp 5.1.1")
-         """
-         pass
-      else:
-         coolprop_warn = True
-
-      coolprop_fluids = ['1-Butene', 'Acetone', 'Air', 'Ammonia', 'Argon',
-                         'Benzene', 'CarbonDioxide', 'CarbonMonoxide',
-                         'CarbonylSulfide', 'CycloHexane', 'CycloPropane',
-                         'Cyclopentane', 'D4', 'D5', 'D6', 'Deuterium',
-                         'DimethylCarbonate', 'DimethylEther', 'Ethane',
-                         'Ethanol', 'EthylBenzene', 'Ethylene', 'Fluorine',
-                         'HFE143m', 'HeavyWater', 'Helium', 'Hydrogen',
-                         'HydrogenSulfide', 'IsoButane', 'IsoButene',
-                         'Isohexane', 'Isopentane', 'Krypton', 'MD2M', 'MD3M',
-                         'MD4M', 'MDM', 'MM', 'Methane', 'Methanol',
-                         'MethylLinoleate', 'MethylLinolenate', 'MethylOleate',
-                         'MethylPalmitate', 'MethylStearate', 'Neon',
-                         'Neopentane', 'Nitrogen', 'NitrousOxide', 'Novec649',
-                         'OrthoDeuterium', 'OrthoHydrogen', 'Oxygen',
-                         'ParaDeuterium', 'ParaHydrogen', 'Propylene',
-                         'Propyne', 'R11', 'R113', 'R114', 'R115', 'R116',
-                         'R12', 'R123', 'R1233zd(E)', 'R1234yf', 'R1234ze(E)',
-                         'R1234ze(Z)', 'R124', 'R125', 'R13', 'R134a', 'R13I1',
-                         'R14', 'R141b', 'R142b', 'R143a', 'R152A', 'R161',
-                         'R21', 'R218', 'R22', 'R227EA', 'R23', 'R236EA',
-                         'R236FA', 'R245fa', 'R32', 'R365MFC', 'R404A',
-                         'R407C', 'R41', 'R410A', 'R507A', 'RC318', 'SES36',
-                         'SulfurDioxide', 'SulfurHexafluoride', 'Toluene',
-                         'Water', 'Xenon', 'cis-2-Butene', 'm-Xylene',
-                         'n-Butane', 'n-Decane', 'n-Dodecane', 'n-Heptane',
-                         'n-Hexane', 'n-Nonane', 'n-Octane', 'n-Pentane',
-                         'n-Propane', 'n-Undecane', 'o-Xylene', 'p-Xylene',
-                         'trans-2-Butene']
 
 #-------------------------------------------------------------------------------
 # Third-party modules
@@ -270,41 +191,35 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         self.mdl = FluidCharacteristicsModel(self.case)
         self.notebook = NotebookModel(self.case)
 
-        if EOS == 1:
-            self.ava = eosAva.EosAvailable()
-
-        import cs_config
-        cfg = cs_config.config()
-        self.freesteam = 0
-        if cfg.libs['freesteam'].have != "no":
-            self.freesteam = 1
-
         self.m_th = ThermalScalarModel(self.case)
         s = self.m_th.getThermalScalarName()
         tsm = self.mdl.tsm
 
-        # Particular Widget initialization taking into account of "Calculation Features"
-        mdl_atmo, mdl_joule, mdl_thermal, mdl_gas, mdl_coal, mdl_comp = self.mdl.getThermoPhysicalModel()
+        # Particular Widget init. taking into account chosen fluid model
+        mdl_atmo, mdl_joule, mdl_thermal, mdl_gas, mdl_coal, mdl_comp, mdl_hgn=\
+            self.mdl.getThermoPhysicalModel()
 
         # Combo models
 
-        self.modelRho      = ComboModel(self.comboBoxRho,      3, 1)
-        self.modelMu       = ComboModel(self.comboBoxMu,       3, 1)
-        self.modelCp       = ComboModel(self.comboBoxCp,       3, 1)
-        self.modelAl       = ComboModel(self.comboBoxAl,       3, 1)
-        self.modelDiff     = ComboModel(self.comboBoxDiff,     2, 1)
-        self.modelNameDiff = ComboModel(self.comboBoxNameDiff, 1, 1)
-        self.modelViscv0   = ComboModel(self.comboBoxViscv0,   3, 1)
-        self.modelDiftl0   = ComboModel(self.comboBoxDiftl0,   3, 1)
-        self.modelMaterial = ComboModel(self.comboBoxMaterial, 1, 1)
-        self.modelMethod   = ComboModel(self.comboBoxMethod,   1, 1)
-        self.modelPhas     = ComboModel(self.comboBoxPhas,     2, 1)
+        self.modelRho       = ComboModel(self.comboBoxRho,      3, 1)
+        self.modelMu        = ComboModel(self.comboBoxMu,       3, 1)
+        self.modelCp        = ComboModel(self.comboBoxCp,       3, 1)
+        self.modelAl        = ComboModel(self.comboBoxAl,       3, 1)
+        self.modelDiff      = ComboModel(self.comboBoxDiff,     2, 1)
+        self.modelNameDiff  = ComboModel(self.comboBoxNameDiff, 1, 1)
+        self.modelViscv0    = ComboModel(self.comboBoxViscv0,   3, 1)
+        self.modelDiftl0    = ComboModel(self.comboBoxDiftl0,   3, 1)
+        self.modelMaterial  = ComboModel(self.comboBoxMaterial, 1, 1)
+        self.modelMethod    = ComboModel(self.comboBoxMethod,   1, 1)
+        self.modelReference = ComboModel(self.comboBoxReference,  1, 1)
 
         self.modelRho.addItem(self.tr('constant'), 'constant')
         self.modelRho.addItem(self.tr('user law'), 'user_law')
         self.modelRho.addItem(self.tr('material law'), 'thermal_law')
         if mdl_atmo != 'off':
             self.modelRho.addItem(self.tr('defined in atphyv'), 'predefined_law')
+        if mdl_hgn != "off":
+            self.modelRho.addItem(self.tr('linear mixture law'), 'predefined_law')
         elif mdl_joule == 'arc':
             self.modelRho.addItem(self.tr('defined in elphyv'), 'predefined_law')
         elif mdl_comp != 'off':
@@ -317,6 +232,8 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         self.modelMu.addItem(self.tr('material law'), 'thermal_law')
         if mdl_joule == 'arc':
             self.modelMu.addItem(self.tr('defined in elphyv'), 'predefined_law')
+        if mdl_hgn != "off":
+            self.modelMu.addItem(self.tr('linear mixture law'), 'predefined_law')
 
         self.modelCp.addItem(self.tr('constant'), 'constant')
         self.modelCp.addItem(self.tr('user law'), 'user_law')
@@ -342,9 +259,6 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         self.modelDiftl0.addItem(self.tr('material law'), 'thermal_law')
         if mdl_gas != 'off' or mdl_coal != 'off':
             self.modelDiftl0.addItem(self.tr('predefined law'), 'predefined_law')
-
-        self.modelPhas.addItem(self.tr('liquid'), 'liquid')
-        self.modelPhas.addItem(self.tr('gas'), 'gas')
 
         self.scalar = ""
         scalar_list = self.mdl.m_sca.getUserScalarNameList()
@@ -378,7 +292,11 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         self.lineEditMassMolar.setValidator(validatorMM)
 
         validatorRho    = DoubleValidator(self.lineEditRho,    min = 0.0)
+        validatorRho1   = DoubleValidator(self.lineEditRho1,   min = 0.0)
+        validatorRho2   = DoubleValidator(self.lineEditRho2,   min = 0.0)
         validatorMu     = DoubleValidator(self.lineEditMu,     min = 0.0)
+        validatorMu1    = DoubleValidator(self.lineEditMu1,    min = 0.0)
+        validatorMu2    = DoubleValidator(self.lineEditMu2,    min = 0.0)
         validatorCp     = DoubleValidator(self.lineEditCp,     min = 0.0)
         validatorAl     = DoubleValidator(self.lineEditAl,     min = 0.0)
         validatorDiff   = DoubleValidator(self.lineEditDiff,   min = 0.0)
@@ -386,14 +304,22 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         validatorDiftl0 = DoubleValidator(self.lineEditDiftl0, min = 0.0)
 
         validatorRho.setExclusiveMin(True)
+        validatorRho1.setExclusiveMin(True)
+        validatorRho2.setExclusiveMin(True)
         validatorMu.setExclusiveMin(True)
+        validatorMu1.setExclusiveMin(True)
+        validatorMu2.setExclusiveMin(True)
         validatorCp.setExclusiveMin(True)
         validatorAl.setExclusiveMin(True)
         validatorDiff.setExclusiveMin(True)
         validatorDiftl0.setExclusiveMin(True)
 
         self.lineEditRho.setValidator(validatorRho)
+        self.lineEditRho1.setValidator(validatorRho1)
+        self.lineEditRho2.setValidator(validatorRho2)
         self.lineEditMu.setValidator(validatorMu)
+        self.lineEditMu1.setValidator(validatorMu1)
+        self.lineEditMu2.setValidator(validatorMu2)
         self.lineEditCp.setValidator(validatorCp)
         self.lineEditAl.setValidator(validatorAl)
         self.lineEditDiff.setValidator(validatorDiff)
@@ -417,9 +343,13 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         self.comboBoxViscv0.currentIndexChanged[str].connect(self.slotStateViscv0)
         self.comboBoxMaterial.activated[str].connect(self.slotMaterial)
         self.comboBoxMethod.activated[str].connect(self.slotMethod)
-        self.comboBoxPhas.activated[str].connect(self.slotPhas)
+        self.comboBoxReference.activated[str].connect(self.slotReference)
         self.lineEditRho.textChanged[str].connect(self.slotRho)
+        self.lineEditRho1.textChanged[str].connect(self.slotRho1)
+        self.lineEditRho2.textChanged[str].connect(self.slotRho2)
         self.lineEditMu.textChanged[str].connect(self.slotMu)
+        self.lineEditMu1.textChanged[str].connect(self.slotMu1)
+        self.lineEditMu2.textChanged[str].connect(self.slotMu2)
         self.lineEditCp.textChanged[str].connect(self.slotCp)
         self.lineEditAl.textChanged[str].connect(self.slotAl)
         self.lineEditDiff.textChanged[str].connect(self.slotDiff)
@@ -441,7 +371,7 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         """
         """
         mdls = self.mdl.getThermoPhysicalModel()
-        mdl_atmo, mdl_joule, mdl_thermal, mdl_gas, mdl_coal, mdl_comp = mdls
+        mdl_atmo, mdl_joule, mdl_thermal, mdl_gas, mdl_coal, mdl_comp, mdl_hgn = mdls
 
         self.groupBoxMassMolar.hide()
 
@@ -479,44 +409,39 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
             p = self.mdl.getPressure()
             self.lineEditP0.setText(str(p))
 
-        if (self.freesteam == 1 or EOS == 1 or coolprop_fluids):
-            self.tables = True
-        else:
-            self.tables = False
-
-        if self.tables == False or mdl_joule != 'off' or mdl_comp != 'off':
+        if self.mdl.tables == 0 or mdl_joule != 'off' or mdl_comp != 'off':
             self.groupBoxTableChoice.hide()
         else:
             self.groupBoxTableChoice.show()
-            self.lineEditReference.setEnabled(False)
 
-            # suppress perfect gas
-            self.modelMaterial.addItem(self.tr('user material'), 'user_material')
-            tmp = ["Argon", "Nitrogen", "Hydrogen", "Oxygen", "Helium", "Air"]
-            if EOS == 1:
-                fls = self.ava.whichFluids()
-                for fli in fls:
-                    if fli not in tmp:
-                        tmp.append(fli)
-                        self.modelMaterial.addItem(self.tr(fli), fli)
-
-            if self.freesteam == 1 and EOS == 0:
-                self.modelMaterial.addItem(self.tr('Water'), 'Water')
-
-            if coolprop_fluids and EOS == 0:
-                have_coolprop = False
-                if cs_config.config().libs['coolprop'].have != "no":
-                    have_coolprop = True
-                for fli in coolprop_fluids:
-                    if self.freesteam == 1 and fli == 'Water':
-                        continue
-                    self.modelMaterial.addItem(self.tr(fli), fli, coolprop_warn)
+            fluids = self.mdl.getLibPropertiesDict()
+            o_keys = list(fluids.keys()) # for Python2/3 compatibility
+                                         # fluids.keys() ordered and iteratable
+                                         # already in Python3
+            o_keys.sort()
+            for f in o_keys:
+                if fluids[f] != 0:
+                    self.modelMaterial.addItem(self.tr(f), f)
+                else:
+                    self.modelMaterial.addItem(self.tr(f), True)
 
             material = self.mdl.getMaterials()
             self.modelMaterial.setItem(str_model=material)
             self.updateMethod()
 
-        #compressible
+        # VoF
+        if mdl_hgn != 'off':
+            self.widgetRefRho.hide()
+            self.widgetVofRho.show()
+            self.widgetRefMu.hide()
+            self.widgetVofMu.show()
+        else:
+            self.widgetRefRho.show()
+            self.widgetVofRho.hide()
+            self.widgetRefMu.show()
+            self.widgetVofMu.hide()
+
+        # compressible
         self.groupBoxViscv0.hide()
 
         # combustion
@@ -586,8 +511,8 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
             else:
                 __label.setText(self.tr("Reference value"))
 
-            self.mdl.getInitialValue(tag)
             __line.setText(str(self.mdl.getInitialValue(tag)))
+
 
         # If no thermal scalar, hide specific heat and thermal conductivity.
         if mdl_thermal == 'off':
@@ -648,6 +573,16 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
                     __button.setEnabled(False)
                     __button.hide()
 
+            # VoF
+            if mdl_hgn != 'off':
+                if tag == 'molecular_viscosity' or tag == 'density':
+                    __model.disableItem(str_model='constant')
+                    __model.disableItem(str_model='predefined_law')
+                    __model.setItem(str_model='predefined_law')
+                    __combo.setEnabled(False)
+                    __button.setEnabled(False)
+                    __button.hide()
+
             # Compressible Flows
             if mdl_comp != 'off':
                 self.groupBoxViscv0.show()
@@ -655,8 +590,6 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
                     __model.setItem(str_model='predefined_law')
                     __combo.setEnabled(False)
                     __button.setEnabled(False)
-                    __button.hide()
-                    __combo.hide()
                     __button.hide()
                     self.mdl.setPropertyMode(tag, 'predefined_law')
                     __line.setEnabled(True)
@@ -680,6 +613,14 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
                     self.groupBoxCp.setTitle('Specific heat')
 
 
+        if mdl_hgn != 'off':
+            self.lineEditRho1.setText(str(self.mdl.getVofValueDensity(0)))
+            self.lineEditRho2.setText(str(self.mdl.getVofValueDensity(1)))
+
+            self.lineEditMu1.setText(str(self.mdl.getVofValueViscosity(0)))
+            self.lineEditMu2.setText(str(self.mdl.getVofValueViscosity(1)))
+
+
     def updateTypeChoice(self, old_choice):
         """
         add/suppress thermo tables for each properties
@@ -701,43 +642,58 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         """
         update method list with material choice
         """
+
         for nb in range(len(self.modelMethod.getItems())):
             self.modelMethod.delItem(0)
 
-        self.comboBoxPhas.hide()
-        self.labelPhas.hide()
+        material = self.mdl.getMaterials()
+        method = self.mdl.getMethod()
+        have_method = False
 
-        if self.mdl.getMaterials() == "user_material":
-            self.modelMethod.addItem(self.tr('user properties'), 'user_properties')
-        else :
-            if EOS == 1:
-                material = self.mdl.getMaterials()
-                self.ava.setMethods(material)
-                fls = self.ava.whichMethods()
-                for fli in fls:
-                    self.modelMethod.addItem(self.tr(fli),fli)
-                if self.mdl.getMethod() != "freesteam" and self.mdl.getMethod() != "CoolProp":
-                    self.comboBoxPhas.show()
-                    self.labelPhas.show()
-            if self.freesteam == 1 and self.mdl.getMaterials() == "Water":
-                self.modelMethod.addItem(self.tr("freesteam"), "freesteam")
+        methods = self.mdl.getLibPropertyMethods(material)
+        for m in methods:
+            if method == m[0]:
+                have_method = True
+            self.modelMethod.addItem(self.tr(m[0]), m[0], not m[1])
 
-            if self.mdl.getMaterials() in coolprop_fluids:
-                self.modelMethod.addItem(self.tr("CoolProp"), "CoolProp")
+        # current method not in list, add it with warning
+        if not have_method:
+            self.modelMethod.addItem(self.tr(method), method, True)
 
         # update comboBoxMethod
-        method = self.mdl.getMethod()
         self.modelMethod.setItem(str_model=method)
+        self.mdl.setMethod(method)
 
-        self.updateReference()
+        self.updateReference(material, method)
 
 
-    def updateReference(self):
+    def updateReference(self, material, method):
         """
-        update Reference with material, method and field nature choice
+        update method list with material choice
         """
-        # update lineEditReference
-        self.lineEditReference.setText(self.mdl.getReference())
+
+        self.comboBoxReference.hide()
+        self.labelReference.hide()
+
+        for nb in range(len(self.modelReference.getItems())):
+            self.modelReference.delItem(0)
+
+        reference = self.mdl.getReference()
+        references = self.mdl.getAvailReferences(material, method)
+        have_reference = False
+
+        if references:
+            for r in references:
+                if reference == r:
+                    have_reference = True
+                self.modelReference.addItem(self.tr(r), r)
+            self.comboBoxReference.show()
+            self.labelReference.show()
+
+            if not have_reference:
+                reference = references[0]
+            self.modelReference.setItem(str_model=reference)
+            self.mdl.setReference(reference)
 
 
     @pyqtSlot(str)
@@ -803,33 +759,22 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
 
 
     @pyqtSlot(str)
-    def slotPhas(self, text):
-        """
-        Method to call 'setFieldNature'
-        """
-        choice = self.modelPhas.dicoV2M[str(text)]
-        self.mdl.setFieldNature(choice)
-
-        self.updateReference()
-
-
-    @pyqtSlot(str)
     def slotMethod(self, text):
         """
         Method to call 'setMethod'
         """
         choice = self.modelMethod.dicoV2M[str(text)]
         self.mdl.setMethod(choice)
+        self.updateReference(self.mdl.getMaterials(), choice)
 
-        self.comboBoxPhas.hide()
-        self.labelPhas.hide()
-        if self.mdl.getMaterials() != "user_material" and \
-           self.mdl.getMethod() != "freesteam" and \
-           self.mdl.getMethod() != "CoolProp":
-            self.comboBoxPhas.show()
-            self.labelPhas.show()
 
-        self.updateReference()
+    @pyqtSlot(str)
+    def slotReference(self, text):
+        """
+        Method to call 'setReference'
+        """
+        choice = self.modelReference.dicoV2M[str(text)]
+        self.mdl.setReference(choice)
 
 
     @pyqtSlot(str)
@@ -993,6 +938,23 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
             rho = from_qvariant(text, float)
             self.mdl.setInitialValueDensity(rho)
 
+    @pyqtSlot(str)
+    def slotRho1(self, text):
+        """
+        Update the density of fluid 1 for VoF module
+        """
+        if self.lineEditRho1.validator().state == QValidator.Acceptable:
+            rho = from_qvariant(text, float)
+            self.mdl.setVofValueDensity(0, rho)
+
+    @pyqtSlot(str)
+    def slotRho2(self, text):
+        """
+        Update the density of fluid 2 for VoF module
+        """
+        if self.lineEditRho2.validator().state == QValidator.Acceptable:
+            rho = from_qvariant(text, float)
+            self.mdl.setVofValueDensity(1, rho)
 
     @pyqtSlot(str)
     def slotMu(self, text):
@@ -1002,6 +964,26 @@ thermal_conductivity = 6.2e-5 * temperature + 8.1e-3;
         if self.lineEditMu.validator().state == QValidator.Acceptable:
             mu = from_qvariant(text, float)
             self.mdl.setInitialValueViscosity(mu)
+
+
+    @pyqtSlot(str)
+    def slotMu1(self, text):
+        """
+        Update the molecular viscosity
+        """
+        if self.lineEditMu1.validator().state == QValidator.Acceptable:
+            mu = from_qvariant(text, float)
+            self.mdl.setVofValueViscosity(0, mu)
+
+
+    @pyqtSlot(str)
+    def slotMu2(self, text):
+        """
+        Update the molecular viscosity
+        """
+        if self.lineEditMu2.validator().state == QValidator.Acceptable:
+            mu = from_qvariant(text, float)
+            self.mdl.setVofValueViscosity(1, mu)
 
 
     @pyqtSlot(str)

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -367,7 +367,7 @@ write(nfecra,9900)
 '    ----------------------------------------',                 /)
  2111 format(                                                     &
 '       IVOFMT = ',4x,i10,    ' ( 0  : disabled              )',/,&
-'                               ( >=0: enabled               )',/)
+'                               ( > 0: enabled               )',/)
  2121 format(                                                     &
 '  -- Fluid 1:',                                                /,&
 '       RHO1   = ', e14.5,  ' (Reference density          )',   /,&

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -663,16 +663,6 @@ do izone = 1, nozppm
   iprofm(izone) = 0
 enddo
 ihpm=0
-
-!--> Initialisation for the time and space reference of the run
-syear=-999
-squant=-999
-shour=-999
-smin=-999
-ssec=-999
-
-xlon=rinfin
-xlat=rinfin
 
 ! --> Initialisation for the 1d radiative model:
 

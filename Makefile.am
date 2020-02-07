@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -46,14 +46,6 @@ endif
 SUBDIRS = . $(PLE) $(PREPRO) src $(SALOME) po $(DOCS) $(GUI) $(TSTS) $(NEPTUNE_CFD)
 
 AUX_DIST = \
-build-aux/catalyst \
-build-aux/catalyst-5.6 \
-build-aux/cs_compile_build.py \
-build-aux/cs_config_test.py \
-build-aux/cs_version.py \
-build-aux/list_modules.sh \
-build-aux/petsc-petscvariables.makefile \
-build-aux/petsc-variables.makefile \
 m4/codeset.m4 \
 m4/fcntl-o.m4 \
 m4/gettext.m4 \
@@ -112,6 +104,14 @@ install_saturne.py \
 NEWS.md \
 README.md \
 QUALITY_ASSURANCE \
+build-aux/catalyst \
+build-aux/catalyst-5.6 \
+build-aux/cs_compile_build.py \
+build-aux/cs_config_test.py \
+build-aux/cs_version.py \
+build-aux/list_modules.sh \
+build-aux/petsc-petscvariables.makefile \
+build-aux/petsc-variables.makefile \
 po/Makevars.template \
 po/Rules-install \
 sbin/backup \
@@ -136,7 +136,6 @@ m4/cs_melissa.m4 \
 m4/cs_metis.m4 \
 m4/cs_modules.m4 \
 m4/cs_mpi.m4 \
-m4/cs_omniorb.m4 \
 m4/cs_petsc.m4 \
 m4/cs_ple.m4 \
 m4/cs_salome.m4 \
@@ -155,7 +154,6 @@ cs_version.h
 DISTCLEANFILES = \
 bin/code_saturne \
 bin/cs_package.py \
-extras/salome/fsi_appli_config.xml \
 cs_config.h \
 cs_version.h \
 libtool_cuda
@@ -299,10 +297,11 @@ bin/cs_gui.py \
 bin/cs_info.py \
 bin/cs_run.py \
 bin/cs_runcase.py \
-bin/cs_salome.py \
 bin/cs_script.py \
 bin/cs_submit.py \
+bin/cs_math_parser.py \
 bin/cs_mei_to_c.py \
+bin/cs_update.py \
 bin/cs_xml_reader.py
 
 studymanagerdir = $(pkgpythondir)/studymanager
@@ -402,11 +401,6 @@ bin/model/XMLvariables.py
 
 salomesysconfdir = ${sysconfdir}/salome
 
-if HAVE_SALOME
-nodist_salomesysconf_DATA = \
-extras/salome/fsi_appli_config.xml
-endif
-
 dist_pkgdata_DATA = \
 bin/cs_user_scripts.py \
 COPYING
@@ -429,7 +423,8 @@ data/thch/dp_radiat_Planck_H2O \
 data/thch/dp_radiat_wave \
 data/thch/dp_transformers \
 data/thch/JANAF \
-data/thch/meteo
+data/thch/meteo \
+data/setup.xml
 
 # Install batch cards for cluster management
 
@@ -460,13 +455,6 @@ extras/bash_completion/code_saturne
 
 sysconf_DATA = \
 extras/code_saturne.cfg.template
-
-# Install SALOME related files
-
-salomedir = ${pkgdatadir}/salome
-dist_salome_DATA = \
-extras/salome/fsi_yacs_scheme.xml \
-extras/salome/fsi.export
 
 # Update gettext dictionnaries
 

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -255,11 +255,7 @@ def displaySelectedPage(page_name, root, case, stbar=None, tree=None):
             import code_saturne.Pages.NumericalParamGlobalView as Page
             thisPage = Page.NumericalParamGlobalView(root, case, tree)
 
-    elif page_name == tr("Calculation management"):
-        import code_saturne.Pages.BatchRunningView as Page
-        thisPage = Page.BatchRunningView(root, case)
-
-    elif page_name == tr("Performance tuning"):
+    elif page_name == tr("Performance settings"):
         import code_saturne.Pages.PerformanceTuningView as Page
         thisPage = Page.PerformanceTuningView(root, case)
 
@@ -306,10 +302,6 @@ def displaySelectedPage(page_name, root, case, stbar=None, tree=None):
     elif page_name == tr("Interfacial area"):
         import code_saturne.Pages.InterfacialAreaView as Page
         thisPage = Page.InterfacialAreaView(root, case)
-
-    elif page_name == tr("OpenTurns study"):
-        import code_saturne.Pages.OpenTurnsView as Page
-        thisPage = Page.OpenTurnsView(root, case)
 
     else:
         msg = tr("Warning: the corresponding Page %s doesn't exist!") % page_name

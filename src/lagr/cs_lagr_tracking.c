@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -2076,7 +2076,7 @@ _local_propagation(cs_lagr_particle_set_t         *particles,
       n_out += n_crossings[1];
 
       /* Store the nearest intesection from the O point...*/
-      if (t < adist_min) {
+      if (t < adist_min && t >= 0) {
         exit_face = face_num;
         t_intersect = t;
         adist_min = t_intersect;
@@ -2829,8 +2829,6 @@ _sync_particle_set(cs_lagr_particle_set_t  *particles)
 static void
 _initialize_displacement(cs_lagr_particle_set_t  *particles)
 {
-  const cs_lagr_model_t *lagr_model = cs_glob_lagr_model;
-
   const cs_lagr_attribute_map_t  *am = particles->p_am;
 
   /* Initialize builder if needed */

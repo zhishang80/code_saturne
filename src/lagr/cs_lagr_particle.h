@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -109,6 +109,15 @@ typedef enum {
   CS_LAGR_V_GAUSS,             /* 1st step Gaussian variable */
   CS_LAGR_BR_GAUSS,            /* 1st step Brownian motion Gaussian variable */
 
+  /* Non-spherical particles submodel additoinal parameters */
+
+  CS_LAGR_SHAPE,               /*!< Shape of spheroids */
+  CS_LAGR_ORIENTATION,         /*!< Orientation of spheroids */
+  CS_LAGR_RADII,               /*!< Radii a, b, c for ellispoids */
+  CS_LAGR_ANGULAR_VEL,         /*!< Angular velocity */
+  CS_LAGR_EULER,               /*!< Euler four parameters */
+  CS_LAGR_SHAPE_PARAM,         /*!< Shape parameters computed from a b c */
+
   /* Deposition submodel additional parameters */
 
   CS_LAGR_YPLUS,
@@ -158,7 +167,9 @@ typedef enum {
 
   CS_LAGR_STAT_CLASS,
 
-  CS_LAGR_PARTICLE_AGGREGATE,
+  /* Agglomeration/fragmentation model parameters */
+  CS_LAGR_AGGLO_CLASS_ID,
+  CS_LAGR_AGGLO_FRACTAL_DIM,
 
   /* User attributes */
 
@@ -532,7 +543,7 @@ cs_lagr_particles_set_flag(const cs_lagr_particle_set_t  *particle_set,
                             + particle_set->p_am->extents*particle_id
                             + particle_set->p_am->displ[0][CS_LAGR_P_FLAG]));
 
-  flag = flag & mask;
+  flag = flag | mask;
 
   *((cs_lnum_t *)(  particle_set->p_buffer
                   + particle_set->p_am->extents*particle_id

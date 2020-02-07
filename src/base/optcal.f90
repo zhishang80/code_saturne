@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -75,7 +75,7 @@ module optcal
   !> and \ref istmpf = 1 otherwise.
   integer, save ::          istmpf
 
-  !> number of interations on the pressure-velocity coupling on Navier-Stokes
+  !> number of iterations on the pressure-velocity coupling on Navier-Stokes
   !> (for the PISO algorithm)
   integer(c_int), pointer, save ::          nterup
 
@@ -102,29 +102,9 @@ module optcal
   !> is second-order (\ref ischtp = 2), otherwise to 0.
   integer, save ::          isno2t
 
-  !> \ref isto2t specifies the time scheme activated for
-  !> the source terms of the turbulence equations i.e. related
-  !> to \f$k\f$, \f$R_{ij}\f$, \f$\varepsilon\f$, \f$\omega\f$, \f$\varphi\f$,
-  !> \f$\overline{f}\f$), apart from convection and diffusion.
-  !> - 0: standard first-order: the terms which are linear
-  !> functions of the solved variable are implicit and the others are explicit
-  !> - 1: second-order: the terms of the form \f$S_i\phi\f$ which are linear functions
-  !> of the solved variable \f$\phi\f$ are expressed as second-order terms
-  !> by interpolation (according to the formula
-  !> \f$(S_i\phi)^{n+\theta}=S_i^n[(1-\theta)\phi^n+\theta\phi^{n+1}]\f$,
-  !> \f$\theta\f$ being given by the value of \ref thetav associated with the
-  !> variable \f$\phi\f$); the other terms \f$S_e\f$ are expressed as second-order
-  !> terms by extrapolation (according to the formula
-  !> \f$(S_e)^{n+\theta}=[(1+\theta)S_e^n-\theta S_e^{n-1}]\f$, \f$\theta\f$ being
-  !> given by the value of \ref thetst = 0.5)
-  !> - 2: the linear terms \f$S_i\phi\f$ are treated in the same
-  !> way as when \ref isto2t = 1; the other terms \f$S_e\f$ are
-  !> extrapolated according to the same formula as when \ref isto2t = 1,
-  !> but with \f$\theta\f$= \ref thetst = 1.\n
-  !> Due to certain specific couplings between the turbulence equations,
-  !> \ref isto2t is allowed the value 1 or 2 only for the \f$R_{ij}\f$ models
-  !> (\ref iturb = 30 or 31); hence, it is always initialised to 0.
-  integer, save ::          isto2t
+  !> Time scheme for source terms of turbulence equations
+  !> (see \ref isto2t in cs_time_scheme_t).
+  integer(c_int), pointer, save :: isto2t
 
   !> for each scalar, \ref isso2t specifies the time scheme activated
   !> for the source terms of the equation for the scalar, apart from convection and
@@ -172,16 +152,8 @@ module optcal
   !>    -  1 : second viscosity extrapolated in n+1
   double precision, save :: thetsn
 
-  !> \f$ \theta \f$-scheme for the extrapolation of the nonlinear
-  !> explicit source terms $S_e$ of the turbulence equations when the
-  !> source term extrapolation has been activated (see \ref isto2t),
-  !> following the formula \f$(S_e)^{n+\theta}=(1+\theta)S_e^n-\theta S_e^{n-1}\f$.\n
-  !> The value of \f$theta\f$ is deduced from the value chosen for
-  !> \ref isto2t. Generally, only the value 0.5 is used.
-  !>    -  0 : explicit
-  !>    - 1/2: extrapolated in n+1/2
-  !>    -  1 : extrapolated in n+1
-  double precision, save :: thetst
+  !> The value of \f$theta\f$ (see \ref thetst in cs_time_scheme_t).
+  real(c_double), pointer, save :: thetst
 
   !> \f$ \theta \f$-scheme for the extrapolation of the nonlinear
   !> explicit source term \f$S_e\f$ of the scalar transport equation
@@ -284,11 +256,6 @@ module optcal
   !>    - 3: least square method with reduced extended neighborhood
   !>    - 4: iterative process initialized by the least squares method
   integer(c_int), pointer, save :: imrgra
-
-  !> non orthogonality angle of the faces, in radians.
-  !> For larger angle values, cells with one node on the wall
-  !> are kept in the extended support of the neighboring cells.
-  real(c_double), pointer, save :: anomax
 
   !> \}
 
@@ -569,6 +536,9 @@ module optcal
   !> Class of turbulence model (integer value iturb/10)
   integer(c_int), pointer, save :: itytur
 
+  !> Activation of Hybrid RANS/LES model (only valid for iturb equal to 60)
+  integer(c_int), pointer, save :: hybrid_turb
+
   !> Activation of rotation/curvature correction for eddy viscosity turbulence models
   !>    - 0: false
   !>    - 1: true
@@ -689,9 +659,6 @@ module optcal
   !>    - 0: false (default)
   integer(c_int), pointer, save :: irijco
 
-  !> Activation of Hybrid DDES model (only valid for iturb equal to 60)
-  integer(c_int), pointer, save :: iddes
-
   !> pseudo eddy viscosity in the matrix of momentum equation to partially
   !> implicit \f$ \divv \left( \rho \tens{R} \right) \f$
   !>    - 1: true
@@ -774,6 +741,12 @@ module optcal
   !>    original model: w_wall = 60*nu/(beta*d**2)
   integer, save :: ikwcln
 
+  !> Activates or not the LES balance module
+  !> - 0: false (default)
+  !> - 1: true
+  !> Useful if \ref iturb =40, 41 or 42\n
+  integer(c_int), pointer, save :: i_les_balance
+
   !> turbulent flux model for \f$ \overline{\varia^\prime \vect{u}^\prime} \f$
   !> for any scalar \f$ \varia \f$, iturt(isca)
   !>    - 0: SGDH
@@ -853,14 +826,14 @@ module optcal
   integer(c_int), pointer, save :: iccvfg
 
   !> Algorithm to take into account the density variation in time
+  !>    - 0: boussinesq algorithm with constant density
   !>    - 1: dilatable steady algorithm (default)
   !>    - 2: dilatable unsteady algorithm
   !>    - 3: low-Mach algorithm
   !>    - 4: algorithm for fire
-  !    - 0: boussinesq algorithm with constant density
   integer(c_int), pointer, save :: idilat
 
-  !> Option to switch on massflux predcition befor momentum solving
+  !> Option to switch on massflux prediction befor momentum solving
   !> to be fully conservative in momentum over time for variable density flows.
   !> This option is to be removed.
   integer, save :: ipredfl
@@ -1369,11 +1342,11 @@ module optcal
     ! Interface to C function retrieving pointers to members of the
     ! global turbulence model structure
 
-    subroutine cs_f_turb_model_get_pointers(iturb, itytur) &
+    subroutine cs_f_turb_model_get_pointers(iturb, itytur, hybrid_turb) &
       bind(C, name='cs_f_turb_model_get_pointers')
       use, intrinsic :: iso_c_binding
       implicit none
-      type(c_ptr), intent(out) :: iturb, itytur
+      type(c_ptr), intent(out) :: iturb, itytur, hybrid_turb
     end subroutine cs_f_turb_model_get_pointers
 
     ! Interface to C function retrieving pointers to members of the
@@ -1393,14 +1366,14 @@ module optcal
     subroutine cs_f_turb_rans_model_get_pointers(irccor, itycor, idirsm, &
                                                  iclkep, igrhok, igrake, &
                                                  igrari, ikecou, reinit_turb, &
-                                                 irijco, iddes, irijnu,  &
+                                                 irijco, irijnu,  &
                                                  irijrb, irijec, idifre, &
                                                  iclsyr, iclptr)         &
       bind(C, name='cs_f_turb_rans_model_get_pointers')
       use, intrinsic :: iso_c_binding
       implicit none
       type(c_ptr), intent(out) :: irccor, itycor, idirsm, iclkep, igrhok
-      type(c_ptr), intent(out) :: igrake, igrari, ikecou, reinit_turb, irijco, irijnu, irijrb, iddes
+      type(c_ptr), intent(out) :: igrake, igrari, ikecou, reinit_turb, irijco, irijnu, irijrb
       type(c_ptr), intent(out) :: irijec, idifre, iclsyr, iclptr
     end subroutine cs_f_turb_rans_model_get_pointers
 
@@ -1413,6 +1386,15 @@ module optcal
       implicit none
       type(c_ptr), intent(out) :: idries, ivrtex
     end subroutine cs_f_turb_les_model_get_pointers
+
+    ! Interface to C function retrieving pointers to members of the
+    ! LES balance structure
+    subroutine cs_f_les_balance_get_pointer(i_les_balance) &
+      bind(C, name='cs_f_les_balance_get_pointer')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      type(c_ptr), intent(out) :: i_les_balance
+    end subroutine cs_f_les_balance_get_pointer
 
     ! Interface to C function retrieving pointers to mesh quantity options
 
@@ -1443,12 +1425,22 @@ module optcal
     ! Interface to C function retrieving pointers to members of the
     ! global spatial discretisation options structure
 
-    subroutine cs_f_space_disc_get_pointers(imvisf, imrgra, anomax, iflxmw) &
+    subroutine cs_f_space_disc_get_pointers(imvisf, imrgra, iflxmw)         &
       bind(C, name='cs_f_space_disc_get_pointers')
       use, intrinsic :: iso_c_binding
       implicit none
-      type(c_ptr), intent(out) :: imvisf, imrgra, anomax, iflxmw
+      type(c_ptr), intent(out) :: imvisf, imrgra, iflxmw
     end subroutine cs_f_space_disc_get_pointers
+
+    ! Interface to C function retrieving pointers to members of the
+    ! global time schemeoptions structure
+
+    subroutine cs_f_time_scheme_get_pointers(isto2t, thetst)                &
+      bind(C, name='cs_f_time_scheme_get_pointers')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      type(c_ptr), intent(out) :: isto2t, thetst
+    end subroutine cs_f_time_scheme_get_pointers
 
     ! Interface to C function retrieving pointers to members of the
     ! global PISO options structure
@@ -1614,16 +1606,23 @@ contains
   subroutine turb_model_init
 
     use, intrinsic :: iso_c_binding
+    use cs_c_bindings
+    use cdomod
     implicit none
 
     ! Local variables
 
-    type(c_ptr) :: c_iturb, c_itytur
+    type(c_ptr) :: c_iturb, c_itytur, c_hybrid_turb
 
-    call cs_f_turb_model_get_pointers(c_iturb, c_itytur)
+    if (icdo.lt.2) then
+      call cs_turb_model_init
+    endif
+
+    call cs_f_turb_model_get_pointers(c_iturb, c_itytur, c_hybrid_turb)
 
     call c_f_pointer(c_iturb, iturb)
     call c_f_pointer(c_itytur, itytur)
+    call c_f_pointer(c_hybrid_turb, hybrid_turb)
 
   end subroutine turb_model_init
 
@@ -1661,13 +1660,13 @@ contains
     ! Local variables
 
     type(c_ptr) :: c_irccor, c_itycor, c_idirsm, c_iclkep, c_igrhok, c_igrake
-    type(c_ptr) :: c_igrari, c_ikecou, c_reinit_turb, c_irijco, c_irijnu, c_irijrb, c_irijec, c_idifre, c_iddes
+    type(c_ptr) :: c_igrari, c_ikecou, c_reinit_turb, c_irijco, c_irijnu, c_irijrb, c_irijec, c_idifre
     type(c_ptr) :: c_iclsyr, c_iclptr
 
     call cs_f_turb_rans_model_get_pointers( c_irccor, c_itycor, c_idirsm, &
                                             c_iclkep, c_igrhok, c_igrake, &
                                             c_igrari, c_ikecou, c_reinit_turb, &
-                                            c_irijco, c_iddes, c_irijnu, &
+                                            c_irijco, c_irijnu, &
                                             c_irijrb, c_irijec, c_idifre, &
                                             c_iclsyr, c_iclptr)
 
@@ -1681,7 +1680,6 @@ contains
     call c_f_pointer(c_ikecou, ikecou)
     call c_f_pointer(c_reinit_turb, reinit_turb)
     call c_f_pointer(c_irijco, irijco)
-    call c_f_pointer(c_iddes, iddes)
     call c_f_pointer(c_irijnu, irijnu)
     call c_f_pointer(c_irijrb, irijrb)
     call c_f_pointer(c_irijec, irijec)
@@ -1701,12 +1699,14 @@ contains
 
     ! Local variables
 
-    type(c_ptr) :: c_idries, c_ivrtex
+    type(c_ptr) :: c_idries, c_ivrtex, c_i_les_balance
 
-    call cs_f_turb_les_model_get_pointers( c_idries, c_ivrtex)
+    call cs_f_turb_les_model_get_pointers(c_idries, c_ivrtex)
+    call cs_f_les_balance_get_pointer(c_i_les_balance)
 
     call c_f_pointer(c_idries, idries)
     call c_f_pointer(c_ivrtex, ivrtex)
+    call c_f_pointer(c_i_les_balance, i_les_balance)
 
   end subroutine turb_les_model_init
 
@@ -1763,17 +1763,34 @@ contains
 
     ! Local variables
 
-    type(c_ptr) :: c_imvisf, c_imrgra, c_anomax, c_iflxmw
+    type(c_ptr) :: c_imvisf, c_imrgra, c_iflxmw
 
-    call cs_f_space_disc_get_pointers(c_imvisf, c_imrgra, c_anomax, &
-                                      c_iflxmw)
+    call cs_f_space_disc_get_pointers(c_imvisf, c_imrgra, c_iflxmw)
 
     call c_f_pointer(c_imvisf, imvisf)
     call c_f_pointer(c_imrgra, imrgra)
-    call c_f_pointer(c_anomax, anomax)
     call c_f_pointer(c_iflxmw, iflxmw)
 
   end subroutine space_disc_options_init
+
+  !> \brief Initialize Fortran time scheme options API.
+  !> This maps Fortran pointers to global C structure members.
+
+  subroutine time_scheme_options_init
+
+    use, intrinsic :: iso_c_binding
+    implicit none
+
+    ! Local variables
+
+    type(c_ptr) :: c_isto2t, c_thetst
+
+    call cs_f_time_scheme_get_pointers(c_isto2t, c_thetst)
+
+    call c_f_pointer(c_isto2t, isto2t)
+    call c_f_pointer(c_thetst, thetst)
+
+  end subroutine time_scheme_options_init
 
   !> \brief Initialize Fortran PISO options API.
   !> This maps Fortran pointers to global C structure members.

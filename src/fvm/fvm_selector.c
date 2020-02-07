@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -318,7 +318,7 @@ static int _compare_attributes(const void *x, const void *y)
  *   true if the string defines an integer, false otherwise
  *----------------------------------------------------------------------------*/
 
-static _Bool
+static bool
 _is_int(const char  *str,
         int         *value)
 {
@@ -326,7 +326,7 @@ _is_int(const char  *str,
   int retcode, int_len;
 
   *value = 0;
-  retcode = (_Bool)(sscanf(str, "%i%n", &_value, &int_len));
+  retcode = (bool)(sscanf(str, "%i%n", &_value, &int_len));
 
   if (retcode) {
     if (int_len != (int)strlen(str))

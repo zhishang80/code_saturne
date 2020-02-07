@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -50,12 +50,14 @@
 #include "cs_hodge.h"
 #include "cs_log.h"
 #include "cs_log_iteration.h"
+#include "cs_maxwell.h"
 #include "cs_mesh_deform.h"
 #include "cs_mesh_location.h"
 #include "cs_navsto_system.h"
 #include "cs_parall.h"
 #include "cs_prototypes.h"
 #include "cs_source_term.h"
+#include "cs_thermal_system.h"
 #include "cs_time_step.h"
 #include "cs_walldistance.h"
 
@@ -97,6 +99,14 @@ static const char _err_empty_domain[] =
 static const char _err_empty_cdo_context[] =
   " Stop setting an empty cs_domain_cdo_context_t structure.\n"
   " Please check your settings.\n";
+
+/*============================================================================
+ * Prototypes for functions intended for use only by Fortran wrappers.
+ * (descriptions follow, with function bodies).
+ *============================================================================*/
+
+void
+cs_f_initialize_cdo_systems(void);
 
 /*============================================================================
  * Private function prototypes
@@ -153,6 +163,13 @@ _set_scheme_flags(cs_domain_t    *domain)
         bft_error(__FILE__, __LINE__, 0, "Invalid case");
       break;
 
+    case CS_SPACE_SCHEME_CDOEB:
+      assert(vardim == 3);
+      /* vardim should equal to 3 but each edge is associated a scalar-valued
+         quantity */
+      cc->eb_scheme_flag |= CS_FLAG_SCHEME_POLY0 | CS_FLAG_SCHEME_SCALAR;
+      break;
+
     case CS_SPACE_SCHEME_CDOFB:
       cc->fb_scheme_flag |= CS_FLAG_SCHEME_POLY0;
       if (vardim == 1)
@@ -204,7 +221,7 @@ _set_scheme_flags(cs_domain_t    *domain)
 
   } /* Loop on equations */
 
-  /* Navier-Stokes sytem */
+  /* Navier-Stokes system */
   if (cs_navsto_system_is_activated()) {
 
     cs_navsto_param_t  *nsp = cs_navsto_system_get_param();
@@ -219,8 +236,14 @@ _set_scheme_flags(cs_domain_t    *domain)
       cc->vcb_scheme_flag |= CS_FLAG_SCHEME_NAVSTO;
       break;
 
+    case CS_SPACE_SCHEME_CDOEB:
+      cc->eb_scheme_flag |= CS_FLAG_SCHEME_NAVSTO;
+      break;
+
     case CS_SPACE_SCHEME_CDOFB:
       cc->fb_scheme_flag |= CS_FLAG_SCHEME_NAVSTO;
+      if (nsp->sles_param.strategy == CS_NAVSTO_SLES_BY_BLOCKS)
+        cc->fb_scheme_flag |= CS_FLAG_SCHEME_SCALAR;
       break;
 
     case CS_SPACE_SCHEME_HHO_P0:
@@ -236,6 +259,23 @@ _set_scheme_flags(cs_domain_t    *domain)
 
   } /* NavSto is activated */
 
+}
+
+/*============================================================================
+ * Fortran wrapper function definitions
+ *============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Initialize CDO systems
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_f_initialize_cdo_systems(void)
+{
+  assert(cs_glob_domain != NULL);
+  cs_domain_initialize_systems(cs_glob_domain);
 }
 
 /*============================================================================
@@ -431,17 +471,42 @@ cs_domain_initialize_setup(cs_domain_t    *domain)
   if (cs_mesh_deform_is_activated())
     cs_mesh_deform_setup(domain);
 
+  /* Thermal module */
+  if (cs_thermal_system_is_activated())
+    cs_thermal_system_init_setup();
+
   /* Groundwater flow module */
   if (cs_gwf_is_activated())
     cs_gwf_init_setup();
 
-  /* Navier-Stokes system */
-  if (cs_navsto_system_is_activated())
-    cs_navsto_system_init_setup();
-
   /* ALE mesh velocity */
   if (cs_ale_is_activated())
     cs_ale_init_setup(domain);
+
+  /* Maxwell module */
+  if (cs_maxwell_is_activated())
+    cs_maxwell_init_setup();
+
+  /* Navier-Stokes system */
+  if (cs_navsto_system_is_activated())
+    cs_navsto_system_init_setup();
+  else {
+
+    cs_domain_cdo_context_t  *cdo = domain->cdo_context;
+
+    /* Switch off turbulence modelling if in CDO mode only */
+    if (cdo->mode == CS_DOMAIN_CDO_MODE_ONLY) {
+
+      cs_turb_model_t  *turb = cs_get_glob_turb_model();
+
+      turb->iturb = CS_TURB_NONE;          /* laminar flow */
+      turb->itytur = 0;                    /* deprecated */
+      turb->hybrid_turb = CS_HYBRID_NONE;
+      turb->type = CS_TURB_NONE;
+
+    }
+
+  }
 
   /* Add variables related to user-defined and predefined equations */
   cs_equation_create_fields();
@@ -464,18 +529,15 @@ cs_domain_initialize_setup(cs_domain_t    *domain)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Last setup stage of the cs_domain_t structure
+ * \brief  After having read the mesh and the first setup stage build the
+ *         connectivities and mesh quantities related to CDO/HHO schemes
  *
  * \param[in, out]  domain            pointer to a cs_domain_t struct.
- * \param[in, out]  mesh              pointer to a cs_mesh_t struct.
- * \param[in]       mesh_quantities   pointer to a cs_mesh_quantities_t struct.
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_domain_finalize_setup(cs_domain_t                 *domain,
-                         cs_mesh_t                   *mesh,
-                         const cs_mesh_quantities_t  *mesh_quantities)
+cs_domain_init_cdo_structures(cs_domain_t                 *domain)
 {
   if (domain == NULL)
     bft_error(__FILE__, __LINE__, 0, _err_empty_domain);
@@ -492,16 +554,22 @@ cs_domain_finalize_setup(cs_domain_t                 *domain,
   /* Build additional connectivity structures
      Update mesh structure with range set structures */
   cs_domain_cdo_context_t  *cc = domain->cdo_context;
-  domain->connect = cs_cdo_connect_init(mesh,
+  domain->connect = cs_cdo_connect_init(domain->mesh,
+                                        cc->eb_scheme_flag,
+                                        cc->fb_scheme_flag,
                                         cc->vb_scheme_flag,
                                         cc->vcb_scheme_flag,
-                                        cc->fb_scheme_flag,
                                         cc->hho_scheme_flag);
 
-  /* Build additional mesh quantities in a seperate structure */
-  domain->cdo_quantities =  cs_cdo_quantities_build(mesh,
-                                                    mesh_quantities,
-                                                    domain->connect);
+  /* Build additional mesh quantities in a separate structure */
+  domain->cdo_quantities = cs_cdo_quantities_build(domain->mesh,
+                                                   domain->mesh_quantities,
+                                                   domain->connect,
+                                                   cc->eb_scheme_flag,
+                                                   cc->fb_scheme_flag,
+                                                   cc->vb_scheme_flag,
+                                                   cc->vcb_scheme_flag,
+                                                   cc->hho_scheme_flag);
 
   /* Shared main generic structure
      Avoid the declaration of global variables by sharing pointers */
@@ -513,6 +581,54 @@ cs_domain_finalize_setup(cs_domain_t                 *domain,
                                   domain->connect);
   cs_advection_field_set_shared_pointers(domain->cdo_quantities,
                                          domain->connect);
+
+  /* Allocate common structures for solving equations */
+  cs_equation_common_init(domain->connect,
+                          domain->cdo_quantities,
+                          domain->time_step,
+                          cc->eb_scheme_flag,
+                          cc->fb_scheme_flag,
+                          cc->vb_scheme_flag,
+                          cc->vcb_scheme_flag,
+                          cc->hho_scheme_flag);
+
+  /* Allocate matrix-related structures for the assembly stage */
+  cs_equation_assemble_init(domain->connect,
+                            cc->eb_scheme_flag,
+                            cc->fb_scheme_flag,
+                            cc->vb_scheme_flag,
+                            cc->vcb_scheme_flag,
+                            cc->hho_scheme_flag);
+
+  /* Set the range set structure for synchronization in parallel computing */
+  cs_equation_set_range_set(domain->connect);
+
+  cs_equation_set_shared_structures(domain->connect,
+                                    domain->cdo_quantities,
+                                    domain->time_step,
+                                    cc->eb_scheme_flag,
+                                    cc->fb_scheme_flag,
+                                    cc->vb_scheme_flag,
+                                    cc->vcb_scheme_flag,
+                                    cc->hho_scheme_flag);
+
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Last setup stage of the cs_domain_t structure
+ *
+ * \param[in, out]  domain            pointer to a cs_domain_t struct.
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_domain_finalize_setup(cs_domain_t         *domain)
+{
+  if (domain == NULL)
+    bft_error(__FILE__, __LINE__, 0, _err_empty_domain);
+  if (domain->cdo_context == NULL)
+    bft_error(__FILE__, __LINE__, 0, _err_empty_cdo_context);
 
   /* Groundwater flow module */
   if (cs_gwf_is_activated()) {
@@ -529,34 +645,6 @@ cs_domain_finalize_setup(cs_domain_t                 *domain,
   /* Allocate all fields created during the setup stage */
   cs_field_allocate_or_map_all();
 
-  /* Allocate common structures for solving equations */
-  cs_equation_common_init(domain->connect,
-                          domain->cdo_quantities,
-                          domain->time_step,
-                          cc->vb_scheme_flag,
-                          cc->vcb_scheme_flag,
-                          cc->fb_scheme_flag,
-                          cc->hho_scheme_flag);
-
-  /* Allocate matrix-related structures for the assembly stage */
-  cs_equation_assemble_init(domain->connect,
-                            cc->vb_scheme_flag,
-                            cc->vcb_scheme_flag,
-                            cc->fb_scheme_flag,
-                            cc->hho_scheme_flag);
-
-  /* Set the range set structure for synchronization in parallel computing */
-  cs_equation_set_range_set(domain->connect);
-
-  cs_equation_set_shared_structures(domain->connect,
-                                    domain->cdo_quantities,
-                                    domain->time_step,
-                                    cc->vb_scheme_flag,
-                                    cc->vcb_scheme_flag,
-                                    cc->fb_scheme_flag,
-                                    cc->hho_scheme_flag);
-
-
   /* Set the definition of user-defined properties and/or advection
    * fields (no more fields are created at this stage)
    * Last setting stage for equations: Associate properties to activate or not
@@ -568,7 +656,7 @@ cs_domain_finalize_setup(cs_domain_t                 *domain,
    * --> Source term
    */
 
-  cs_user_finalize_setup(cs_glob_domain);
+  cs_user_finalize_setup(domain);
 
   /* Assign to a cs_equation_t structure a list of function to manage this
    * structure during the computation.
@@ -582,15 +670,26 @@ cs_domain_finalize_setup(cs_domain_t                 *domain,
 
   /* Last stage for the settings for each predefined set of equations:
      - wall distance computation
+     - thermal module
      - groundwater flow module
+     - Maxwell equations
      - Navier-Stokes system
+     - ALE equation
    */
 
   if (cs_walldistance_is_activated())
     cs_walldistance_finalize_setup(domain->connect, domain->cdo_quantities);
 
+  if (cs_thermal_system_is_activated())
+    cs_thermal_system_finalize_setup(domain->connect,
+                                     domain->cdo_quantities,
+                                     domain->time_step);
+
   if (cs_gwf_is_activated())
     cs_gwf_finalize_setup(domain->connect, domain->cdo_quantities);
+
+  if (cs_maxwell_is_activated())
+    cs_maxwell_finalize_setup(domain->connect, domain->cdo_quantities);
 
   if (cs_navsto_system_is_activated())
     cs_navsto_system_finalize_setup(domain->mesh,
@@ -621,25 +720,44 @@ void
 cs_domain_initialize_systems(cs_domain_t   *domain)
 {
   /* Initialize system before resolution for all equations
-     - create system builder
-     - initialize field according to initial conditions
-     - initialize source term
-     - set the initial condition to all variable fields */
+   *   - create system builder
+   *  - initialize field according to initial conditions
+   *  - initialize source term
+   *  - set the initial condition to all variable fields
+   *
+   * connect can be updated during this initialization step
+   */
   cs_equation_initialize(domain->mesh,
-                         domain->connect,
+                         domain->time_step,
                          domain->cdo_quantities,
-                         domain->time_step);
+                         domain->connect);
 
   /* Set the initial condition for all advection fields */
   cs_advection_field_update(domain->time_step->t_cur,
                             false); /* operate current to previous ? */
 
-  /* Set the initial state for the groundawater flow module */
+  /* Set the initial state for the thermal module */
+  if (cs_thermal_system_is_activated())
+    cs_thermal_system_update(domain->mesh,
+                             domain->connect,
+                             domain->cdo_quantities,
+                             domain->time_step,
+                             false); /* operate current to previous ? */
+
+  /* Set the initial state for the Navier-Stokes system */
   if (cs_navsto_system_is_activated())
     cs_navsto_system_initialize(domain->mesh,
                                 domain->connect,
                                 domain->cdo_quantities,
                                 domain->time_step);
+
+  /* Set the initial state for the Maxwell module */
+  if (cs_maxwell_is_activated())
+    cs_maxwell_update(domain->mesh,
+                      domain->connect,
+                      domain->cdo_quantities,
+                      domain->time_step,
+                      false); /* operate current to previous ? */
 
   /* Set the initial state for the groundawater flow module */
   if (cs_gwf_is_activated())
@@ -648,6 +766,11 @@ cs_domain_initialize_systems(cs_domain_t   *domain)
                   domain->cdo_quantities,
                   domain->time_step,
                   false); /* operate current to previous ? */
+
+  /* Last word for the user function */
+  int  cdo_mode = cs_domain_get_cdo_mode(domain);
+  if (cdo_mode == CS_DOMAIN_CDO_MODE_ONLY)
+    cs_user_initialization(domain);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -661,20 +784,20 @@ cs_domain_initialize_systems(cs_domain_t   *domain)
 void
 cs_domain_setup_log(const cs_domain_t   *domain)
 {
-  cs_log_printf(CS_LOG_SETUP, "\n# Summary of the CDO domain settings\n");
+  cs_log_printf(CS_LOG_SETUP, "\nSummary of the CDO domain settings\n");
   cs_log_printf(CS_LOG_SETUP, "%s\n", h1_sep);
 
   int  cdo_mode = cs_domain_get_cdo_mode(domain);
   switch (cdo_mode) {
 
   case CS_DOMAIN_CDO_MODE_OFF:
-    cs_log_printf(CS_LOG_SETUP, "\n * CDO mode: **off**\n");
+    cs_log_printf(CS_LOG_SETUP, " * CDO mode: **off**\n");
     return;
   case CS_DOMAIN_CDO_MODE_WITH_FV:
-    cs_log_printf(CS_LOG_SETUP, "\n * CDO mode: **on with legacy FV**\n");
+    cs_log_printf(CS_LOG_SETUP, " * CDO mode: **on with legacy FV**\n");
     break;
   case CS_DOMAIN_CDO_MODE_ONLY:
-    cs_log_printf(CS_LOG_SETUP, "\n * CDO mode: **on, stand-alone**\n");
+    cs_log_printf(CS_LOG_SETUP, " * CDO mode: **on, stand-alone**\n");
     break;
 
   default:
@@ -698,13 +821,14 @@ cs_domain_setup_log(const cs_domain_t   *domain)
   cs_log_printf(CS_LOG_SETUP, " **Number of advection fields**      %2d\n",
                 cs_advection_field_get_n_fields());
 
+  cs_domain_cdo_context_t  *cc = domain->cdo_context;
 
+  cs_cdo_connect_summary(domain->connect,
+                         cc->eb_scheme_flag,
+                         cc->vb_scheme_flag,
+                         cc->vcb_scheme_flag);
 
-  cs_cdo_connect_summary(domain->connect);
   cs_cdo_quantities_summary(domain->cdo_quantities);
-
-  /* Boundaries of the domain */
-  cs_boundary_log_setup(domain->boundaries);
 
   /* Time step summary */
   cs_log_printf(CS_LOG_SETUP, "\n## Time step information\n");
@@ -726,9 +850,11 @@ cs_domain_setup_log(const cs_domain_t   *domain)
       cs_log_printf(CS_LOG_SETUP, " * Time step **constant**\n\n");
     else if (domain->time_options.idtvar == 1)
       cs_log_printf(CS_LOG_SETUP, " * Time step **variable in time**\n\n");
-    else
-      bft_error(__FILE__, __LINE__, 0,
-                _(" Invalid idtvar value for the CDO module.\n"));
+    else {
+      if (cdo_mode != CS_DOMAIN_CDO_MODE_WITH_FV)
+        bft_error(__FILE__, __LINE__, 0,
+                  _(" Invalid idtvar value for the CDO module.\n"));
+    }
 
     cs_xdef_log("        Time step definition", domain->time_step_def);
     cs_log_printf(CS_LOG_SETUP, "\n");

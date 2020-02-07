@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -1073,7 +1073,7 @@ _tesselate_polygons(fvm_tesselation_t  *this_tesselation,
 
 static void
 _count_and_index_sub_polygons(fvm_tesselation_t  *this_tesselation,
-                              _Bool               global_count)
+                              bool                global_count)
 {
   int sub_type_id, type_id;
   cs_lnum_t n_vertices, n_triangles, n_elements;
@@ -1204,7 +1204,7 @@ _count_and_index_sub_polygons(fvm_tesselation_t  *this_tesselation,
 static void
 _count_and_index_sub_polyhedra(fvm_tesselation_t  *this_tesselation,
                                cs_lnum_t          *error_count,
-                               _Bool               global_count)
+                               bool                global_count)
 {
   int sub_type_id, type_id;
   cs_lnum_t n_vertices, n_triangles, n_elements;

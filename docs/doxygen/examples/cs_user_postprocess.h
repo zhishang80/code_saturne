@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -37,6 +37,7 @@
   - \subpage cs_user_postprocess_h_mesh_advanced_p
   - \subpage cs_user_postprocess_h_probes_p
   - \subpage cs_user_postprocess_h_var_p
+  - \subpage cs_user_postprocess_h_interpolate_p
   - \subpage cs_user_postprocess_h_activation_p
 
   \page cs_user_postprocess_h_intro_p Introduction and main concepts
@@ -339,6 +340,25 @@
 
   \snippet cs_user_postprocess.c post_define_mesh_5
 
+  \subsection cs_user_postprocess_h_sfc Output of various space-filling curves
+
+  In the below example, edge meshes illustrating various space-filling curves
+  possibilities are output.
+
+  First the below functions write the various space-filling curves either in
+  serial or parallel.
+
+  \snippet cs_user_postprocess-sfc.c sfc_fvm_writer_def
+
+  Then a fake cell selection function is used to call the writing of the
+  space-filling curves at the correct step.
+
+  \snippet cs_user_postprocess-sfc.c sfc_cells_selection
+
+  Finally edge meshes are defined to illustrate the various possibilities.
+
+  \snippet cs_user_postprocess-sfc.c mesh_def
+
   \page cs_user_postprocess_h_probes_p Probes and profiles
 
   \section cs_user_postprocess_h_probes About Probes and profiles
@@ -397,10 +417,14 @@
 
   Probes and profiles may also be associated to the mesh boundary.
 
-  In the following example, two profiles are defined based on a mesh boundary
+  In the following example, a profile is defined based on a mesh boundary
   selection criterion, using the predefined
   \ref cs_b_face_criterion_probes_define (which assumes curvilinear coordinates
   based on the "x" direction):
+
+  \snippet cs_user_postprocess-boundary_pressure_profile.c post_profile_def
+
+  and in the below example using an array of 2 selection criteria:
 
   \snippet cs_user_postprocess-profiles.c post_profile_advanced_2
 
@@ -471,12 +495,54 @@
 
   \snippet cs_user_postprocess-profiles.c post_profile_advanced_var_1
 
-  For the second series, values for each column are also computed,
+  For the profile defined all around a foil, the following code is used to
+  compute the pressure coefficient and output its values:
+
+  \snippet cs_user_postprocess-boundary_pressure_profile.c variables_def
+
+  \snippet cs_user_postprocess-boundary_pressure_profile.c profile_variables
+
+  For the last profiles series, values for each column are also computed,
   requiring a reference pressure based on the mesh point closest to
   a given point, and computation of tangential stresses, so as to
   determine drag coefficients.
 
   \snippet cs_user_postprocess-profiles.c post_profile_advanced_var_2
+
+  \page cs_user_postprocess_h_interpolate_p Interpolation
+
+  By default, probes and profile values are "P0" interpolated,
+  that is their value is that of the containing cell or face,
+  or closest vertex.
+
+  For cell-based values, a "P1" piecewise linear interpolation may be used.
+
+  The P1 interpolation is based on a local least-squares gradient,
+  so ghost cell values must be synchronized  (this is automatically
+  the case for fields, must must be handled by the user in case of
+  auxiliary arrays).
+
+  If a field's boundary values (i.e. associated field) are known,
+  they are used in the interpolation. Otherwise, if boundary conditions
+  are defined, they are used. When neither boundary values nor boundary
+  conditions are known (i.e. for a non-solved variable field or
+  values not defined as a field), homogeneous Neumann boundary conditions
+  are assumed.
+
+  The following example shows how intepolation may be used in
+  the \ref cs_user_postprocess_values function.
+
+  \snippet cs_user_postprocess-probes-interpolate.c post_probes_interpolate_var_1
+
+  In this case, selected outputs are named by appending "_p" to the
+  field name to allow combining default probe outputs with
+  interpolated outputs of specific fields.
+
+  For simplicity here, values are output to the main probe set and writer,
+  which is assumed to be defined using the GUI in this example.
+
+  Note also that interpolation could be also used in
+  some \ref cs_user_extra_operations cases.
 
   \page cs_user_postprocess_h_activation_p Advanced management of output times
 

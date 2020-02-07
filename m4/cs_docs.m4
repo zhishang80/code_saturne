@@ -2,7 +2,7 @@ dnl-----------------------------------------------------------------------------
 dnl
 dnl This file is part of Code_Saturne, a general-purpose CFD tool.
 dnl
-dnl Copyright (C) 1998-2019 EDF S.A.
+dnl Copyright (C) 1998-2020 EDF S.A.
 dnl
 dnl This program is free software; you can redistribute it and/or modify it under
 dnl the terms of the GNU General Public License as published by the Free Software
@@ -78,7 +78,7 @@ fi
 
 dnl So as to correctly set TEXINPUTS environment variable, one needs to use
 dnl the system dependant path separator
-if test "$host_os" = mingw32 ; then
+if test "$host_os" = mingw64 ; then
   cs_tex_path_end=
   cs_tex_path_sep=';'
 else

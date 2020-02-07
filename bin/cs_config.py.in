@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -144,10 +144,7 @@ class config:
 
         # SALOME-related information
 
-        self.have_salome = "@cs_have_salome_kernel@"
         self.salome_env = "@SALOMEENVCMD@"
-        self.salome_run = "@SALOMERUN@"
-        self.salome_kernel = "@SALOME_KERNEL@"
 
         # Setup the optionnal features
 
@@ -649,9 +646,11 @@ def main(argv, pkg):
     if opts.print_pythondir: print(pkg.get_dir("pythondir"))
     if opts.print_datarootdir: print(pkg.get_dir("datarootdir"))
 
+#-------------------------------------------------------------------------------
+
 if __name__ == '__main__':
     import sys
-    import cs_package
+    from code_saturne import cs_package
     pkg = cs_package.package()
     main(sys.argv[1:], pkg)
 

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -60,19 +60,19 @@ BEGIN_C_DECLS
  *
  * The caller is responsible for freeing the associated array.
  *
+ * \param[in]       zone        pointer to associated volume zone
  * \param[in, out]  field_name  associated field name
- * \param[in]       vz          pointer to associated volume zone
  *
  * \return  pointer to allocated initialization values.
  */
 /*----------------------------------------------------------------------------*/
 
 cs_real_t *
-cs_meg_initialization(const char       *field_name,
-                      const cs_zone_t  *vz)
+cs_meg_initialization(const cs_zone_t  *zone,
+                      const char       *field_name)
 {
   CS_UNUSED(field_name);
-  CS_UNUSED(vz);
+  CS_UNUSED(zone);
 
   return NULL; /* avoid a compilation warning */
 }

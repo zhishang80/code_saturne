@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -2054,29 +2054,6 @@ void CS_PROCF(synvie, SYNVIE)
 }
 
 /*----------------------------------------------------------------------------
- * Update a diagonal tensor array in case of parallelism and/or periodicity.
- *
- * Fortran interface:
- *
- * subroutine syndia(var)
- * *****************
- *
- * var11   : <-> : diagonal tensor component 11 array
- * var22   : <-> : diagonal tensor component 22 array
- * var33   : <-> : diagonal tensor component 33 array
- *----------------------------------------------------------------------------*/
-
-void CS_PROCF(syndia, SYNDIA)
-(
- cs_real_t  var11[],
- cs_real_t  var22[],
- cs_real_t  var33[]
-)
-{
-  cs_mesh_sync_var_diag_ni(var11, var22, var33);
-}
-
-/*----------------------------------------------------------------------------
  * Update a tensor array in case of parallelism and/or periodicity.
  *
  * Fortran interface:
@@ -2498,6 +2475,8 @@ cs_mesh_discard_free_faces(cs_mesh_t  *mesh)
              (unsigned long long)(mesh->n_g_vertices));
 
   mesh->n_g_free_faces = 0;
+
+  mesh->modified = 1;
 }
 
 /*----------------------------------------------------------------------------
@@ -2514,7 +2493,7 @@ cs_mesh_discard_free_vertices(cs_mesh_t  *mesh)
 {
   cs_gnum_t n_g_f_vertices = _check_free_vertices(mesh);
 
-  if (_check_free_vertices(mesh) > 0) {
+  if (n_g_f_vertices > 0) {
     cs_gnum_t n_g_vertices_old = mesh->n_g_vertices;
     _discard_free_vertices(mesh);
     bft_printf(_("\n"
@@ -2523,6 +2502,8 @@ cs_mesh_discard_free_vertices(cs_mesh_t  *mesh)
                  "     Number of vertices:          %llu\n\n"),
                (unsigned long long)(n_g_vertices_old),
                (unsigned long long)(mesh->n_g_vertices));
+
+    mesh->modified = 1;
   }
 }
 
@@ -2634,9 +2615,9 @@ cs_mesh_update_b_cells(cs_mesh_t  *mesh)
   cs_lnum_t  i;
 
   cs_lnum_t n_b_cells = 0;
-  _Bool *flag = NULL;
+  bool *flag = NULL;
 
-  BFT_MALLOC(flag, mesh->n_cells, _Bool);
+  BFT_MALLOC(flag, mesh->n_cells, bool);
 
   for (i = 0; i < mesh->n_cells; i++)
     flag[i] = false;
@@ -2792,6 +2773,13 @@ cs_mesh_init_halo(cs_mesh_t          *mesh,
   const cs_lnum_t  n_vertices = mesh->n_vertices;
 
   /* Build halo */
+
+#if 0
+  /* TODO: activating this option needs a better upstream setting
+           of extended neighborhood type */
+  if (cs_ext_neighborhood_get_type() > CS_EXT_NEIGHBORHOOD_NONE)
+    halo_type = CS_HALO_EXTENDED;
+#endif
 
   mesh->halo_type = halo_type;
 
@@ -2967,7 +2955,7 @@ cs_mesh_init_halo(cs_mesh_t          *mesh,
   /* Define a cell -> cells connectivity for the extended neighborhood
      if necessary */
 
-  if (halo_type ==  CS_HALO_EXTENDED) {
+  if (halo_type == CS_HALO_EXTENDED) {
 
     t1 = cs_timer_wtime();
     if (mesh->verbosity > 0) {

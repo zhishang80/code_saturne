@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -82,6 +82,17 @@ module vof
      !---------------------------------------------------------------------------
 
      ! Interface to C function updating mixture physical properties in VOF model
+
+     subroutine vof_compute_linear_rho_mu() &
+       bind(C, name='cs_f_vof_compute_linear_rho_mu')
+       use, intrinsic :: iso_c_binding
+       implicit none
+     end subroutine vof_compute_linear_rho_mu
+
+     !---------------------------------------------------------------------------
+
+     ! Interface to C function updating mixture physical properties and mass
+     ! fluxes in VOF model
 
      subroutine vof_update_phys_prop() &
        bind(C, name='cs_f_vof_update_phys_prop')

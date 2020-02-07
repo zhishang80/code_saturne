@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -224,7 +224,7 @@ cs_thermal_model_field(void)
 
 /*----------------------------------------------------------------------------
  *!
- * \brief Provide acces to cs_glob_thermal_model
+ * \brief Provide access to cs_glob_thermal_model
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/

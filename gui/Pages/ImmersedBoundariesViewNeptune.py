@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -326,7 +326,7 @@ class ImmersedBoundariesViewNeptune(QWidget, Ui_ImmersedBoundariesNeptune):
         self.lineEditAccZInit.textChanged[str].connect(self.slotObjAccZinit)
 
         # Check for MEDCoupling presence
-        import cs_config
+        from code_saturne import cs_config
         cfg = cs_config.config()
         self.has_medcoupling = cfg.libs['medcoupling'].have == 'yes'
         # deactivated for the moment

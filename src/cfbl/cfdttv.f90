@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -27,8 +27,7 @@ subroutine cfdttv &
    icepdc , icetsm , itypsm ,                                     &
    dt     ,                                                       &
    ckupdc , smacel ,                                              &
-   wcf    ,                                                       &
-   wflmas , wflmab , viscb  )
+   wcf    )
 
 !===============================================================================
 ! FUNCTION :
@@ -56,9 +55,6 @@ subroutine cfdttv &
 ! (ncesmp,nvar)    !    !     !  source de masse                               !
 !                  !    !     ! pour ivar=ipr, smacel=flux de masse            !
 ! wcf(ncelet)      ! tr ! --> ! contrainte compressible                        !
-! wflmas(nfac)     ! tr ! --- ! tab de trav aux faces internes                 !
-! wflmab(nfabor    ! tr ! --- ! tab de trav aux faces de bord                  !
-! viscb(nfabor     ! tr ! --- ! tab de trav aux faces de bord                  !
 !__________________!____!_____!________________________________________________!
 
 
@@ -97,16 +93,15 @@ integer          icetsm(ncesmp), itypsm(ncesmp,nvar)
 double precision dt(ncelet)
 double precision ckupdc(6,ncepdp), smacel(ncesmp,nvar)
 double precision wcf(ncelet)
-double precision wflmas(nfac), wflmab(nfabor), viscb(nfabor)
 
 ! Local variables
 
-integer          ifac, iel, iterns, idtcfl
+integer          ifac, iel, iterns
 integer          iconvp, idiffp, isym
 
 double precision, allocatable, dimension(:) :: viscf
 double precision, allocatable, dimension(:) :: coefbt, cofbft
-double precision, allocatable, dimension(:) :: w1, c2
+double precision, allocatable, dimension(:) :: w1, c2, wflmas, wflmab, viscb
 
 double precision, dimension(:,:), pointer :: vela
 double precision, dimension(:), pointer :: crom, cpro_cp, cpro_cv
@@ -127,9 +122,9 @@ if (ippmod(icompf).eq.2) then
   call field_get_val_s(ivarfl(isca(ifracm)), cvar_fracm)
   call field_get_val_s(ivarfl(isca(ifrace)), cvar_frace)
 else
-  cvar_fracv => null()
-  cvar_fracm => null()
-  cvar_frace => null()
+  cvar_fracv => rvoid1
+  cvar_fracm => rvoid1
+  cvar_frace => rvoid1
 endif
 
 !===============================================================================
@@ -137,8 +132,8 @@ endif
 !===============================================================================
 
 ! Allocate temporary arrays
-allocate(viscf(nfac))
-allocate(coefbt(nfabor),cofbft(nfabor))
+allocate(viscf(nfac), wflmas(nfac))
+allocate(coefbt(nfabor),cofbft(nfabor), wflmab(nfabor), viscb(nfabor))
 
 ! Allocate work arrays
 allocate(w1(ncelet))
@@ -171,10 +166,9 @@ do ifac = 1, nfabor
 enddo
 
 iterns = 1
-idtcfl = 1
 call cfmsfp                                                       &
 !==========
- ( nvar   , nscal  , idtcfl , iterns , ncepdp , ncesmp ,          &
+ ( nvar   , nscal  , iterns , ncepdp , ncesmp ,                   &
    icepdc , icetsm , itypsm ,                                     &
    dt     , vela   ,                                              &
    ckupdc , smacel ,                                              &
@@ -226,10 +220,10 @@ else
 endif
 
 ! Free memory
-deallocate(viscf)
+deallocate(viscf, viscb)
 deallocate(w1)
 deallocate(c2)
-deallocate(coefbt,cofbft)
+deallocate(coefbt,cofbft, wflmas, wflmab)
 
 !--------
 ! Formats

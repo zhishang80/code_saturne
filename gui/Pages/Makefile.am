@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -28,7 +28,7 @@ AnalysisFeaturesView.py \
 AtmosphericFlowsView.py \
 BalanceView.py \
 BalanceViewNeptune.py \
-BatchRunningView.py \
+BatchRunningDialogView.py \
 BodyForcesView.py \
 BoundaryConditionsCoalInletView.py \
 BoundaryConditionsCompressibleOutletView.py \
@@ -120,7 +120,7 @@ XMLEditorView.py \
 SpeciesView.py \
 UsersControlView.py \
 OutputFieldsView.py \
-OpenTurnsView.py \
+OpenTurnsDialogView.py \
 SolidView.py \
 ThermodynamicsView.py \
 TimeStepViewNeptune.py
@@ -131,7 +131,7 @@ AnalysisFeaturesForm.ui \
 AtmosphericFlowsForm.ui \
 BalanceForm.ui \
 BatchRunningDebugOptionsHelpDialogForm.ui \
-BatchRunningForm.ui \
+BatchRunningDialogForm.ui \
 BatchRunningStopByIterationDialogForm.ui \
 BodyForcesForm.ui \
 BoundaryConditionsCoalInletForm.ui \
@@ -179,7 +179,7 @@ MobileMeshForm.ui \
 NotebookForm.ui \
 NumericalParamEquationForm.ui \
 NumericalParamGlobalForm.ui \
-OpenTurnsForm.ui \
+OpenTurnsDialogForm.ui \
 OutputControlForm.ui \
 OutputSurfacicVariablesForm.ui \
 OutputVolumicVariablesForm.ui \

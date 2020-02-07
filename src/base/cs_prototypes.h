@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -192,9 +192,8 @@ cs_user_head_losses(const cs_zone_t  *zone,
  *----------------------------------------------------------------------------*/
 
 void
-cs_user_rad_transfer_absorption(const int         bc_type[],
-                                const cs_real_t   dt[],
-                                cs_real_t         ck[]);
+cs_user_rad_transfer_absorption(const int  bc_type[],
+                                cs_real_t  ck[]);
 
 /*----------------------------------------------------------------------------
  * Compute the net radiation flux
@@ -202,7 +201,6 @@ cs_user_rad_transfer_absorption(const int         bc_type[],
 
 void
 cs_user_rad_transfer_net_flux(const int        itypfb[],
-                              const cs_real_t  dt[],
                               const cs_real_t  coefap[],
                               const cs_real_t  coefbp[],
                               const cs_real_t  cofafp[],
@@ -406,9 +404,27 @@ cs_user_physical_properties(cs_domain_t  *domain);
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief Additional user-defined source terms for variable equations
+ *   (momentum, scalars, turbulence...).
+ *
+ * \param[in, out]  domain   pointer to a cs_domain_t structure
+ * \param[in]       f_id     field id of the variable
+ * \param[out]      st_exp   explicit source term
+ * \param[out]      st_imp   implicit part of the source term
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_user_source_terms(cs_domain_t  *domain,
+                     int           f_id,
+                     cs_real_t    *st_exp,
+                     cs_real_t    *st_imp);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief Compute the porosity (volume factor \f$ \epsilon \f$
- *        when the porosity model is activated
- *        (iporos greater than 1 in cs_user_parameters.f90).
+ *        when the porosity model is activated.
+ *        (\ref cs_glob_porous_model > 0).
  *
  * This function is called at the begin of the simulation only.
  *
@@ -417,7 +433,7 @@ cs_user_physical_properties(cs_domain_t  *domain);
 /*----------------------------------------------------------------------------*/
 
 void
-cs_user_porosity(cs_domain_t   *domain);
+cs_user_porosity(cs_domain_t  *domain);
 
 /*----------------------------------------------------------------------------
  * Define mesh joinings.
@@ -780,47 +796,47 @@ cs_user_gwf_setup(cs_domain_t   *domain);
  * \brief This function is used to compute user defined values for fields over a
  * given boundary zone
  *
+ * \param[in]  zone         pointer to cs_zone_t structure related to boundary
  * \param[in]  field_name   name of the field (const char *)
  * \param[in]  condition    condition type (const char *)
- * \param[in]  bz           pointer to cs_zone_t structure related to boundary
  *
  * \return a pointer to an array of cs_real_t values
  */
 /*----------------------------------------------------------------------------*/
 
 cs_real_t *
-cs_meg_boundary_function(const char       *field_name,
-                         const char       *condition,
-                         const cs_zone_t  *bz);
+cs_meg_boundary_function(const cs_zone_t  *zone,
+                         const char       *field_name,
+                         const char       *condition);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief This function is used to compute user defined values for fields over a
  *        given volume zone
  *
+ * \param[in]       zone        pointer to cs_zone_t structure related to a volume
  * \param[in, out]  f[]         array of pointers to cs_field_t
- * \param[in]       vz          pointer to cs_zone_t structure related to a volume
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_meg_volume_function(cs_field_t       *f[],
-                       const cs_zone_t  *vz);
+cs_meg_volume_function(const cs_zone_t  *zone,
+                       cs_field_t       *f[]);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Evaluate GUI defined mathematical expressions over volume zones for
  *         initialization.
  *
- * \param[in]   f   char pointer: variable name
- * \param[in]   vz  pointer to a cs_volume_zone_t structure
+ * \param[in]   zone  pointer to a cs_volume_zone_t structure
+ * \param[in]   f     char pointer: variable name
  *
 */
 /*----------------------------------------------------------------------------*/
 
 cs_real_t *
-cs_meg_initialization(const char      *field_name,
-                      const cs_zone_t *vz);
+cs_meg_initialization(const cs_zone_t *zone,
+                      const char      *field_name);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -828,7 +844,7 @@ cs_meg_initialization(const char      *field_name,
  *
  * \brief This function is used to compute source terms over a volume zone
  *
- * \param[in]       vz           pointer to cs_volume_zone_t
+ * \param[in]       zone         pointer to cs_volume_zone_t
  * \param[in]       name         char pointer: variable name
  * \param[in]       source_type  char pointer: source term type
  *
@@ -838,7 +854,7 @@ cs_meg_initialization(const char      *field_name,
 /*----------------------------------------------------------------------------*/
 
 cs_real_t *
-cs_meg_source_terms(const cs_zone_t  *vz,
+cs_meg_source_terms(const cs_zone_t  *zone,
                     const char       *name,
                     const char       *source_type);
 

@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -34,6 +34,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <float.h>
 
 /*----------------------------------------------------------------------------
  *  Local headers
@@ -41,12 +42,20 @@
 
 #include <bft_mem.h>
 
+#include "cs_blas.h"
 #include "cs_boundary_zone.h"
 #include "cs_cdo_local.h"
+#if defined(DEBUG) && !defined(NDEBUG)
+#include "cs_dbg.h"
+#endif
 #include "cs_log.h"
 #include "cs_math.h"
 #include "cs_parall.h"
 #include "cs_xdef_eval.h"
+
+#if defined(DEBUG) && !defined(NDEBUG)
+#include "cs_dbg.h"
+#endif
 
 /*----------------------------------------------------------------------------*/
 
@@ -104,9 +113,10 @@ static const cs_time_step_t  *cs_shared_time_step;
  * \param[in]  connect      pointer to a cs_cdo_connect_t structure
  * \param[in]  quant        pointer to additional mesh quantities struct.
  * \param[in]  time_step    pointer to a time step structure
- * \param[in]  vb_flag      metadata for Vb schemes
- * \param[in]  vcb_flag     metadata for V+C schemes
- * \param[in]  fb_flag      metadata for Fb schemes
+ * \param[in]  eb_flag      metadata for Edge-based schemes
+ * \param[in]  fb_flag      metadata for Face-based schemes
+ * \param[in]  vb_flag      metadata for Vertex-based schemes
+ * \param[in]  vcb_flag     metadata for Vertex+Cell-basde schemes
  * \param[in]  hho_flag     metadata for HHO schemes
  */
 /*----------------------------------------------------------------------------*/
@@ -115,9 +125,10 @@ void
 cs_equation_common_init(const cs_cdo_connect_t       *connect,
                         const cs_cdo_quantities_t    *quant,
                         const cs_time_step_t         *time_step,
+                        cs_flag_t                     eb_flag,
+                        cs_flag_t                     fb_flag,
                         cs_flag_t                     vb_flag,
                         cs_flag_t                     vcb_flag,
-                        cs_flag_t                     fb_flag,
                         cs_flag_t                     hho_flag)
 {
   assert(connect != NULL && quant != NULL); /* Sanity check */
@@ -126,8 +137,9 @@ cs_equation_common_init(const cs_cdo_connect_t       *connect,
   cs_cdo_local_initialize(connect);
 
   const cs_lnum_t  n_cells = connect->n_cells;
-  const cs_lnum_t  n_faces = connect->n_faces[0];
+  const cs_lnum_t  n_faces = connect->n_faces[CS_ALL_FACES];
   const cs_lnum_t  n_vertices = connect->n_vertices;
+  const cs_lnum_t  n_edges = connect->n_edges;
 
   /* Allocate shared buffer and initialize shared structures */
   size_t  cwb_size = n_cells; /* initial cell-wise buffer size */
@@ -147,7 +159,7 @@ cs_equation_common_init(const cs_cdo_connect_t       *connect,
 
     if (vb_flag & CS_FLAG_SCHEME_VECTOR || vcb_flag & CS_FLAG_SCHEME_VECTOR) {
 
-      cwb_size *= 3; /* 3*n_cells by default */
+      cwb_size = CS_MAX(cwb_size, (size_t)3*n_cells);
       if (vb_flag & CS_FLAG_SCHEME_VECTOR)
         cwb_size = CS_MAX(cwb_size, (size_t)3*n_vertices);
 
@@ -157,6 +169,20 @@ cs_equation_common_init(const cs_cdo_connect_t       *connect,
     } /* vector-valued equations */
 
   } /* Vertex-based schemes and related ones */
+
+  if (eb_flag > 0) {
+
+    if (eb_flag & CS_FLAG_SCHEME_SCALAR) {
+
+      /* This is a vector-valued equation but the DoF is scalar-valued since
+       * it is a circulation associated to each edge */
+
+      cwb_size = CS_MAX(cwb_size, (size_t)3*n_cells);
+      cwb_size = CS_MAX(cwb_size, (size_t)n_edges);
+
+    } /* vector-valued equations with scalar-valued DoFs */
+
+  } /* Edge-based schemes */
 
   if (fb_flag > 0 || hho_flag > 0) {
 
@@ -263,14 +289,25 @@ cs_equation_init_builder(const cs_equation_param_t   *eqp,
   if (cs_equation_param_has_diffusion(eqp))
     eqb->diff_pty_uniform = cs_property_is_uniform(eqp->diffusion_property);
 
+  eqb->curlcurl_pty_uniform = true;
+  if (cs_equation_param_has_curlcurl(eqp))
+    eqb->curlcurl_pty_uniform = cs_property_is_uniform(eqp->curlcurl_property);
+
+  eqb->graddiv_pty_uniform = true;
+  if (cs_equation_param_has_graddiv(eqp))
+    eqb->graddiv_pty_uniform = cs_property_is_uniform(eqp->graddiv_property);
+
   eqb->time_pty_uniform = true;
   if (cs_equation_param_has_time(eqp))
     eqb->time_pty_uniform = cs_property_is_uniform(eqp->time_property);
 
   if (eqp->n_reaction_terms > CS_CDO_N_MAX_REACTIONS)
     bft_error(__FILE__, __LINE__, 0,
-              " Number of reaction terms for an equation is too high.\n"
-              " Modify your settings aor contact the developpement team.");
+              " %s: Number of reaction terms for an equation is too high.\n"
+              " Current value: %d (max: %d)\n"
+              " Change the value of CS_CDO_N_MAX_REACTIONS in the code or\n"
+              " modify your settings or contact the developpement team.",
+              __func__, eqp->n_reaction_terms, CS_CDO_N_MAX_REACTIONS);
 
   for (int i = 0; i < eqp->n_reaction_terms; i++)
     eqb->reac_pty_uniform[i]
@@ -280,7 +317,7 @@ cs_equation_init_builder(const cs_equation_param_t   *eqp,
   eqb->source_mask = NULL;
   if (cs_equation_param_has_sourceterm(eqp)) {
 
-    /* Default intialization */
+    /* Default initialization */
     eqb->st_msh_flag = cs_source_term_init(eqp->space_scheme,
                                            eqp->n_source_terms,
                        (cs_xdef_t *const *)eqp->source_terms,
@@ -303,10 +340,7 @@ cs_equation_init_builder(const cs_equation_param_t   *eqp,
 
   /* Monitoring */
   CS_TIMER_COUNTER_INIT(eqb->tcb); /* build system */
-  CS_TIMER_COUNTER_INIT(eqb->tcd); /* build diffusion terms */
-  CS_TIMER_COUNTER_INIT(eqb->tca); /* build advection terms */
-  CS_TIMER_COUNTER_INIT(eqb->tcr); /* build reaction terms */
-  CS_TIMER_COUNTER_INIT(eqb->tcs); /* build source terms */
+  CS_TIMER_COUNTER_INIT(eqb->tcs); /* solve system */
   CS_TIMER_COUNTER_INIT(eqb->tce); /* extra operations */
 
   return eqb;
@@ -344,28 +378,199 @@ cs_equation_free_builder(cs_equation_builder_t  **p_builder)
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Update the residual normalization at the cellwise level according
+ *         to the type of renormalization
+ *         Case of scalar-valued system.
+ *
+ * \param[in]      type            type of renormalization
+ * \param[in]      vol_c           cell volume
+ * \param[in]      csys            pointer to a cs_cell_sys_t structure
+ * \param[in]      rhs             array related to the right-hand side
+ * \param[in, out] normalization   value of the  residual normalization
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_cw_scal_res_normalization(cs_param_resnorm_type_t     type,
+                                      cs_real_t                   vol_c,
+                                      const cs_cell_sys_t        *csys,
+                                      const cs_real_t             weight[],
+                                      cs_real_t                  *normalization)
+{
+  if (type == CS_PARAM_RESNORM_WEIGHTED_RHS) {
+
+    assert(weight != NULL);
+    cs_real_t  _rhs_norm = 0;
+    for (short int i = 0; i < csys->n_dofs; i++)
+      _rhs_norm += weight[i] * csys->rhs[i]*csys->rhs[i];
+
+    *normalization += vol_c * _rhs_norm;
+
+  }
+  else if (type == CS_PARAM_RESNORM_FILTERED_RHS) {
+
+    cs_real_t  _rhs_norm = 0;
+    if ((csys->cell_flag & CS_FLAG_BOUNDARY_CELL_BY_FACE)   ||
+        (csys->cell_flag & CS_FLAG_BOUNDARY_CELL_BY_VERTEX) ||
+        csys->has_internal_enforcement) {
+
+      for (short int i = 0; i < csys->n_dofs; i++) {
+        if (csys->dof_flag[i] & CS_CDO_BC_DIRICHLET)
+          continue;
+        else if (csys->intern_forced_ids[i] > -1)
+          continue;
+        else
+          _rhs_norm += csys->rhs[i]*csys->rhs[i];
+      }
+
+    }
+    else { /* No need to apply a filter */
+
+      for (short int i = 0; i < csys->n_dofs; i++)
+        _rhs_norm += csys->rhs[i]*csys->rhs[i];
+
+    }
+
+    *normalization += _rhs_norm;
+
+  } /* Type of residual normalization */
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Update the residual normalization at the cellwise level according
+ *         to the type of renormalization
+ *         Case of vector-valued system
+ *
+ * \param[in]      type            type of renormalization
+ * \param[in]      vol_c           cell volume
+ * \param[in]      csys            pointer to a cs_cell_sys_t structure
+ * \param[in]      rhs             array related to the right-hand side
+ * \param[in, out] normalization   value of the  residual normalization
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_cw_vect_res_normalization(cs_param_resnorm_type_t     type,
+                                      cs_real_t                   vol_c,
+                                      const cs_cell_sys_t        *csys,
+                                      const cs_real_t             weight[],
+                                      cs_real_t                  *normalization)
+{
+  if (type == CS_PARAM_RESNORM_WEIGHTED_RHS) {
+
+    assert(weight != NULL);
+    cs_real_t  _rhs_norm = 0;
+    short int  n_ent = csys->n_dofs/3;
+    for (short int i = 0; i < n_ent; i++) {
+      const cs_real_t  w = weight[i];
+      const cs_real_t  *_rhs = csys->rhs + 3*i;
+      _rhs_norm += w * (_rhs[0]*_rhs[0] + _rhs[1]*_rhs[1] + _rhs[2]*_rhs[2]);
+    }
+
+    *normalization += vol_c * _rhs_norm;
+
+  }
+  else if (type == CS_PARAM_RESNORM_FILTERED_RHS) {
+
+    cs_real_t  _rhs_norm = 0;
+    if ((csys->cell_flag & CS_FLAG_BOUNDARY_CELL_BY_FACE)   ||
+        (csys->cell_flag & CS_FLAG_BOUNDARY_CELL_BY_VERTEX) ||
+        csys->has_internal_enforcement) {
+
+      for (short int i = 0; i < csys->n_dofs; i++) {
+        if (csys->dof_flag[i] & CS_CDO_BC_DIRICHLET)
+          continue;
+        else if (csys->intern_forced_ids[i] > -1)
+          continue;
+        else
+          _rhs_norm += csys->rhs[i]*csys->rhs[i];
+      }
+
+    }
+    else { /* No need to apply a filter */
+
+      for (short int i = 0; i < csys->n_dofs; i++)
+        _rhs_norm += csys->rhs[i]*csys->rhs[i];
+
+    }
+
+    *normalization += _rhs_norm;
+
+  } /* Type of residual normalization */
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Last stage to compute of the renormalization coefficient for the
+ *         the residual norm of the linear system
+ *
+ * \param[in]      type            type of renormalization
+ * \param[in]      rhs_size        size of the rhs array
+ * \param[in]      rhs             array related to the right-hand side
+ * \param[in, out] normalization   value of the  residual normalization
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_res_normalization(cs_param_resnorm_type_t    type,
+                                   cs_lnum_t                  rhs_size,
+                                   const cs_real_t            rhs[],
+                                   cs_real_t                 *normalization)
+{
+  switch (type) {
+
+  case CS_PARAM_RESNORM_NORM2_RHS:
+  case CS_PARAM_RESNORM_FILTERED_RHS:
+    *normalization = cs_dot_xx(rhs_size, rhs);
+    cs_parall_sum(1, CS_REAL_TYPE, normalization);
+    if (*normalization < 100*DBL_MIN)
+      *normalization = 1.0;
+    else
+      *normalization = sqrt((*normalization));
+    break;
+
+  case CS_PARAM_RESNORM_WEIGHTED_RHS:
+    cs_parall_sum(1, CS_REAL_TYPE, normalization);
+    if (*normalization < 100*DBL_MIN)
+      *normalization = 1.0;
+    else
+      *normalization = sqrt((*normalization)/cs_shared_quant->vol_tot);
+    break;
+
+  default:
+    *normalization = 1.0;
+    break;
+
+  } /* Type of normalization */
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief Prepare a linear system and synchronize buffers to handle parallelism.
  *        Transfer a mesh-based description of arrays x0 and rhs into an
  *        algebraic description for the linear system in x and b.
  *
- * \param[in]      stride   stride to apply to the range set operations
- * \param[in]      x_size   size of the vector unknows (scatter view)
- * \param[in]      matrix   pointer to a cs_matrix_t structure
- * \param[in]      rset     pointer to a range set structure
- * \param[in, out] x        array of unknows (in: initial guess)
- * \param[in, out] b        right-hand side
+ * \param[in]      stride     stride to apply to the range set operations
+ * \param[in]      x_size     size of the vector unknowns (scatter view)
+ * \param[in]      matrix     pointer to a cs_matrix_t structure
+ * \param[in]      rset       pointer to a range set structure
+ * \param[in]      rhs_redux  do or not a parallel sum reduction on the RHS
+ * \param[in, out] x          array of unknowns (in: initial guess)
+ * \param[in, out] b          right-hand side
  *
  * \returns the number of non-zeros in the matrix
  */
 /*----------------------------------------------------------------------------*/
 
 cs_gnum_t
-cs_equation_prepare_system(int                   stride,
-                           cs_lnum_t             x_size,
-                           const cs_matrix_t    *matrix,
-                           cs_range_set_t       *rset,
-                           cs_real_t            *x,
-                           cs_real_t            *b)
+cs_equation_prepare_system(int                     stride,
+                           cs_lnum_t               x_size,
+                           const cs_matrix_t      *matrix,
+                           const cs_range_set_t   *rset,
+                           bool                    rhs_redux,
+                           cs_real_t              *x,
+                           cs_real_t              *b)
 {
   const cs_lnum_t  n_scatter_elts = x_size; /* size of x and rhs */
   const cs_lnum_t  n_gather_elts = cs_matrix_get_n_rows(matrix);
@@ -400,9 +605,10 @@ cs_equation_prepare_system(int                   stride,
     /* The right-hand side stems from a cellwise building on this rank.
        Other contributions from distant ranks may contribute to an element
        owned by the local rank */
-    cs_interface_set_sum(rset->ifs,
-                         n_scatter_elts, stride, false, CS_REAL_TYPE,
-                         b);
+    if (rhs_redux)
+      cs_interface_set_sum(rset->ifs,
+                           n_scatter_elts, stride, false, CS_REAL_TYPE,
+                           b);
 
     cs_range_set_gather(rset,
                         CS_REAL_TYPE,/* type */
@@ -432,6 +638,110 @@ cs_equation_prepare_system(int                   stride,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Solve a linear system arising from CDO schemes with scalar-valued
+ *         degrees of freedom
+ *
+ * \param[in]  n_scatter_dofs local number of DoFs (may be != n_gather_elts)
+ * \param[in]  eqp            pointer to a cs_equation_param_t structure
+ * \param[in]  matrix         pointer to a cs_matrix_t structure
+ * \param[in]  rs             pointer to a cs_range_set_t structure
+ * \param[in]  normalization  value used for the residual normalization
+ * \param[in]  rhs_redux      do or not a parallel sum reduction on the RHS
+ * \param[in, out] sles       pointer to a cs_sles_t structure
+ * \param[in, out] x          solution of the linear system (in: initial guess)
+ * \param[in, out] b          right-hand side (scatter/gather if needed)
+ *
+ * \return the number of iterations of the linear solver
+ */
+/*----------------------------------------------------------------------------*/
+
+int
+cs_equation_solve_scalar_system(cs_lnum_t                     n_scatter_dofs,
+                                const cs_equation_param_t    *eqp,
+                                const cs_matrix_t            *matrix,
+                                const cs_range_set_t         *rset,
+                                cs_real_t                     normalization,
+                                bool                          rhs_redux,
+                                cs_sles_t                    *sles,
+                                cs_real_t                    *x,
+                                cs_real_t                    *b)
+{
+  const cs_lnum_t  n_cols = cs_matrix_get_n_columns(matrix);
+  const cs_param_sles_t  slesp = eqp->sles_param;
+
+  /* Set xsol */
+  cs_real_t  *xsol = NULL;
+  if (n_cols > n_scatter_dofs) {
+    assert(cs_glob_n_ranks > 1);
+    BFT_MALLOC(xsol, n_cols, cs_real_t);
+    memcpy(xsol, x, n_scatter_dofs*sizeof(cs_real_t));
+  }
+  else
+    xsol = x;
+
+  /* Retrieve the solving info structure stored in the cs_field_t structure */
+  cs_field_t  *fld = cs_field_by_id(slesp.field_id);
+  cs_solving_info_t  sinfo;
+  cs_field_get_key_struct(fld, cs_field_key_id("solving_info"), &sinfo);
+
+  sinfo.n_it = 0;
+  sinfo.res_norm = DBL_MAX;
+  sinfo.rhs_norm = normalization;
+
+  /* Prepare solving (handle parallelism) */
+  cs_gnum_t  nnz = cs_equation_prepare_system(1, /* stride for scalar-valued */
+                                              n_scatter_dofs,
+                                              matrix,
+                                              rset,
+                                              rhs_redux,
+                                              xsol,
+                                              b);
+
+  /* Solve the linear solver */
+  cs_sles_convergence_state_t  code = cs_sles_solve(sles,
+                                                    matrix,
+                                                    CS_HALO_ROTATION_IGNORE,
+                                                    slesp.eps,
+                                                    sinfo.rhs_norm,
+                                                    &(sinfo.n_it),
+                                                    &(sinfo.res_norm),
+                                                    b,
+                                                    xsol,
+                                                    0,      /* aux. size */
+                                                    NULL);  /* aux. buffers */
+
+  /* Output information about the convergence of the resolution */
+  if (slesp.verbosity > 0)
+    cs_log_printf(CS_LOG_DEFAULT, "  <%s/sles_cvg> code %-d | n_iters %d"
+                  " residual % -8.4e | normalization % -8.4e | nnz %lu\n",
+                  eqp->name, code, sinfo.n_it, sinfo.res_norm, sinfo.rhs_norm,
+                  nnz);
+
+  if (cs_glob_n_ranks > 1) { /* Parallel mode */
+    cs_range_set_scatter(rset,
+                         CS_REAL_TYPE, 1, /* type and stride */
+                         xsol, x);
+    cs_range_set_scatter(rset,
+                         CS_REAL_TYPE, 1, /* type and stride */
+                         b, b);
+  }
+
+#if defined(DEBUG) && !defined(NDEBUG) && CS_EQUATION_COMMON_DBG > 1
+  cs_dbg_fprintf_system(eqp->name, cs_shared_time_step->nt_cur,
+                        slesp.verbosity,
+                        x, b, n_scatter_dofs);
+#endif
+
+  if (n_cols > n_scatter_dofs)
+    BFT_FREE(xsol);
+
+  cs_field_set_key_struct(fld, cs_field_key_id("solving_info"), &sinfo);
+
+  return (sinfo.n_it);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief   Print a message in the performance output file related to the
  *          monitoring of equation
  *
@@ -444,25 +754,23 @@ void
 cs_equation_write_monitoring(const char                    *eqname,
                              const cs_equation_builder_t   *eqb)
 {
-  double t[6] = {eqb->tcb.wall_nsec, eqb->tcd.wall_nsec,
-                 eqb->tca.wall_nsec, eqb->tcr.wall_nsec,
-                 eqb->tcs.wall_nsec, eqb->tce.wall_nsec};
-  for (int i = 0; i < 6; i++) t[i] *= 1e-9;
+  double t[3] = {eqb->tcb.wall_nsec, eqb->tcs.wall_nsec, eqb->tce.wall_nsec};
+  for (int i = 0; i < 3; i++) t[i] *= 1e-9;
 
   if (eqname == NULL)
-    cs_log_printf(CS_LOG_PERFORMANCE,
-                  " %-35s %9.3f %9.3f %9.3f %9.3f %9.3f %9.3f seconds\n",
-                  "<CDO/Equation> Monitoring",
-                  t[0], t[1], t[2], t[3], t[4], t[5]);
+    cs_log_printf(CS_LOG_PERFORMANCE, " %-35s %10.4f %10.4f %10.4f (seconds)\n",
+                  "<CDO/Equation> Monitoring", t[0], t[1], t[2]);
   else {
+
     char *msg = NULL;
     int len = 1 + strlen("<CDO/> Monitoring") + strlen(eqname);
+
     BFT_MALLOC(msg, len, char);
     sprintf(msg, "<CDO/%s> Monitoring", eqname);
-    cs_log_printf(CS_LOG_PERFORMANCE,
-                  " %-35s %9.3f %9.3f %9.3f %9.3f %9.3f %9.3f seconds\n",
-                  msg, t[0], t[1], t[2], t[3], t[4], t[5]);
+    cs_log_printf(CS_LOG_PERFORMANCE, " %-35s %10.4f %10.4f %10.4f (seconds)\n",
+                  msg, t[0], t[1], t[2]);
     BFT_FREE(msg);
+
   }
 }
 
@@ -487,12 +795,28 @@ cs_equation_init_properties(const cs_equation_param_t     *eqp,
   /* Preparatory step for diffusion term */
   if (cs_equation_param_has_diffusion(eqp))
     if (eqb->diff_pty_uniform)
-      /* One call this function as if it's a boundary cell */
+      /* One calls this function as if it's a boundary cell to scan all tests */
       cs_equation_set_diffusion_property(eqp,
                                          0, /* cell_id */
                                          t_eval,
                                          CS_FLAG_BOUNDARY_CELL_BY_FACE,
                                          cb);
+
+  /* Preparatory step for curl-curl term */
+  if (cs_equation_param_has_curlcurl(eqp))
+    if (eqb->curlcurl_pty_uniform)
+      /* One calls this function as if it's a boundary cell to scan all tests */
+      cs_equation_set_curlcurl_property(eqp,
+                                        0, /* cell_id */
+                                        t_eval,
+                                        CS_FLAG_BOUNDARY_CELL_BY_FACE,
+                                        cb);
+
+  /* Preparatory step for grad-div term */
+  if (cs_equation_param_has_graddiv(eqp))
+    if (eqb->graddiv_pty_uniform)
+      cb->gpty_val = cs_property_get_cell_value(0, t_eval,
+                                                eqp->graddiv_property);
 
   /* Preparatory step for unsteady term */
   if (cs_equation_param_has_time(eqp))
@@ -545,6 +869,12 @@ cs_equation_init_properties_cw(const cs_equation_param_t     *eqp,
     if (!(eqb->diff_pty_uniform))
       cs_equation_set_diffusion_property_cw(eqp, cm, t_eval, cell_flag, cb);
 
+  /* Set the property related to the curl-curl operator */
+  if (cs_equation_param_has_curlcurl(eqp)) {
+    if (!(eqb->curlcurl_pty_uniform))
+      cs_equation_set_curlcurl_property_cw(eqp, cm, t_eval, cell_flag, cb);
+  }
+
   /* Set the (linear) reaction property */
   if (cs_equation_param_has_reaction(eqp)) {
 
@@ -563,6 +893,71 @@ cs_equation_init_properties_cw(const cs_equation_param_t     *eqp,
   if (cs_equation_param_has_time(eqp))
     if (!(eqb->time_pty_uniform))
       cb->tpty_val = cs_property_value_in_cell(cm, eqp->time_property, t_eval);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Build the list of degrees of freedom (DoFs) related to an internal
+ *         enforcement. If set to NULL, the array dof_ids (storing the
+ *         indirection) is allocated to n_x.
+ *
+ * \param[in]      n_x        number of entities where DoFs are defined
+ * \param[in]      c2x        cell --> x connectivity
+ * \param[in]      eqp        set of parameters related to an equation
+ * \param[in, out] p_dof_ids  double pointer on DoF ids subject to enforcement
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_build_dof_enforcement(cs_lnum_t                     n_x,
+                                  const cs_adjacency_t         *c2x,
+                                  const cs_equation_param_t    *eqp,
+                                  cs_lnum_t                    *p_dof_ids[])
+{
+  if (eqp->n_enforced_dofs == 0 && eqp->n_enforced_cells == 0)
+    return;
+
+  /* Initialize the indirection list (by default, no vertex selected) */
+  cs_lnum_t  *dof_ids = *p_dof_ids;
+
+  if (dof_ids == NULL)
+    BFT_MALLOC(dof_ids, n_x, cs_lnum_t);
+
+# pragma omp parallel for if (n_x > CS_THR_MIN)
+  for (cs_lnum_t i = 0; i < n_x; i++)
+    dof_ids[i] = -1;     /* Not selected */
+
+  if (eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_CELLS) {
+
+    if (eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_REFERENCE_VALUE) {
+
+      for (cs_lnum_t i = 0; i < eqp->n_enforced_cells; i++) {
+        const cs_lnum_t  c_id = eqp->enforced_cell_ids[i];
+        for (cs_lnum_t j = c2x->idx[c_id]; j < c2x->idx[c_id+1]; j++)
+          dof_ids[c2x->ids[j]] = i;
+      }
+
+    }
+    else  /* This case can be tricky in parallel and can also impact the const
+             specifier of cs_equation_param_t */
+      bft_error(__FILE__, __LINE__, 0,
+                "%s: Eq: %s\n"
+                "Enforcement by a cell selection without a reference value"
+                " is not implemented yet.", __func__, eqp->name);
+
+  }
+  else {
+
+    assert(eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_DOFS);
+
+    /* Build the indirection between vertices and enforced vertices */
+    for (cs_lnum_t i = 0; i < eqp->n_enforced_dofs; i++)
+      dof_ids[eqp->enforced_dof_ids[i]] = i;
+
+  }
+
+  /* Returns pointer */
+  *p_dof_ids = dof_ids;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -599,9 +994,31 @@ cs_equation_enforced_internal_dofs(const cs_equation_param_t       *eqp,
   memset(cb->values, 0, 2*csys->n_dofs*sizeof(double));
 
   /* Build x_vals */
-  for (int i = 0; i < csys->n_dofs; i++) {
-    if (csys->intern_forced_ids[i] > -1)
-      x_vals[i] = eqp->enforced_dof_values[csys->intern_forced_ids[i]];
+  if (eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_REFERENCE_VALUE) {
+
+    const cs_real_t  ref_val = eqp->enforcement_ref_value[0];
+    for (int i = 0; i < csys->n_dofs; i++) {
+      if (csys->intern_forced_ids[i] > -1)
+        x_vals[i] = ref_val;
+    }
+
+  }
+  else if (eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_DOFS) {
+
+    for (int i = 0; i < csys->n_dofs; i++) {
+      if (csys->intern_forced_ids[i] > -1)
+        x_vals[i] = eqp->enforced_dof_values[csys->intern_forced_ids[i]];
+    }
+
+  }
+  else {
+
+    assert(eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_CELLS);
+    for (int i = 0; i < csys->n_dofs; i++) {
+      if (csys->intern_forced_ids[i] > -1)
+        x_vals[i] = eqp->enforced_cell_values[csys->intern_forced_ids[i]];
+    }
+
   }
 
   /* Contribution of the DoFs which are enforced */
@@ -650,9 +1067,9 @@ cs_equation_enforced_internal_dofs(const cs_equation_param_t       *eqp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_enforced_internal_block_dofs(const cs_equation_param_t       *eqp,
-                                         cs_cell_builder_t               *cb,
-                                         cs_cell_sys_t                   *csys)
+cs_equation_enforced_internal_block_dofs(const cs_equation_param_t     *eqp,
+                                         cs_cell_builder_t             *cb,
+                                         cs_cell_sys_t                 *csys)
 {
   /* Enforcement of the Dirichlet BCs */
   if (csys->has_internal_enforcement == false)
@@ -663,10 +1080,34 @@ cs_equation_enforced_internal_block_dofs(const cs_equation_param_t       *eqp,
 
   memset(cb->values, 0, 2*csys->n_dofs*sizeof(double));
 
-  /* Build x_vals */
-  for (int i = 0; i < csys->n_dofs; i++) {
-    if (csys->intern_forced_ids[i] > -1)
-      x_vals[i] = eqp->enforced_dof_values[csys->intern_forced_ids[i]];
+  if (eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_REFERENCE_VALUE) {
+
+    /* Build x_vals */
+    const cs_real_t  *ref_val = eqp->enforcement_ref_value;
+    for (int i = 0; i < csys->n_dofs; i++) {
+      if (csys->intern_forced_ids[i] > -1)
+        x_vals[i] = ref_val[i%3];
+    }
+
+  }
+  else if (eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_DOFS) {
+
+    /* Build x_vals */
+    for (int i = 0; i < csys->n_dofs; i++) {
+      if (csys->intern_forced_ids[i] > -1)
+        x_vals[i] = eqp->enforced_dof_values[csys->intern_forced_ids[i]];
+    }
+
+  }
+  else {
+
+    /* Build x_vals */
+    assert(eqp->enforcement_type & CS_EQUATION_ENFORCE_BY_CELLS);
+    for (int i = 0; i < csys->n_dofs; i++) {
+      if (csys->intern_forced_ids[i] > -1)
+        x_vals[i] = eqp->enforced_cell_values[csys->intern_forced_ids[i]];
+    }
+
   }
 
   /* Contribution of the DoFs which are enforced */
@@ -873,6 +1314,371 @@ cs_equation_balance_destroy(cs_equation_balance_t   **p_balance)
 
   BFT_FREE(b);
   *p_balance = NULL;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Synchronize the volumetric definitions to consider at each vertex
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       n_defs      number of definitions
+ * \param[in]       defs        number of times the values has been updated
+ * \param[in, out]  def2v_idx   index array  to define
+ * \param[in, out]  def2v_ids   array of ids to define
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vol_def_at_vertices(const cs_cdo_connect_t  *connect,
+                                     int                      n_defs,
+                                     cs_xdef_t              **defs,
+                                     cs_lnum_t                def2v_idx[],
+                                     cs_lnum_t                def2v_ids[])
+{
+  if (n_defs == 0)
+    return;
+
+  const cs_lnum_t  n_vertices = connect->n_vertices;
+  const cs_adjacency_t  *c2v = connect->c2v;
+
+  int  *v2def_ids = NULL;
+  BFT_MALLOC(v2def_ids, n_vertices, int);
+# pragma omp parallel for if (n_vertices > CS_THR_MIN)
+  for (cs_lnum_t v = 0; v < n_vertices; v++)
+    v2def_ids[v] = -1;          /* default */
+
+  for (int def_id = 0; def_id < n_defs; def_id++) {
+
+    /* Get and then set the definition of the initial condition */
+    const cs_xdef_t  *def = defs[def_id];
+    assert(def->support == CS_XDEF_SUPPORT_VOLUME);
+
+    if (def->meta & CS_FLAG_FULL_LOC) {
+
+#     pragma omp parallel for if (n_vertices > CS_THR_MIN)
+      for (cs_lnum_t v = 0; v < n_vertices; v++)
+        v2def_ids[v] = def_id;
+
+    }
+    else {
+
+      const cs_zone_t  *z = cs_volume_zone_by_id(def->z_id);
+
+      for (cs_lnum_t i = 0; i < z->n_elts; i++) { /* Loop on selected cells */
+        const cs_lnum_t  c_id = z->elt_ids[i];
+        for (cs_lnum_t j = c2v->idx[c_id]; j < c2v->idx[c_id+1]; j++)
+          v2def_ids[c2v->ids[j]] = def_id;
+      }
+
+    }
+
+  } /* Loop on definitions */
+
+  if (cs_glob_n_ranks > 1) { /* Parallel mode */
+
+    assert(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL] != NULL);
+    /* Last definition is used if there is a conflict between several
+       definitions */
+    cs_interface_set_max(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL],
+                         n_vertices,
+                         1,             /* stride */
+                         false,         /* interlace (not useful here) */
+                         CS_INT_TYPE,   /* int */
+                         v2def_ids);
+
+  }
+
+  /* 0. Initialization */
+  cs_lnum_t  *count = NULL;
+  BFT_MALLOC(count, n_defs, cs_lnum_t);
+  memset(count, 0, n_defs*sizeof(cs_lnum_t));
+  memset(def2v_idx, 0, (n_defs+1)*sizeof(cs_lnum_t));
+
+  /* 1. Count number of vertices related to each definition */
+  for (cs_lnum_t v = 0; v < n_vertices; v++)
+    if (v2def_ids[v] > -1)
+      def2v_idx[v2def_ids[v]+1] += 1;
+
+  /* 2. Build index */
+  for (int def_id = 0; def_id < n_defs; def_id++)
+    def2v_idx[def_id+1] += def2v_idx[def_id];
+
+  /* 3. Build list */
+  for (cs_lnum_t v = 0; v < n_vertices; v++) {
+    const int def_id = v2def_ids[v];
+    if (def_id > -1) {
+      def2v_ids[def2v_idx[def_id] + count[def_id]] = v;
+      count[def_id] += 1;
+    }
+  }
+
+  /* Free memory */
+  BFT_FREE(v2def_ids);
+  BFT_FREE(count);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Synchronize the volumetric definitions to consider at each edge
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       n_defs      number of definitions
+ * \param[in]       defs        number of times the values has been updated
+ * \param[in, out]  def2e_idx   index array  to define
+ * \param[in, out]  def2e_ids   array of ids to define
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vol_def_at_edges(const cs_cdo_connect_t  *connect,
+                                  int                      n_defs,
+                                  cs_xdef_t              **defs,
+                                  cs_lnum_t                def2e_idx[],
+                                  cs_lnum_t                def2e_ids[])
+{
+  if (n_defs == 0)
+    return;
+
+  const cs_lnum_t  n_edges = connect->n_edges;
+  const cs_adjacency_t  *c2e = connect->c2e;
+
+  int  *e2def_ids = NULL;
+  BFT_MALLOC(e2def_ids, n_edges, int);
+# pragma omp parallel for if (n_edges > CS_THR_MIN)
+  for (cs_lnum_t e = 0; e < n_edges; e++)
+    e2def_ids[e] = -1; /* default: not associated to a definition */
+
+  for (int def_id = 0; def_id < n_defs; def_id++) {
+
+    /* Get and then set the definition of the initial condition */
+    const cs_xdef_t  *def = defs[def_id];
+    assert(def->support == CS_XDEF_SUPPORT_VOLUME);
+
+    if (def->meta & CS_FLAG_FULL_LOC) {
+
+#     pragma omp parallel for if (n_edges > CS_THR_MIN)
+      for (cs_lnum_t e = 0; e < n_edges; e++)
+        e2def_ids[e] = def_id;
+
+    }
+    else {
+
+      const cs_zone_t  *z = cs_volume_zone_by_id(def->z_id);
+
+      for (cs_lnum_t i = 0; i < z->n_elts; i++) { /* Loop on selected cells */
+        const cs_lnum_t  c_id = z->elt_ids[i];
+        for (cs_lnum_t j = c2e->idx[c_id]; j < c2e->idx[c_id+1]; j++)
+          e2def_ids[c2e->ids[j]] = def_id;
+      }
+
+    }
+
+  } /* Loop on definitions */
+
+  if (cs_glob_n_ranks > 1) { /* Parallel mode */
+
+    assert(connect->interfaces[CS_CDO_CONNECT_EDGE_SCAL] != NULL);
+    /* Last definition is used if there is a conflict between several
+       definitions */
+    cs_interface_set_max(connect->interfaces[CS_CDO_CONNECT_EDGE_SCAL],
+                         n_edges,
+                         1,             /* stride */
+                         false,         /* interlace (not useful here) */
+                         CS_INT_TYPE,   /* int */
+                         e2def_ids);
+
+  }
+
+  /* 0. Initialization */
+  cs_lnum_t  *count = NULL;
+  BFT_MALLOC(count, n_defs, cs_lnum_t);
+  memset(count, 0, n_defs*sizeof(cs_lnum_t));
+  memset(def2e_idx, 0, (n_defs+1)*sizeof(cs_lnum_t));
+
+  /* 1. Count the number of edges related to each definition */
+  for (cs_lnum_t e = 0; e < n_edges; e++)
+    if (e2def_ids[e] > -1)
+      def2e_idx[e2def_ids[e]+1] += 1;
+
+  /* 2. Build the index */
+  for (int def_id = 0; def_id < n_defs; def_id++)
+    def2e_idx[def_id+1] += def2e_idx[def_id];
+
+  /* 3. Build the list */
+  for (cs_lnum_t e = 0; e < n_edges; e++) {
+    const int def_id = e2def_ids[e];
+    if (def_id > -1) {
+      def2e_ids[def2e_idx[def_id] + count[def_id]] = e;
+      count[def_id] += 1;
+    }
+  }
+
+  /* Free memory */
+  BFT_FREE(e2def_ids);
+  BFT_FREE(count);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Synchronize the volumetric definitions to consider at each face
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       n_defs      number of definitions
+ * \param[in]       defs        number of times the values has been updated
+ * \param[in, out]  def2f_idx   index array  to define
+ * \param[in, out]  def2f_ids   array of ids to define
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vol_def_at_faces(const cs_cdo_connect_t    *connect,
+                                  int                        n_defs,
+                                  cs_xdef_t                **defs,
+                                  cs_lnum_t                  def2f_idx[],
+                                  cs_lnum_t                  def2f_ids[])
+{
+  if (n_defs == 0)
+    return;
+
+  const cs_lnum_t  n_faces = connect->n_faces[CS_ALL_FACES];
+  const cs_adjacency_t  *c2f = connect->c2f;
+
+  int  *f2def_ids = NULL;
+  BFT_MALLOC(f2def_ids, n_faces, int);
+# pragma omp parallel for if (n_faces > CS_THR_MIN)
+  for (cs_lnum_t f = 0; f < n_faces; f++)
+    f2def_ids[f] = -1;          /* default */
+
+  for (int def_id = 0; def_id < n_defs; def_id++) {
+
+    /* Get and then set the definition of the initial condition */
+    const cs_xdef_t  *def = defs[def_id];
+    assert(def->support == CS_XDEF_SUPPORT_VOLUME);
+
+    if (def->meta & CS_FLAG_FULL_LOC) {
+
+#     pragma omp parallel for if (n_faces > CS_THR_MIN)
+      for (cs_lnum_t f = 0; f < n_faces; f++)
+        f2def_ids[f] = def_id;
+
+    }
+    else {
+
+      const cs_zone_t  *z = cs_volume_zone_by_id(def->z_id);
+
+      for (cs_lnum_t i = 0; i < z->n_elts; i++) { /* Loop on selected cells */
+        const cs_lnum_t  c_id = z->elt_ids[i];
+        for (cs_lnum_t j = c2f->idx[c_id]; j < c2f->idx[c_id+1]; j++)
+          f2def_ids[c2f->ids[j]] = def_id;
+      }
+
+    }
+
+  } /* Loop on definitions */
+
+  if (cs_glob_n_ranks > 1) { /* Parallel mode */
+
+    assert(connect->interfaces[CS_CDO_CONNECT_FACE_SP0] != NULL);
+    /* Last definition is used if there is a conflict between several
+       definitions */
+    cs_interface_set_max(connect->interfaces[CS_CDO_CONNECT_FACE_SP0],
+                         n_faces,
+                         1,             /* stride */
+                         false,         /* interlace (not useful here) */
+                         CS_INT_TYPE,   /* int */
+                         f2def_ids);
+
+  }
+
+  /* 0. Initialization */
+  cs_lnum_t  *count = NULL;
+  BFT_MALLOC(count, n_defs, cs_lnum_t);
+  memset(count, 0, n_defs*sizeof(cs_lnum_t));
+  memset(def2f_idx, 0, (n_defs+1)*sizeof(cs_lnum_t));
+
+  /* 1. Count number of faces related to each definition */
+  for (cs_lnum_t f = 0; f < n_faces; f++)
+    if (f2def_ids[f] > -1)
+      def2f_idx[f2def_ids[f]+1] += 1;
+
+  /* 2. Build index */
+  for (int def_id = 0; def_id < n_defs; def_id++)
+    def2f_idx[def_id+1] += def2f_idx[def_id];
+
+  /* 3. Build list */
+  for (cs_lnum_t f = 0; f < n_faces; f++) {
+    const int def_id = f2def_ids[f];
+    if (def_id > -1) {
+      def2f_ids[def2f_idx[def_id] + count[def_id]] = f;
+      count[def_id] += 1;
+    }
+  }
+
+  /* Free memory */
+  BFT_FREE(f2def_ids);
+  BFT_FREE(count);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the mean-value across ranks at each vertex
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       dim         number of entries for each vertex
+ * \param[in]       counter     number of occurences on this rank
+ * \param[in, out]  values      array to update
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vertex_mean_values(const cs_cdo_connect_t     *connect,
+                                    int                         dim,
+                                    int                        *counter,
+                                    cs_real_t                  *values)
+{
+  const cs_lnum_t  n_vertices = connect->n_vertices;
+
+  if (cs_glob_n_ranks > 1) { /* Parallel mode */
+
+    assert(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL] != NULL);
+
+    cs_interface_set_sum(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL],
+                         n_vertices,
+                         1,           /* stride */
+                         false,       /* interlace (not useful here) */
+                         CS_INT_TYPE, /* int */
+                         counter);
+
+    cs_interface_set_sum(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL],
+                         n_vertices,
+                         dim,         /* stride */
+                         true,        /* interlace */
+                         CS_REAL_TYPE,
+                         values);
+
+  }
+
+  if (dim == 1) {
+
+#   pragma omp parallel for if (n_vertices > CS_THR_MIN)
+    for (cs_lnum_t v_id = 0; v_id < n_vertices; v_id++)
+      if (counter[v_id] > 1)
+        values[v_id] /= counter[v_id];
+
+  }
+  else { /* dim > 1 */
+
+#   pragma omp parallel for if (n_vertices > CS_THR_MIN)
+    for (cs_lnum_t v_id = 0; v_id < n_vertices; v_id++) {
+      if (counter[v_id] > 1) {
+        const cs_real_t  inv_count = 1./counter[v_id];
+        for (int k = 0; k < dim; k++)
+          values[dim*v_id + k] *= inv_count;
+      }
+    }
+
+  }
+
 }
 
 /*----------------------------------------------------------------------------*/

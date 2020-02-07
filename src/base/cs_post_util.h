@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -96,6 +96,42 @@ void
 cs_cell_segment_intersect_select(void        *input,
                                  cs_lnum_t   *n_cells,
                                  cs_lnum_t  **cell_ids);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Select cells cut by a line composed of segments
+ *
+ * This selection function may be used as an elements selection function
+ * for postprocessing.
+ *
+ * In this case, the input points to a real array containing the segment's
+ * start and end coordinates.
+ *
+ * Note: the input pointer must point to valid data when this selection
+ * function is called, so either:
+ * - that value or structure should not be temporary (i.e. local);
+ * - post-processing output must be ensured using cs_post_write_meshes()
+ *   with a fixed-mesh writer before the data pointed to goes out of scope;
+ *
+ * The caller is responsible for freeing the returned cell_ids array.
+ * When passed to postprocessing mesh or probe set definition functions,
+ * this is handled automatically.
+ *
+ * \param[in]   input     pointer to segments starts and ends:
+ *                        [x0, y0, z0, x1, y1, z1]
+ * \param[in]   n_points  number of vertices in the polyline
+ * \param[out]  n_cells   number of selected cells
+ * \param[out]  cell_ids  array of selected cell ids (0 to n-1 numbering)
+ * \param[out]  seg_c_len array of length of the segment in the selected cells
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cell_polyline_intersect_select(void        *input,
+                                  cs_lnum_t   n_points,
+                                  cs_lnum_t   *n_cells,
+                                  cs_lnum_t  **cell_ids,
+                                  cs_real_t  **seg_c_len);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -243,6 +279,25 @@ cs_post_evm_reynolds_stresses(cs_field_interpolate_t  interpolation_type,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief Compute the invariant of the anisotropy tensor
+ *
+ * \param[in]  n_cells            number of points
+ * \param[in]  cell_ids           cell location of points
+ *                                (indexed from 0 to n-1)
+ * \param[in]  coords             point coordinates
+ * \param[out] inv                Anisotropy tensor invariant
+ *                                [xsi, eta]
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_post_anisotropy_invariant(cs_lnum_t               n_cells,
+                             const cs_lnum_t         cell_ids[],
+                             const cs_real_t         coords[][3],
+                             cs_real_t               inv[][2]);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief Compute the Q-criterion from Hunt et. al over each cell of a specified
  *        volume region.
  *
@@ -283,6 +338,27 @@ cs_post_boundary_flux(const char       *scalar_name,
                       cs_lnum_t         n_loc_b_faces,
                       const cs_lnum_t   b_face_ids[],
                       cs_real_t         b_face_flux[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute values at a selection of boundary faces of a given field
+ *        located on cells.
+ *
+ * Field BCs are taken into account and boundary cell values are reconstructed
+ * using the cell gradient.
+ *
+ * \param[in]   f              field pointer
+ * \param[in]   n_loc_b_faces  number of selected boundary faces
+ * \param[in]   b_face_ids     ids of selected boundary faces
+ * \param[out]  b_val          values on boundary faces
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_post_field_cell_to_b_face_values(cs_field_t       *f,
+                                    cs_lnum_t         n_loc_b_faces,
+                                    const cs_lnum_t   b_face_ids[],
+                                    cs_real_t        *b_val);
 
 /*----------------------------------------------------------------------------*/
 

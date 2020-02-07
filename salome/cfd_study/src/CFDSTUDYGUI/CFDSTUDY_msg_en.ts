@@ -174,6 +174,54 @@
             <translation>Open Shell</translation>
         </message>
         <message>
+            <source>SOLVER_EDITOR_ACTION_TEXT</source>
+            <translation>Manage user SRC functions</translation>
+        </message>
+        <message>
+            <source>SOLVER_EDITOR_ACTION_TIP</source>
+            <translation>Manage user SRC functions</translation>
+        </message>
+        <message>
+            <source>SOLVER_EDITOR_ACTION_SB</source>
+            <translation>Manage user SRC functions</translation>
+        </message>
+        <message>
+            <source>SOLVER_COMPILER_ACTION_TEXT</source>
+            <translation>Test compilation of user SRC functions</translation>
+        </message>
+        <message>
+            <source>SOLVER_COMPILER_ACTION_TIP</source>
+            <translation>Test compilation of user SRC functions</translation>
+        </message>
+        <message>
+            <source>SOLVER_COMPILER_ACTION_SB</source>
+            <translation>Test compilation of user SRC functions</translation>
+        </message>
+        <message>
+            <source>SOLVER_LOGVIEWER_ACTION_TEXT</source>
+            <translation>View RUN log files</translation>
+        </message>
+        <message>
+            <source>SOLVER_LOGVIEWER_ACTION_TIP</source>
+            <translation>View RUN log files</translation>
+        </message>
+        <message>
+            <source>SOLVER_LOGVIEWER_ACTION_SB</source>
+            <translation>View RUN log files</translation>
+        </message>
+        <message>
+            <source>SOLVER_FILETRANSFER_ACTION_TEXT</source>
+            <translation>Transfer files to a distant host</translation>
+        </message>
+        <message>
+            <source>SOLVER_FILETRANSFER_ACTION_TIP</source>
+            <translation>Transfer files to a distant host</translation>
+        </message>
+        <message>
+            <source>SOLVER_FILETRANSFER_ACTION_SB</source>
+            <translation>Transfer files to a distant host</translation>
+        </message>
+        <message>
             <source>SOLVER_DISPLAYCASE_ACTION_TEXT</source>
             <translation>Case display</translation>
         </message>
@@ -184,6 +232,30 @@
         <message>
             <source>SOLVER_DISPLAYCASE_ACTION_SB</source>
             <translation>Case display</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_ACTION_TEXT</source>
+            <translation>Run computation</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_ACTION_TIP</source>
+            <translation>Run or submit solver</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_ACTION_SB</source>
+            <translation>Run or submit solver</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_OT_ACTION_TEXT</source>
+            <translation>Transfer CFD model to OpenTURNS</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_OT_ACTION_TIP</source>
+            <translation>Transfer CFD model to OpenTURNS</translation>
+        </message>
+        <message>
+            <source>SOLVER_LAUNCH_OT_ACTION_SB</source>
+            <translation>Transfer CFD model to OpenTURNS</translation>
         </message>
         <message>
             <source>REMOVE_ACTION_TEXT</source>

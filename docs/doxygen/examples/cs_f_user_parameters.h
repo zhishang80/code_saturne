@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -25,7 +25,7 @@
 /*-----------------------------------------------------------------------------*/
 
 /*!
-  \page f_parameters Input of calculation parameters (Fortran modules)
+  \page f_parameters Input of calculation parameters (Fortran subroutines in cs_user_parameters.f90)
 
   \section cs_f_user_parameters_h_intro Introduction
 

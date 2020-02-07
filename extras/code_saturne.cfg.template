@@ -21,10 +21,6 @@
 ### (e.g. <syrthes_home>/syrthes4.3/syrthes4.3/arch/<arch>).
 # syrthes =
 ###
-### Set the location to the Code_Aster installation directory
-### (e.g. <salome_meca_home>/V2015_1/tools/Code_aster_testing_1230).
-# aster =
-###
 ### Set the location to the Cathare installation directory
 ### (e.g. <cathare_home>/mod5.1).
 # cathare =
@@ -35,6 +31,15 @@
 
 ### End of section.
 
+### Section for Code_Saturne distant installations.
+#
+[distant_hosts]
+### Define paths to the directory containing the different installations of the
+### given version (opt, debug, etc...).
+### Syntax is <batch_system>_<cluster url or name>=<path>
+### distant installation paths
+
+### End of section.
 
 ### Section for Code_Saturne run customizations.
 

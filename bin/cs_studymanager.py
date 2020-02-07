@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -57,7 +57,7 @@ except Exception: # email version 4.0 (Python2 from Python 2.5)
 # Do not import studymanager yet, as it pulls Python packages such as
 # matplotlib which may not be in the standard path, and may need
 # sourcing of a specific environment (which itself is delayed in case
-# the main and coputation packages are not the same).
+# the main and computation packages are not the same).
 
 #-------------------------------------------------------------------------------
 # Processes the passed command line arguments
@@ -270,11 +270,11 @@ def run_studymanager(pkg, options):
     # Source environment if required before importing studymanager modules, as
     # it pulls Python packages such as matplotlib which may not be in
     # the standard path.
-    from cs_exec_environment import set_modules, source_rcfile, enquote_arg
+    from code_saturne.cs_exec_environment import set_modules, source_rcfile, enquote_arg
     set_modules(pkg)
     source_rcfile(pkg)
 
-    from studymanager.cs_studymanager_study import Studies
+    from code_saturne.studymanager.cs_studymanager_study import Studies
 
     # Scripts
 

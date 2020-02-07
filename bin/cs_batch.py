@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -747,8 +747,7 @@ class batch:
     def update_lines(self, lines, keyword=None):
         """
         Update the batch file from reading dictionary self.params.
-        If keyword == None, all keywords are updated
-        If keyword == key, only key is updated.
+        If a keyword is given, its presence is checked.
         """
         l = list(self.params.keys())
         l.append(None) # Add 'None' when no keyword is specified in argument.

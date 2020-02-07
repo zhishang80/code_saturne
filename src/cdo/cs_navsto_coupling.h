@@ -10,7 +10,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -534,7 +534,7 @@ cs_navsto_projection_free_context(const cs_navsto_param_t    *nsp,
 void
 cs_navsto_projection_init_setup(const cs_navsto_param_t    *nsp,
                                 int                         loc_id,
-                                _Bool                       has_previous,
+                                bool                        has_previous,
                                 void                       *context);
 
 /*----------------------------------------------------------------------------*/

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -118,11 +118,11 @@ class InfoDialogHandler(InfoDialog):
     def setCode(self, env_saturne, env_neptune):
         if env_neptune:
             code = CFD_Neptune
-            from nc_package import package
+            from neptune_cfd.nc_package import package
 
         elif env_saturne:
             code = CFD_Saturne
-            from cs_package import package
+            from code_saturne.cs_package import package
 
         else:
             raise ValueError("Invalid CFD_Code in InfoDialog class")
@@ -136,9 +136,9 @@ class InfoDialogHandler(InfoDialog):
 
     def update(self, code):
         if code == CFD_Saturne:
-            from cs_package import package
+            from code_saturne.cs_package import package
         if code == CFD_Neptune:
-            from nc_package import package
+            from neptune_cfd.nc_package import package
 
         pkg = package()
         self.labelVersionValue.setText(pkg.version)

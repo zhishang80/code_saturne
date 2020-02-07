@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -93,7 +93,7 @@ else if (ichemistry.eq.3) then
     call fexchem_3 (nespg,nrg,dlconc,dlrki,zcsourc,conv_factor,dlr)
   endif
 else if (ichemistry.eq.4) then
-  call fexchem (nespg,nrg,dlconc,dlrki,zcsourc,conv_factor,dlr)
+  call fexchem_4 (nespg,nrg,dlconc,dlrki,zcsourc,conv_factor,dlr)
 endif
 
 !------------------------------------------------------------------------
@@ -149,7 +149,7 @@ else if (ichemistry.eq.3) then
     call fexchem_3 (nespg,nrg,dlconcbis,dlrkf,zcsourcf,conv_factor,dlr)
   endif
 else if (ichemistry.eq.4) then
-  call fexchem (nespg,nrg,dlconcbis,dlrkf,zcsourcf,conv_factor,dlr)
+  call fexchem_4 (nespg,nrg,dlconcbis,dlrkf,zcsourcf,conv_factor,dlr)
 endif
 
 do ji = 1, nespg

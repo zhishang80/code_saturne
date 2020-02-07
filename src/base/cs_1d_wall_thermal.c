@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -596,7 +596,7 @@ cs_1d_wall_thermal_read(void)
   cs_lnum_t           ii, jj, ifac, indfac, ierror;
   cs_lnum_t           n_b_faces = cs_glob_mesh->n_b_faces;
 
-  char nomsui[] = "1dwall_module";
+  char nomsui[] = "1dwall_module.csc";
 
   cs_restart_t             *suite;
   cs_mesh_location_type_t   support;
@@ -982,7 +982,7 @@ cs_1d_wall_thermal_write(void)
   cs_lnum_t            nbvent;
   cs_lnum_t            ii, jj, ifac;
 
-  char nomsui[] = "1dwall_module";
+  char nomsui[] = "1dwall_module.csc";
 
   cs_lnum_t n_b_faces = cs_glob_mesh->n_b_faces;
 
@@ -1210,7 +1210,7 @@ cs_1d_wall_thermal_finalize(void)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Provide acces to cs_glob_1d_wall_thermal.
+ * \brief Provide access to cs_glob_1d_wall_thermal.
  */
 /*----------------------------------------------------------------------------*/
 

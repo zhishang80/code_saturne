@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -371,7 +371,6 @@ post_util.f90 \
 precli.f90 \
 predfl.f90 \
 predvv.f90 \
-prehyd.f90 \
 pthrbm.f90 \
 resopv.f90 \
 resvoi.f90 \

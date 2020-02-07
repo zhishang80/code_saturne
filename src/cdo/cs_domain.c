@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -127,6 +127,7 @@ _create_cdo_context(int     cdo_mode)
   /* Metadata related to each family of schemes */
   cc->vb_scheme_flag = 0;
   cc->vcb_scheme_flag = 0;
+  cc->eb_scheme_flag = 0;
   cc->fb_scheme_flag = 0;
   cc->hho_scheme_flag = 0;
 
@@ -164,9 +165,11 @@ cs_domain_create(void)
   domain->cdo_quantities = NULL;
 
   /* By default a wall is defined for the whole boundary of the domain */
-  cs_glob_boundaries = cs_boundary_create(CS_BOUNDARY_WALL);
+  cs_glob_boundaries = cs_boundary_create(CS_BOUNDARY_CATEGORY_FLOW,
+                                          CS_BOUNDARY_WALL);
   domain->boundaries = cs_glob_boundaries;
-  domain->ale_boundaries = cs_boundary_create(CS_BOUNDARY_ALE_FIXED);
+  domain->ale_boundaries = cs_boundary_create(CS_BOUNDARY_CATEGORY_ALE,
+                                              CS_BOUNDARY_ALE_FIXED);
 
   /* Default initialization of the time step */
   domain->only_steady = true;
@@ -305,11 +308,11 @@ cs_domain_needs_iteration(cs_domain_t  *domain)
 
   cs_time_step_t  *ts = domain->time_step;
 
-  if (ts->nt_max > 0) // nt_max has been set
+  if (ts->nt_max > 0) /* nt_max has been set */
     if (ts->nt_cur > ts->nt_max)
       one_more_iter = false;
 
-  if (ts->t_max > 0) // t_max has been set
+  if (ts->t_max > 0) /* t_max has been set */
     if (ts->t_cur >= ts->t_max)
       one_more_iter = false;
 
@@ -324,7 +327,7 @@ cs_domain_needs_iteration(cs_domain_t  *domain)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Check if an ouput is requested according to the domain setting
+ * \brief  Check if an output is requested according to the domain setting
  *
  * \param[in]   domain    pointer to a cs_domain_t structure
  *

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -59,6 +59,7 @@
 
 #include "cs_base.h"
 #include "cs_log.h"
+#include "cs_fp_exception.h"
 #include "cs_halo.h"
 #include "cs_matrix.h"
 #include "cs_matrix_default.h"
@@ -93,7 +94,7 @@ BEGIN_C_DECLS
   This function is called the end of the setup stage for a KSP solver.
 
   Note that using the advanced KSPSetPostSolve and KSPSetPreSolve functions,
-  this also allows setting furthur function pointers for pre and post-solve
+  this also allows setting further function pointers for pre and post-solve
   operations (see the PETSc documentation).
 
   Note: if the context pointer is non-NULL, it must point to valid data
@@ -137,9 +138,9 @@ struct _cs_sles_petsc_t {
 
   int                  n_iterations_last;  /* Number of iterations for last
                                               system resolution */
-  int                  n_iterations_min;   /* Minimum number ot iterations
+  int                  n_iterations_min;   /* Minimum number of iterations
                                               in system resolution history */
-  int                  n_iterations_max;   /* Maximum number ot iterations
+  int                  n_iterations_max;   /* Maximum number of iterations
                                               in system resolution history */
   int long long        n_iterations_tot;   /* Total accumulated number of
                                               iterations */
@@ -207,7 +208,7 @@ _export_petsc_system(const char   *name,
   if (p == NULL)
     return;
 
-  /* Get system and preconditioner matrixes */
+  /* Get system and preconditioner matrices */
 
   Mat a, pa;
   KSPGetOperators(ksp, &a, &pa);
@@ -280,7 +281,7 @@ _export_petsc_system(const char   *name,
  *
  * parameters:
  *   a  <-- Pointer to PETSc matrix structure
- *   x  <-- Multipliying vector values
+ *   x  <-- Multiplying vector values
  *   y  --> Resulting vector
  *----------------------------------------------------------------------------*/
 
@@ -1233,7 +1234,7 @@ cs_sles_petsc_setup(void               *context,
   /* KSPSetup could be called here for better separation of setup/solve
      logging, but calling it systematically seems to cause issues
      at least with the performance of the GAMG preconditioner
-     (possibly calling unneed operations). So we avoid it for now,
+     (possibly calling unneeded operations). So we avoid it for now,
      noting that the user always has to option of calling it at the
      end of the setup hook. */
 
@@ -1403,7 +1404,11 @@ cs_sles_petsc_solve(void                *context,
 
   /* Resolution */
 
+  cs_fp_exception_disable_trap();
+
   KSPSolve(sd->ksp, b, x);
+
+  cs_fp_exception_restore_trap();
 
   if (getenv("CS_PETSC_SYSTEM_VIEWER") != NULL)
     _export_petsc_system(name, sd->ksp, b);

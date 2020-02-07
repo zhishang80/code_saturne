@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -280,7 +280,7 @@ static fvm_writer_format_t _fvm_writer_format_list[10] = {
     (  FVM_WRITER_FORMAT_USE_EXTERNAL
      | FVM_WRITER_FORMAT_HAS_POLYGON
      | FVM_WRITER_FORMAT_HAS_POLYHEDRON),
-    FVM_WRITER_TRANSIENT_CONNECT,
+    FVM_WRITER_TRANSIENT_COORDS,
 #if !defined(HAVE_MELISSA) || defined(HAVE_PLUGIN_MELISSA)
     0,                                 /* dynamic library count */
     NULL,                              /* dynamic library */

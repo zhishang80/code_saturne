@@ -10,7 +10,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -395,6 +395,34 @@ cs_interface_set_copy_indexed(const cs_interface_set_t  *ifs,
                               const void                *src,
                               void                      *dest);
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Update values using the bitwise inclusive or operation for elements
+ *        associated with an interface set.
+ *
+ * On input, the variable array should contain local contributions. On output,
+ * contributions from matching elements on parallel or periodic boundaries
+ * have been processed.
+ *
+ * Only the values of elements belonging to the interfaces are modified.
+ *
+ * \param[in]       ifs        pointer to a fvm_interface_set_t structure
+ * \param[in]       n_elts     number of elements in var buffer
+ * \param[in]       stride     number of values (non interlaced) by entity
+ * \param[in]       interlace  true if variable is interlaced (for stride > 1)
+ * \param[in]       datatype   type of data considered
+ * \param[in, out]  var        variable buffer
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_interface_set_inclusive_or(const cs_interface_set_t  *ifs,
+                              cs_lnum_t                  n_elts,
+                              cs_lnum_t                  stride,
+                              bool                       interlace,
+                              cs_datatype_t              datatype,
+                              void                      *var);
+
 /*----------------------------------------------------------------------------
  * Update the sum of values for elements associated with an interface set.
  *
@@ -420,6 +448,36 @@ cs_interface_set_sum(const cs_interface_set_t  *ifs,
                      bool                       interlace,
                      cs_datatype_t              datatype,
                      void                      *var);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Update the sum of values for elements associated with an
+ * interface set, allowing control over periodicity of rotation.
+ *
+ * On input, the variable array should contain local contributions. On output,
+ * contributions from matching elements on parallel or periodic boundaries
+ * have been added.
+ *
+ * Only the values of elements belonging to the interfaces are modified.
+ *
+ * \param[in]       ifs        pointer to a fvm_interface_set_t structure
+ * \param[in]       n_elts     number of elements in var buffer
+ * \param[in]       stride     number of values (non interlaced) by entity
+ * \param[in]       interlace  true if variable is interlaced (for stride > 1)
+ * \param[in]       datatype   type of data considered
+ * \param[in]       ignore_rotation  ignore rotation if present ?
+ * \param[in, out]  var        variable buffer
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_interface_set_sum_tr(const cs_interface_set_t  *ifs,
+                        cs_lnum_t                  n_elts,
+                        cs_lnum_t                  stride,
+                        bool                       interlace,
+                        cs_datatype_t              datatype,
+                        bool                       ignore_rotation,
+                        void                      *var);
 
 /*----------------------------------------------------------------------------
  * Update to minimum value for elements associated with an interface set.

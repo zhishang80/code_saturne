@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -280,7 +280,7 @@ _order_gnum_s(const cs_gnum_t   number[],
  *   true if element i1 is greater or equal than element i2, false otherwise
  *----------------------------------------------------------------------------*/
 
-inline static _Bool
+inline static bool
 _indexed_is_greater_or_equal(size_t            i1,
                              size_t            i2,
                              const cs_lnum_t   index[],
@@ -331,7 +331,7 @@ _indexed_is_greater_or_equal(size_t            i1,
  *   true if element i1 is strictly greater than element i2, false otherwise
  *----------------------------------------------------------------------------*/
 
-inline static _Bool
+inline static bool
 _indexed_is_greater(size_t            i1,
                     size_t            i2,
                     const cs_lnum_t   index[],
@@ -1400,6 +1400,86 @@ cs_order_reorder_data(cs_lnum_t         n_elts,
   memcpy(data, tmp, n_elts*elt_size);
 
   BFT_FREE(tmp);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Build a sorted array containing a single occurence of each global
+ *        number in a given array.
+ *
+ * Global numbers under a given "base" value are extruded.
+ *
+ * The caller is responsible for freeing the returned array.
+ *
+ * \param[in]   n_ent     size of input array
+ * \param[in]   base      base id; numbers lower than this are dropped
+ * \param[in]   number    array containing of all referenced entity numbers
+ * \param[out]  n_single  array number of single occurences >= base
+ * \param[out]  single    sorted array of unique numbers >= base
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_order_single_gnum(size_t            n_ent,
+                     const cs_gnum_t   base,
+                     const cs_gnum_t   number[],
+                     size_t           *n_single,
+                     cs_gnum_t        *single[])
+{
+  if (n_ent == 0) {
+    *n_single = 0;
+    *single = NULL;
+    return;
+  }
+
+  /* Sort global numbers */
+
+  cs_lnum_t *order = cs_order_gnum(NULL, number, n_ent);
+
+  /* Count number of distinct global entities */
+
+  size_t _n_single = 0;
+
+  size_t s_id = 0;
+  while (s_id < n_ent && _n_single == 0) {
+    if (number[order[s_id]] >= base)
+      _n_single = 1;
+    else
+      s_id++;
+  }
+
+  for (size_t i = s_id+1; i < n_ent; i++) {
+    if (number[order[i]] > number[order[i-1]])
+      _n_single += 1;
+  }
+
+  cs_gnum_t *_single = NULL;
+
+  if (_n_single > 0) {
+
+    BFT_MALLOC(_single, _n_single, cs_gnum_t);
+
+    size_t j = 0;
+    cs_gnum_t num_c = number[order[s_id]];
+
+    _single[j++] = num_c;
+
+    cs_gnum_t num_p = num_c;
+    for (size_t i = s_id+1; i < n_ent; i++) {
+      num_c = number[order[i]];
+      if (num_c > num_p) {
+        _single[j++] = num_c;
+        num_p = num_c;
+      }
+    }
+
+    assert(j == _n_single);
+  }
+
+  BFT_FREE(order);
+
+  *n_single = _n_single;
+  *single = _single;
 }
 
 /*----------------------------------------------------------------------------*/

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -57,7 +57,7 @@ def getRestartInfo(package, results_dir=None, restart_path='*'):
 
     restart_input = None
 
-    from cs_exec_environment import get_command_output, assemble_args
+    from code_saturne.cs_exec_environment import get_command_output, assemble_args
 
     nt_names = ('nbre_pas_de_temps', 'ntcabs')
     t_names = ('instant_precedent', 'ttcabs')

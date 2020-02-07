@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -161,7 +161,7 @@ if (ifilechemistry.ge.1) then
 
   ! Volume initilization with profiles for species present
   ! in the chemical profiles file
-  if (isuite.ne.0.and.init_at_chem.eq.1) then
+  if (isuite.eq.0 .or. (isuite.ne.0.and.init_at_chem.eq.1)) then
     do k = 1, nespgi
       call field_get_val_s(ivarfl(isca(isca_chem(idespgi(k)))), cvar_despgi)
 
@@ -198,19 +198,38 @@ if (iaerosol.eq.1) then
 
 endif
 
-! Verifications
-if ((iatra1.eq.1.or.ichemistry.ge.1).and.(syear.eq.-999.or.squant.eq.-999.or.shour.eq.-999&
-.or.smin.eq.-999.or.ssec.eq.-999)) then
+! Check simulation times used by atmo
+! radiative transfer or chemistry models
+if (     (iatra1.eq.1.or.ifilechemistry.ge.1)              &
+    .and.(syear.eq.-1.or.squant.eq.-1.or.shour.eq.-1 &
+          .or.smin.eq.-1.or.ssec.le.-1.d0)) then
   if (iatra1.eq.1) write(nfecra,1000)
-  if (ichemistry.ge.1) write(nfecra,1001)
+  if (ifilechemistry.ge.1) write(nfecra,1001)
   call csexit (1)
 endif
 
-if ((iatra1.eq.1.or.ichemistry.ge.1).and.(xlat.ge.rinfin*0.5.or.xlon.ge.rinfin*0.5)) then
-  if (iatra1.eq.1) write(nfecra,1002)
-  if (ichemistry.ge.1) write(nfecra,1003)
+! Check radiative module latitude / longitude
+if (iatra1.eq.1 .and. (xlat.ge.rinfin*0.5 .or. xlon.ge.rinfin*0.5)) then
+  write(nfecra,1002)
   call csexit (1)
 endif
+
+! Check latitude / longitude from meteo file
+if (imeteo.gt.0) then
+  if (maxval(xmet).ge.rinfin*0.5 .or. maxval(ymet).ge.rinfin*0.5) then
+    write(nfecra,1003)
+    call csexit (1)
+  endif
+endif
+
+! Check latitude / longitude from chemistry file
+if (ifilechemistry.ge.1) then
+  if (maxval(xchem).ge.rinfin*0.5 .or. maxval(ychem).ge.rinfin*0.5) then
+    write(nfecra,1004)
+    call csexit (1)
+  endif
+endif
+
 
 !===============================================================================
 ! 3. Dry atmosphere: default initialization of potential temperature
@@ -225,7 +244,7 @@ if (isuite.eq.0) then
       call field_get_val_s(ivarfl(isca(iscalt)), cvar_scalt)
     else if (ippmod(iatmos).eq.2) then
       call field_get_val_s(ivarfl(isca(iscalt)), cvar_scalt)
-      call field_get_val_s(ivarfl(isca(itotwt)), cvar_totwt)
+      call field_get_val_s(ivarfl(isca(iymw)), cvar_totwt)
       call field_get_val_s(ivarfl(isca(intdrp)), cvar_ntdrp)
     endif
 
@@ -423,7 +442,7 @@ call cs_user_f_initialization &
 '@    PHYSIQUE PARTICULIERE (ATMOSPHERIQUE) DEMANDEE          ',/,&
 '@    MODELE DE RAYONNEMENT (IATRA1) DEMANDE                  ',/,&
 '@                                                            ',/,&
-'@    Les coordonnees xlat et xlon du domaine sont mal definies',/,&
+'@    Les coordonnees xlat, xlon du domaine sont mal definies ',/,&
 '@                                                            ',/,&
 '@    Voir cs_user_parameters.f90                             ',/,&
 '@                                                            ',/,&
@@ -437,15 +456,31 @@ call cs_user_f_initialization &
 '@ @@ ATTENTION : ARRET A L''ENTREE DES DONNEES               ',/,&
 '@    =========                                               ',/,&
 '@    PHYSIQUE PARTICULIERE (ATMOSPHERIQUE) DEMANDEE          ',/,&
-'@    MODULE DE CHIMIE (ICHEMISTRY) DEMANDE                   ',/,&
 '@                                                            ',/,&
-'@    Les coordonnees xlat et xlon du domaine sont mal definies',/,&
+'@    Les coordonnees xmet, ymet du profile meteo sont mal    ',/,&
+'@    definies.                                               ',/,&
 '@                                                            ',/,&
 '@    Voir cs_user_parameters.f90                             ',/,&
 '@                                                            ',/,&
 '@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
 '@                                                            ',/)
 
+ 1004 format(                                                           &
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/,&
+'@ @@ ATTENTION : ARRET A L''ENTREE DES DONNEES               ',/,&
+'@    =========                                               ',/,&
+'@    PHYSIQUE PARTICULIERE (ATMOSPHERIQUE) DEMANDEE          ',/,&
+'@    MODULE DE CHIMIE (ICHEMISTRY) DEMANDE                   ',/,&
+'@                                                            ',/,&
+'@    Les coordonnees xchem, ychem pour les profiles de       ',/,&
+'@    concentration (modèle de chimie) sont mal definies.     ',/,&
+'@                                                            ',/,&
+'@    Voir cs_user_parameters.f90                             ',/,&
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/)
 
 #else
 
@@ -461,7 +496,7 @@ call cs_user_f_initialization &
 '@    The simulation time is wrong                            ',/,&
 '@    Check variables syear, squant, shour, smin, ssec        ',/,&
 '@                                                            ',/,&
-'@    By decreasing priority these variablse can be defined   ',/,&
+'@    By decreasing priority, these variables can be defined  ',/,&
 '@    in cs_user_parameters or the meteo file                 ',/,&
 '@    or the chemistry file                                   ',/,&
 '@                                                            ',/,&
@@ -479,7 +514,7 @@ call cs_user_f_initialization &
 '@    The simulation time is wrong                            ',/,&
 '@    Check variables syear, squant, shour, smin, ssec        ',/,&
 '@                                                            ',/,&
-'@    By decreasing priority these variablse can be defined   ',/,&
+'@    By decreasing priority, these variables can be defined  ',/,&
 '@    in cs_user_parameters or the meteo file                 ',/,&
 '@    or the chemistry file                                   ',/,&
 '@                                                            ',/,&
@@ -495,7 +530,7 @@ call cs_user_f_initialization &
 '@                ATMOSPHERIC  MODULE                         ',/,&
 '@                RADITIVE MODEL (IATRA1)                     ',/,&
 '@                                                            ',/,&
-'@    Wrong xlat and xlon coordinates                         ',/,&
+'@    Wrong xlat and xlon coordinates.                        ',/,&
 '@                                                            ',/,&
 '@    See cs_user_parameters.f90                              ',/,&
 '@                                                            ',/,&
@@ -508,9 +543,25 @@ call cs_user_f_initialization &
 '@                                                            ',/,&
 '@ @@  WARNING:   STOP WHILE READING INPUT DATA               ',/,&
 '@    =========                                               ',/,&
+'@      ATMOSPHERIC MODULE                                    ',/,&
+'@                                                            ',/,&
+'@    Wrong coordinates xmet, ymet for the meteo profile.     ',/,&
+'@                                                            ',/,&
+'@    See cs_user_parameters.f90                              ',/,&
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/)
+
+ 1004 format(                                                     &
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/,&
+'@ @@  WARNING:   STOP WHILE READING INPUT DATA               ',/,&
+'@    =========                                               ',/,&
 '@      ATMOSPHERIC CHEMISTRY                                 ',/,&
 '@                                                            ',/,&
-'@    Wrong xlat and xlon coordinates                         ',/,&
+'@    Wrong xchem, ychem coordinates for the concentration    ',/,&
+'@    profiles (chemistry model).                             ',/,&
 '@                                                            ',/,&
 '@    See cs_user_parameters.f90                              ',/,&
 '@                                                            ',/,&

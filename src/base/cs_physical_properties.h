@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -78,10 +78,9 @@ typedef enum {
 void
 cs_thermal_table_set(const char                        *material,
                      const char                        *method,
-                     const char                        *phas,
                      const char                        *reference,
                      cs_phys_prop_thermo_plane_type_t   thermo_plane,
-                     const int                          temp_scale);
+                     int                                temp_scale);
 
 /*----------------------------------------------------------------------------
  * Finalize thermal table

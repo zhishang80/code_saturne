@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -36,15 +36,15 @@ import sys
 import shutil
 import stat
 
-import cs_compile
-import cs_xml_reader
+from code_saturne import cs_compile
+from code_saturne import cs_xml_reader
 
-from cs_exec_environment import run_command, source_shell_script
-from cs_exec_environment import enquote_arg, separate_args
-from cs_exec_environment import get_ld_library_path_additions
-from cs_exec_environment import source_syrthes_env
+from code_saturne.cs_exec_environment import run_command, source_shell_script
+from code_saturne.cs_exec_environment import enquote_arg, separate_args
+from code_saturne.cs_exec_environment import get_ld_library_path_additions
+from code_saturne.cs_exec_environment import source_syrthes_env
 
-from cs_mei_to_c import mei_to_c_interpreter
+from code_saturne.cs_mei_to_c import mei_to_c_interpreter
 
 #===============================================================================
 # Utility functions
@@ -154,6 +154,8 @@ class base_domain:
 
         # Error reporting
         self.error = ''
+
+        self.error_long = ''
 
     #---------------------------------------------------------------------------
 
@@ -355,7 +357,7 @@ class base_domain:
         else:
             debug_args += 'python '
         cs_pkg_dir = self.package.get_dir('pkgpythondir')
-        if self.package.name == 'neptune_cfd':
+        if self.package.name != 'code_saturne':
             cs_pkg_dir = os.path.join(cs_pkg_dir, '../code_saturne')
         dbg_wrapper_path = os.path.join(cs_pkg_dir, 'cs_debug_wrapper.py')
         debug_args += dbg_wrapper_path + ' '
@@ -404,7 +406,8 @@ class domain(base_domain):
 
         # Default executable
 
-        self.solver_path = self.package_compute.get_solver()
+        self.solver_path = os.path.join(self.package_compute.get_dir("pkglibexecdir"),
+                                        "cs_solver" + self.package.config.exeext)
 
         # Preprocessor options
 
@@ -451,7 +454,7 @@ class domain(base_domain):
 
         self.restart_input = None
 
-        from cs_exec_environment import get_command_output
+        from code_saturne.cs_exec_environment import get_command_output
 
         results_dir = os.path.abspath(os.path.join(self.result_dir, '..'))
         results = os.listdir(results_dir)
@@ -488,16 +491,19 @@ class domain(base_domain):
         """
 
         if param != None:
-            root_str = self.package.code_name + '_GUI'
             version_str = '2.0'
             P = cs_xml_reader.Parser(os.path.join(self.data_dir, param),
-                                     root_str = root_str,
                                      version_str = version_str)
             params = P.getParams()
             for k in list(params.keys()):
                 self.__dict__[k] = params[k]
 
             self.param = param
+
+            if params['xml_root_name'] == 'NEPTUNE_CFD_GUI':
+                solver_dir = self.package_compute.get_dir("pkglibexecdir")
+                solver_name = "nc_solver" + self.package.config.exeext
+                self.solver_path = os.path.join(solver_dir, solver_name)
 
     #---------------------------------------------------------------------------
 
@@ -601,7 +607,7 @@ class domain(base_domain):
             needs_comp = True
 
         if self.param != None:
-            from model.XMLengine import Case
+            from code_saturne.model.XMLengine import Case
             from code_saturne.model.SolutionDomainModel import getRunType
 
             fp = os.path.join(self.data_dir, self.param)
@@ -610,15 +616,17 @@ class domain(base_domain):
             case.xmlCleanAllBlank(case.xmlRootNode())
 
             prepro = (getRunType(case) != 'standard')
-            if case['package'].name == 'code_saturne':
-                from model.XMLinitialize import XMLinit
-            else:
-                from model.XMLinitializeNeptune import XMLinitNeptune as XMLinit
-            XMLinit(case).initialize(prepro)
+            module_name = case.module_name()
+            if module_name == 'code_saturne':
+                from code_saturne.model.XMLinitialize import XMLinit
+                XMLinit(case).initialize(prepro)
+            elif module_name == 'neptune_cfd':
+                from code_saturne.model.XMLinitializeNeptune import XMLinitNeptune
+                XMLinitNeptune(case).initialize(prepro)
             case.xmlSaveDocument()
 
             case['case_path'] = self.exec_dir
-            self.mci = mei_to_c_interpreter(case)
+            self.mci = mei_to_c_interpreter(case, module_name=module_name)
 
             if self.mci.has_meg_code():
                 needs_comp = True
@@ -659,11 +667,22 @@ class domain(base_domain):
 
             if self.mci != None:
                 mci_state = self.mci.save_all_functions()
+                if mci_state['state'] == -1:
+                    self.error = 'compile or link'
+                    self.error_long = ' missing mathematical expressions:\n\n'
+                    for i, eme in enumerate(mci_state['exps']):
+                        self.error_long += " (%d/%d) %s is not provided for %s for zone %s\n" % (i+1, mci_state['nexps'], eme['func'], eme['var'], eme['zone'])
+
+                    return
+
 
             log_name = os.path.join(self.exec_dir, 'compile.log')
             log = open(log_name, 'w')
 
+            solver_name = os.path.basename(self.solver_path)
+
             retval = cs_compile.compile_and_link(self.package_compute,
+                                                 solver_name,
                                                  exec_src,
                                                  self.exec_dir,
                                                  self.compile_cflags,
@@ -677,8 +696,8 @@ class domain(base_domain):
             log.close()
 
             if retval == 0:
-                self.solver_path = os.path.join('.',
-                                                self.package_compute.solver)
+                solver_dir = '.'
+                self.solver_path = os.path.join(solver_dir, solver_name)
             else:
                 # In case of error, copy source to results directory now,
                 # as no calculation is possible, then raise exception
@@ -764,16 +783,24 @@ class domain(base_domain):
 
         restart_input_mesh = None
         if self.restart_input:
-            restart_input_mesh = os.path.join(self.exec_dir, 'restart', 'mesh_input')
+            restart_input_mesh = os.path.join(self.exec_dir, 'restart', 'mesh_input.csm')
             if not os.path.exists(restart_input_mesh):
                 restart_input_mesh = None
 
-        if restart_input_mesh is None or self.preprocess_on_restart:
+        if restart_input_mesh is None or self.preprocess_on_restart \
+           or self.restart_mesh_input:
             if self.mesh_input:
                 mesh_input = os.path.expanduser(self.mesh_input)
                 if not os.path.isabs(mesh_input):
                     mesh_input = os.path.join(self.case_dir, mesh_input)
-                link_path = os.path.join(self.exec_dir, 'mesh_input')
+
+                # Differentiate between a folder and file, since we now
+                # have a file extension
+                if os.path.isdir(mesh_input):
+                    link_path = os.path.join(self.exec_dir, 'mesh_input')
+                else:
+                    link_path = os.path.join(self.exec_dir, 'mesh_input.csm')
+
                 self.purge_result(link_path) # in case of previous run here
                 self.symlink(mesh_input, link_path)
         else:
@@ -926,11 +953,11 @@ class domain(base_domain):
                 mesh_id += 1
                 cmd = cmd + ['--log', 'preprocessor_%02d.log' % (mesh_id)]
                 cmd = cmd + ['--out', os.path.join('mesh_input',
-                                                   'mesh_%02d' % (mesh_id))]
+                                                   'mesh_%02d.csm' % (mesh_id))]
                 cmd = cmd + ['--case', 'preprocessor_%02d' % (mesh_id)]
             else:
                 cmd = cmd + ['--log']
-                cmd = cmd + ['--out', 'mesh_input']
+                cmd = cmd + ['--out', 'mesh_input.csm']
 
             cmd.append(mesh_path)
 
@@ -989,17 +1016,6 @@ class domain(base_domain):
             elif self.n_procs > 1:
                 args += ' --mpi'
 
-        # Add FSI coupling (using SALOME YACS) if required
-
-        if hasattr(self, 'fsi_aster'):
-            if not sys.platform.startswith('linux'):
-                raise RunCaseError(' Coupling with Code_Aster only avalaible on Linux.')
-            salome_module = os.path.join(self.package_compute.get_dir('libdir'),
-                                         'salome',
-                                         'libFSI_SATURNEExelib.so')
-            if os.path.isfile(salome_module):
-                args += ' --yacs-module=' + enquote_arg(salome_module)
-
         # Adjust for debugger if used
 
         if self.debug != None:
@@ -1039,10 +1055,10 @@ class domain(base_domain):
 
         purge_list = []
 
-        f = 'mesh_input'
         if not self.mesh_input and self.exec_solver:
-            if f in dir_files:
-                purge_list.append(f)
+            for f in ['mesh_input', 'mesh_input.csm']:
+                if f in dir_files:
+                    purge_list.append(f)
 
         for f in ['restart', 'partition_input']:
             if f in dir_files:
@@ -1050,10 +1066,10 @@ class domain(base_domain):
 
         # Determine files from this stage to ignore or to possibly remove
 
-        for f in [self.package.solver, self.package.runsolver]:
+        solver_name = os.path.basename(self.solver_path)
+        for f in [solver_name, self.package.runsolver]:
             if f in dir_files:
                 purge_list.append(f)
-        purge_list.extend(fnmatch.filter(dir_files, 'core*'))
 
         for f in purge_list:
             dir_files.remove(f)
@@ -1478,199 +1494,6 @@ class syrthes_domain(base_domain):
 
 #-------------------------------------------------------------------------------
 
-# Code_Aster coupling
-
-class aster_domain(base_domain):
-
-    def __init__(self,
-                 package,
-                 name = None,
-                 param = 'fsi.export'):
-
-        base_domain.__init__(self,
-                             package,
-                             name,
-                             n_procs_weight = None,
-                             n_procs_min = 1,
-                             n_procs_max = None)
-
-        # Get Code_Aster home
-
-        config = configparser.ConfigParser()
-        config.read(self.package.get_configfiles())
-        self.aster_home = config.get('install', 'aster')
-
-        # Additional parameters for Code_Saturne/Code_Aster coupling
-        # Directories, and files in case structure
-
-        self.param = param
-
-        self.case_dir = None
-        self.result_dir = None
-
-        self.exec_solver = True
-
-        self.conf = 'fsi_config.txt'
-        self.comm = None
-        self.mesh = None
-
-        self.n_procs_max = 1
-
-    #---------------------------------------------------------------------------
-
-    def set_case_dir(self, case_dir, staging_dir = None):
-
-        base_domain.set_case_dir(self, case_dir, staging_dir)
-
-        e = []
-        p = os.path.join(self.case_dir, self.param)
-        if os.path.isfile(p):
-            f = open(p, 'r')
-            e = f.readlines()
-            f.close
-        else:
-            err_str = 'Code_Aster export file \'' + p + '\' is not present.\n'
-            raise RunCaseError(err_str)
-
-        for l in e:
-            k = l.split()
-            if len(k) >= 3:
-                if k[1] == 'mpi_nbcpu':
-                    self.n_procs_min = int(k[2])
-                    self.n_procs_max = self.n_procs_min
-                if k[1] == 'conf':
-                    self.conf = k[2]
-                if k[1] == 'comm':
-                    self.comm = k[2]
-                elif k[1] == 'mail':
-                    self.mesh = k[2]
-
-        if self.comm == None:
-            err_str = '\n  A Code_Aster ".comm" file must be specified.\n'
-            raise RunCaseError(err_str)
-
-        if self.mesh == None:
-            err_str = '\n  A Code_Aster mesh file must be specified.\n'
-            raise RunCaseError(err_str)
-
-    #---------------------------------------------------------------------------
-
-    def prepare_data(self):
-        """
-        Copy solver data to the execution directory
-        """
-
-        if not self.exec_solver:
-            return
-
-        # Copy data files
-
-        for f in [self.param, self.mesh, self.comm]:
-            p = os.path.join(self.case_dir, f)
-            if os.path.isfile(p):
-                shutil.copy2(p, os.path.join(self.exec_dir, f))
-            else:
-                err_str = \
-                    '\n  The Code_Aster input file: "' + f + '"\n' \
-                    '  is not present or readable.\n'
-                raise RunCaseError(err_str)
-
-        # Create FSI specific config.txt file
-
-        if os.path.isabs(self.conf):
-            s.path = self.conf
-        else:
-            s_path = os.path.join(self.aster_home, 'share', 'aster', 'config.txt')
-        s = open(s_path, 'r')
-        template = s.read()
-        s.close()
-
-        import re
-
-        e_re = re.compile('profile.sh')
-        e_subst = os.path.join(self.aster_home, 'share', 'aster', 'profile.sh')
-        template = re.sub(e_re, e_subst, template)
-
-        e_re = re.compile('Execution/E_SUPERV.py')
-        e_subst = os.path.join(self.package.get_dir('pythondir'),
-                               'salome',
-                               'FSI_ASTER_component.py')
-        template = re.sub(e_re, e_subst, template)
-
-        s_path = os.path.join(self.exec_dir, os.path.basename(self.conf))
-        s = open(s_path, 'w')
-        s.write(template)
-        s.close()
-
-    #---------------------------------------------------------------------------
-
-    def generate_script(self):
-        """
-        Generate Code_Aster run script
-        """
-
-        s_path = os.path.join(self.exec_dir, "aster_by_yacs")
-        s = open(s_path, 'w')
-
-        from cs_exec_environment import write_shell_shebang
-        write_shell_shebang(s)
-
-        s.write('cd ..\n')
-        s.write('export PATH=' + os.path.join(self.aster_home, 'bin') + ':$PATH\n')
-        s.write('as_run ' + self.param + '\n')
-
-        s.close()
-
-        oldmode = (os.stat(s_path)).st_mode
-        newmode = oldmode | (stat.S_IXUSR)
-        os.chmod(s_path, newmode)
-
-    #---------------------------------------------------------------------------
-
-    def copy_results(self):
-        """
-        Retrieve results from the execution directory
-        """
-
-        # Determine all files present in execution directory
-
-        dir_files = os.listdir(self.exec_dir)
-
-        # Determine if we should purge the execution directory
-
-        purge = True
-
-        if self.error != '':
-            purge = False
-
-        # Determine files from this stage to ignore or to possibly remove
-
-        purge_list = []
-
-        purge_list.extend(fnmatch.filter(dir_files, 'core*'))
-
-        for f in purge_list:
-            dir_files.remove(f)
-            if purge:
-                self.purge_result(f)
-
-        for f in dir_files:
-            self.copy_result(f, purge)
-
-    #---------------------------------------------------------------------------
-
-    def summary_info(self, s):
-        """
-        Output summary data into file s
-        """
-
-        base_domain.summary_info(self, s)
-
-        if self.param:
-            s.write('    Code_Aster   : ' + self.param + '\n')
-
-#-------------------------------------------------------------------------------
-
 # Cathare coupling
 
 class cathare_domain(domain):
@@ -1715,9 +1538,6 @@ class cathare_domain(domain):
         # within its GUI and paramfile
 
         nept_paramfile = os.path.join(self.data_dir,
-                                      '../../',
-                                      self.neptune_cfd_dom,
-                                      'DATA',
                                       param)
 
         ofile = open(nept_paramfile,'r').readlines()
@@ -1731,10 +1551,8 @@ class cathare_domain(domain):
         nfile.close()
 
         if param != None:
-            root_str = self.package.code_name + '_GUI'
             version_str = '2.0'
             P = cs_xml_reader.Parser(os.path.join(self.data_dir, param),
-                                     root_str = root_str,
                                      version_str = version_str)
             params = P.getParams()
             for k in list(params.keys()):
@@ -1774,7 +1592,14 @@ class cathare_domain(domain):
             mesh_input = os.path.expanduser(self.mesh_input)
             if not os.path.isabs(mesh_input):
                 mesh_input = os.path.join(self.case_dir, mesh_input)
-            link_path = os.path.join(self.exec_dir, 'mesh_input')
+
+            # Differentiate between a folder and file, since we now
+            # have a file extension
+            if os.path.isdir(mesh_input):
+                link_path = os.path.join(self.exec_dir, 'mesh_input')
+            else:
+                link_path = os.path.join(self.exec_dir, 'mesh_input.csm')
+
             self.purge_result(link_path) # in case of previous run here
             self.symlink(mesh_input, link_path)
 
@@ -1841,6 +1666,19 @@ class cathare_domain(domain):
                     self.symlink(partition_input,
                                  os.path.join(self.exec_dir, 'partition_input'))
 
+    #---------------------------------------------------------------------------
+
+    def solver_command(self, **kw):
+        """
+        Returns a tuple indicating the script's working directory,
+        executable path, and associated command-line arguments.
+        """
+
+        wd, exec_path, args = super(cathare_domain, self).solver_command(kw)
+        args += " --c2-wrapper"
+
+        return wd, exec_path, args
+
 #-------------------------------------------------------------------------------
 
 # Coupling with a general Python-based code
@@ -1874,7 +1712,7 @@ class python_domain(base_domain):
 
         self.data_file = None
 
-        self.solver_path = 'python'
+        self.solver_path = self.package.config.python
         self.exec_solver = True
         self.nthreads = n_threads
 
@@ -1887,7 +1725,7 @@ class python_domain(base_domain):
         base_domain.set_case_dir(self, case_dir, staging_dir)
 
         self.data_dir = os.path.join(self.case_dir, "DATA")
-        self.src_dir  = os.path.join(self.case_dir, "SRC")
+        self.src_dir  = None
         self.result_dir = os.path.join(self.case_dir, "RESU")
 
     #---------------------------------------------------------------------------

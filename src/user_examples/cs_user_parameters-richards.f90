@@ -1,11 +1,10 @@
-
 !-------------------------------------------------------------------------------
 
 !VERS
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -183,7 +182,6 @@ use cstphy
 use entsor
 use parall
 use period
-use ihmpre
 use albase
 use ppppar
 use ppthch
@@ -314,7 +312,6 @@ subroutine user_darcy_ini1
 ! Module files
 !===============================================================================
 
-use ihmpre, only: iihmpr
 use entsor
 use darcy_module
 use cs_c_bindings

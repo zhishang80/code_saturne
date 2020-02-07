@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -228,9 +228,9 @@ _compute_poisson_cdovb(const cs_cdo_connect_t     *connect,
       for (int k = 0; k < 3; k++)
         vtx_gradient[v_id][k] += cdoq->dcell_vol[i]*cell_gradient[k];
 
-    } // Loop on cell vertices
+    } /* Loop on cell vertices */
 
-  } // Loop on cells
+  } /* Loop on cells */
 
   if (cs_glob_n_ranks > 1) {
 
@@ -297,9 +297,9 @@ _compute_poisson_cdovb(const cs_cdo_connect_t     *connect,
 
   if (count > 0) {
     cs_base_warn(__FILE__, __LINE__);
-    bft_printf(" %d degree(s) of freedom have a negative value and have been"
+    bft_printf(" %s: %d degrees of freedom have a negative value and have been"
                " modified\n"
-               " This may result from a bad mesh quality.", count);
+               " This may result from a bad mesh quality.", __func__, count);
   }
 
   /* Post-processing */
@@ -359,18 +359,18 @@ _compute_poisson_cdofb(const cs_cdo_connect_t     *connect,
       for (k = 0; k < 3; k++)
         cell_gradient[k] += dualedge_contrib*fq.unitv[k];
 
-    } // Loop on cell faces
+    } /* Loop on cell faces */
 
     for (k = 0; k < 3; k++)
       cell_gradient[k] *= inv_cell_vol;
 
     /* Compute the distance from the wall at this cell center */
     cs_real_t  tmp = _dp3(cell_gradient, cell_gradient) + 2*c_var[c_id];
-    assert(tmp >= 0.); // Sanity check
+    assert(tmp >= 0.); /* Sanity check */
 
     dist[c_id] = sqrt(tmp) - cs_math_3_norm(cell_gradient);
 
-  } // Loop on cells
+  } /* Loop on cells */
 
   cs_post_write_var(CS_POST_MESH_VOLUME,
                     CS_POST_WRITER_ALL_ASSOCIATED,

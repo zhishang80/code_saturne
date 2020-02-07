@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -295,41 +295,46 @@ typedef enum {
 
 /* Other types */
 
-typedef int                 cs_lnum_t;    /* Local integer index or number */
-typedef double              cs_coord_t;   /* Real number (coordinate value) */
+typedef int               cs_lnum_t;   /* Local integer index or number */
+typedef double            cs_coord_t;  /* Real number (coordinate value) */
 
 typedef int                 cs_int_t;    /* Fortran integer */
 typedef double              cs_real_t;   /* Fortran double precision */
 typedef char                cs_byte_t;   /* Byte (untyped memory unit) */
-typedef unsigned short int  cs_flag_t;   /* Flag for storing metadata */
+typedef unsigned short int  cs_flag_t;   /* Flag storing metadata */
 
 /* Vector or array block types */
 
 typedef int        cs_lnum_2_t[2];      /* Vector of 2 local numbers */
 typedef int        cs_lnum_3_t[3];      /* Vector of 3 local numbers */
 
-typedef double     cs_coord_3_t[3];     /* Vector of 3 real (coordinate)
-                                           values */
+typedef double     cs_coord_3_t[3];         /* Vector of 3 real (coordinate)
+                                               values */
 
-typedef cs_real_t  cs_real_2_t[2];      /* Vector of 2 real values */
-typedef cs_real_t  cs_real_3_t[3];      /* Vector of 3 real values */
-typedef cs_real_t  cs_real_4_t[4];      /* Vector of 4 real values */
-typedef cs_real_t  cs_real_6_t[6];      /* Vector of 6 real values
-                                           (for symmetric tensor) */
-typedef cs_real_t  cs_real_9_t[9];      /* Vector of 9 real values */
+typedef cs_real_t  cs_real_2_t[2];          /* Vector of 2 real values */
+typedef cs_real_t  cs_real_3_t[3];          /* Vector of 3 real values */
+typedef cs_real_t  cs_real_4_t[4];          /* Vector of 4 real values */
+typedef cs_real_t  cs_real_6_t[6];          /* Vector of 6 real values
+                                               (for symmetric tensor) */
+typedef cs_real_t  cs_real_9_t[9];          /* Vector of 9 real values */
+typedef cs_real_t  cs_real_10_t[10];        /* Vector of 10 real values */
 
-typedef cs_real_t  cs_real_33_t[3][3];  /* Matrix of 3x3 real values */
-typedef cs_real_t  cs_real_66_t[6][6];  /* Matrix of 6x6 real values */
-typedef cs_real_t  cs_real_99_t[9][9];  /* Matrix of 9x9 real values */
+typedef cs_real_t  cs_real_33_t[3][3];      /* Matrix of 3x3 real values */
+typedef cs_real_t  cs_real_66_t[6][6];      /* Matrix of 6x6 real values */
+typedef cs_real_t  cs_real_99_t[9][9];      /* Matrix of 9x9 real values */
 
-typedef cs_real_t  cs_real_34_t[3][4];  /* Matrix of 3x4 real values */
+typedef cs_real_t  cs_real_333_t[3][3][3];  /* tensor of 3x3x3 real values */
 
-typedef cs_real_t  cs_real_63_t[6][3];  /* Matrix of 6x3 real values */
+typedef cs_real_t  cs_real_34_t[3][4];      /* Matrix of 3x4 real values */
 
-typedef cs_real_33_t  cs_real_332_t[2];  /* vector of 2 3x3 matrices
-                                            of real values */
-typedef cs_real_66_t  cs_real_662_t[2];  /* vector of 2 6x6 matrices
-                                            of real values */
+typedef cs_real_t  cs_real_63_t[6][3];      /* Matrix of 6x3 real values */
+
+typedef cs_real_t  cs_real_96_t[9][6];      /* Matrix of 9x6 real values */
+
+typedef cs_real_33_t  cs_real_332_t[2];     /* vector of 2 3x3 matrices
+                                               of real values */
+typedef cs_real_66_t  cs_real_662_t[2];     /* vector of 2 6x6 matrices
+                                               of real values */
 
 typedef struct {
 
@@ -374,6 +379,7 @@ typedef struct {
 #    define CS_MPI_GNUM       MPI_UNSIGNED
 #  endif
 
+#  define CS_MPI_EFLAG    MPI_UNSIGNED       /* MPI type for cs_mflag_t type */
 #  define CS_MPI_FLAG     MPI_UNSIGNED_SHORT /* MPI type for cs_flag_t type */
 #  define CS_MPI_LNUM     MPI_INT            /* MPI type for cs_lnum_t type */
 #  define CS_MPI_COORD    MPI_DOUBLE         /* MPI type for cs_coord_t type */
@@ -403,7 +409,14 @@ typedef struct {
 # define CS_INT_TYPE      CS_INT32
 #endif
 
+#if (SIZEOF_INT == 8)
+# define CS_UINT_TYPE     CS_UINT64
+#else
+# define CS_UINT_TYPE     CS_UINT32
+#endif
+
 #define CS_FLAG_TYPE      CS_UINT16
+#define CS_EFLAG_TYPE     CS_UINT_TYPE
 #define CS_REAL_TYPE      CS_DOUBLE
 #define CS_COORD_TYPE     CS_DOUBLE
 

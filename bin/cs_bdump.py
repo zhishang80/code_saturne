@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -44,9 +44,9 @@ try:
 except Exception:
     import configparser  # Python3
 
-import cs_exec_environment
-import cs_case_domain
-import cs_case
+from code_saturne import cs_exec_environment
+from code_saturne import cs_case_domain
+from code_saturne import cs_case
 
 #-------------------------------------------------------------------------------
 # Process the command line arguments
@@ -143,7 +143,7 @@ def main(argv, pkg):
 if __name__ == '__main__':
 
     # Run package
-    from cs_package import package
+    from code_saturne.cs_package import package
     pkg = package()
 
     retval = main(sys.argv[1:], pkg)

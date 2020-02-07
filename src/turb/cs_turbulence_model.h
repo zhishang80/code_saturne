@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -68,6 +68,38 @@ enum {
   CS_TURB_SPALART_ALLMARAS = 70
 };
 
+/*----------------------------------------------------------------------------
+ * turbulence type of model
+ *----------------------------------------------------------------------------*/
+
+enum {
+/* We also use
+  CS_TURB_NONE = 0, */
+  CS_TURB_RANS = 1,
+  CS_TURB_LES = 2,
+  CS_TURB_HYBRID = 3
+};
+
+/*----------------------------------------------------------------------------
+ * turbulence order of model
+ *----------------------------------------------------------------------------*/
+
+enum {
+  CS_TURB_ALGEBRAIC = 0,
+  CS_TURB_FIRST_ORDER = 1,
+  CS_TURB_SECOND_ORDER = 2
+};
+
+/*----------------------------------------------------------------------------
+ * hybrid models
+ *----------------------------------------------------------------------------*/
+
+enum {
+  CS_HYBRID_NONE = 0,
+  CS_HYBRID_DES  = 1,
+  CS_HYBRID_DDES = 2,
+  CS_HYBRID_SAS  = 3
+};
 
 /* turbulence model general options descriptor */
 /*---------------------------------------------*/
@@ -82,7 +114,7 @@ typedef struct {
                             Linear Production (LP) correction
                           CS_TURB_K_EPSILON_LS: Launder-Sharma low Re
                             k-epsilon model
-                          CS_TURB_K_EPSILON_QUAD : Baglietto et al. low Re
+                          CS_TURB_K_EPSILON_QUAD: Baglietto et al. low Re
                             k epsilon model
                           CS_TURB_RIJ_EPSILON_LRR: Rij-epsilon (LRR)
                           CS_TURB_RIJ_EPSILON_SSG: Rij-epsilon (SSG)
@@ -98,6 +130,20 @@ typedef struct {
                           CS_TURB_SPALART_ALLMARAS: Spalart-Allmaras model */
   int           itytur;       /* class of turbulence model (integer value
                                  iturb/10) */
+  int           hybrid_turb;  /* Type of Hybrid Turbulence Model
+                                   - CS_HYBRID_NONE : No model
+                                   - CS_HYBRID_DES  : Detached Eddy Simulation
+                                   - CS_HYBRID_DDES : Delayed Detached Eddy Simulation
+                                   - CS_HYBRID_SAM  : Scale Adaptive Model */
+  int           type;  /* Type of turbulence modelling:
+                          - CS_TURB_NONE: No model
+                          - CS_TURB_RANS: RANS modelling
+                          - CS_TURB_LES: LES modelling
+                          - CS_TURB_HYBRID: RANS -- LES modelling */
+  int           order; /* Order of the turbulence model:
+                          - CS_TURB_ALGEBRAIC: 0th order algebraik model
+                          - CS_TURB_FIRST_ORDER: 1st order Eddy Viscosity type models
+                          - CS_TURB_SECOND_ORDER: 2nd order Differential Reynolds Stress type models */
 } cs_turb_model_t;
 
 
@@ -153,9 +199,6 @@ typedef struct {
                                  - 1: true (default)
                                  - 0: false */
   int           irijco;       /* coupled solving of Rij
-                                 - 1: true
-                                 - 0: false (default) */
-  int           iddes;        /* delayed detached eddy simulation
                                  - 1: true
                                  - 0: false (default) */
   int           irijnu;       /* pseudo eddy viscosity in the matrix of momentum
@@ -326,9 +369,28 @@ extern const double cs_turb_cthdfm;
  *============================================================================*/
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_turb_model
- *
- * needed to initialize structure with GUI
+ * Initialize turbulence model structures
+ *----------------------------------------------------------------------------*/
+
+void
+cs_turb_model_init(void);
+
+/*----------------------------------------------------------------------------
+ * Set type and order of the turbulence model
+ *----------------------------------------------------------------------------*/
+
+void
+cs_set_type_order_turbulence_model(void);
+
+/*----------------------------------------------------------------------------
+ * Set global pointer to turbulence model structure
+ *----------------------------------------------------------------------------*/
+
+void
+cs_set_glob_turb_model(void);
+
+/*----------------------------------------------------------------------------
+ * Provide write access to turbulence model structure
  *----------------------------------------------------------------------------*/
 
 cs_turb_model_t *
@@ -343,7 +405,7 @@ void
 cs_turb_compute_constants(void);
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_turb_ref_values
+ * Provide access to cs_glob_turb_ref_values
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/
@@ -352,7 +414,7 @@ cs_turb_ref_values_t *
 cs_get_glob_turb_ref_values(void);
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_turb_rans_model
+ * Provide access to cs_glob_turb_rans_model
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/
@@ -361,7 +423,7 @@ cs_turb_rans_model_t *
 cs_get_glob_turb_rans_model(void);
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_turb_les_model
+ * Provide access to cs_glob_turb_les_model
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/

@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -56,6 +56,18 @@ BEGIN_C_DECLS
  * Type definitions
  *============================================================================*/
 
+/*----------------------------------------------------------------------------
+ * Atmospheric nucleation models
+ *----------------------------------------------------------------------------*/
+
+enum {
+  CS_ATMO_NUC_OFF = 0,
+  CS_ATMO_NUC_PRUPPACHER_KLETT = 1,
+  CS_ATMO_NUC_COHARD = 2,
+  CS_ATMO_NUC_ABDUL_RAZZAK = 3
+};
+
+
 /*============================================================================
  * Type definitions
  *============================================================================*/
@@ -69,7 +81,27 @@ BEGIN_C_DECLS
  *----------------------------------------------------------------------------*/
 
 typedef struct {
+  /* Space and tim reference of the run */
+  /*! Starting year */
+  int syear;
+  /*! Starting quantile */
+  int squant;
+  /*! Starting hour */
+  int shour;
+  /*! Starting minute */
+  int smin;
+  /*! Starting second */
+  cs_real_t ssec;
+  /*! longitude of the domain origin */
+  cs_real_t longitute;
+  /*! latitude of the domain origin */
+  cs_real_t latitude;
+
+  /* Model options */
   bool compute_z_ground;
+  int sedimentation_model;
+  int deposition_model;
+  int nucleation_model;
 } cs_atmo_option_t;
 
 /*----------------------------------------------------------------------------
@@ -87,11 +119,12 @@ typedef struct {
   int n_species;
   int n_reactions;
   char *spack_file_name;
-  int *species_to_scalar_id;
+  int *species_to_scalar_id; // used only in fortran
+  int *species_to_field_id;
   /*! Molar mass of the chemical species (g/mol) */
   cs_real_t *molar_mass;
   int *chempoint;
-} cs_atmo_chemisty_t;
+} cs_atmo_chemistry_t;
 
 /*============================================================================
  * Static global variables
@@ -101,7 +134,7 @@ typedef struct {
 extern cs_atmo_option_t        *cs_glob_atmo_option;
 
 /* Pointer to atmo chemistry structure */
-extern cs_atmo_chemisty_t *cs_glob_atmo_chemistry;
+extern cs_atmo_chemistry_t *cs_glob_atmo_chemistry;
 
 /*============================================================================
  * Public function definitions
@@ -116,7 +149,7 @@ extern cs_atmo_chemisty_t *cs_glob_atmo_chemistry;
 /*----------------------------------------------------------------------------*/
 
 void
-cs_atmos_chemistry_set_spack_file_name(const char *file_name);
+cs_atmo_chemistry_set_spack_file_name(const char *file_name);
 
 /*----------------------------------------------------------------------------*/
 /*!

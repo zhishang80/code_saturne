@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -97,8 +97,9 @@ if (mod(ntcabs,nfatr1).eq.0.or.ideb.eq.0) then
 
   ideb = 1
 
-  heuray = float(shour) + float(smin)/60.d0+ssec/3600.d0                       &
-         + (ntcabs-1)*dtref/3600.d0
+  heuray = float(shour) + float(smin)/60.d0+ssec/3600.d0
+
+  if (idtvar.eq.0 .or. idtvar.eq.1) heuray = heuray + ttcabs/3600.d0
 
   if (ntcabs.le.2.or.isuite.eq.1) then
     ico2 = 1
@@ -130,7 +131,7 @@ if (mod(ntcabs,nfatr1).eq.0.or.ideb.eq.0) then
   if (ippmod(iatmos).eq.2) then
     call field_get_val_s(iliqwt, cpro_pcliq)
 
-    call field_get_val_prev_s(ivarfl(isca(itotwt)), cvara_totwt)
+    call field_get_val_prev_s(ivarfl(isca(iymw)), cvara_totwt)
     call field_get_val_prev_s(ivarfl(isca(intdrp)), cvara_ntdrp)
   endif
 

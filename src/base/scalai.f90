@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -62,6 +62,8 @@ use mesh
 use atchem
 use siream
 use field
+use cs_cf_bindings
+use cfpoin, only: hgn_relax_eq_st
 
 !===============================================================================
 
@@ -184,11 +186,6 @@ if (nscapp.gt.0) then
 
 !                QUE LES SCALAIRES SOIENT RESOLUS AVANT
 !                LEUR VARIANCE ASSOCIEE
-
-
-
-
-
 
 ! ---> Boucle sur les scalaires physiques particulieres.
 !      On peut imaginer a la place des resolutions couplees.
@@ -385,20 +382,22 @@ if (nscapp.gt.0) then
   enddo
 endif
 
-
-!     On calcule ici A, B, jxB
-
+! Electric arcs:
+! computation of magnetic field B and Laplace effect jxB
 if (ippmod(ielarc).ge.1 .and. iterns.eq.-1) then
-
-!     On utilise le  fait que les scalaires sont dans l'ordre
-!       H, PotR, [PotI], [A] pour faire le calcul de A, B, jxB
-!       apres la determination et le recalage de j
+  ! On utilise le  fait que les scalaires sont dans l'ordre
+  !   H, PotR, [PotI], [A] pour faire le calcul de A, B, jxB
+  !   apres la determination et le recalage de j
   iappel = 2
-
   call elflux(iappel)
-  !==========
-
 endif
+
+! Compressible homogeneous two-phase model:
+! return to equilibrium source term step for volume, mass, energy fractions
+if (ippmod(icompf).eq.1.and.hgn_relax_eq_st.ge.0) then
+  call cs_cf_hgn_source_terms_step
+endif
+
 
 !===============================================================================
 ! 3. TRAITEMENT DES SCALAIRES UTILISATEURS STANDARD

@@ -15,7 +15,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -48,16 +48,10 @@
 #include <string.h>
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
 #include "cs_headers.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -136,7 +130,7 @@ cs_user_mesh_warping(void)
 void
 cs_user_mesh_boundary(cs_mesh_t  *mesh)
 {
-
+  CS_UNUSED(mesh);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -150,7 +144,7 @@ cs_user_mesh_boundary(cs_mesh_t  *mesh)
 void
 cs_user_mesh_modify(cs_mesh_t  *mesh)
 {
-
+  CS_UNUSED(mesh);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -164,7 +158,7 @@ cs_user_mesh_modify(cs_mesh_t  *mesh)
 void
 cs_user_mesh_smoothe(cs_mesh_t  *mesh)
 {
-
+  CS_UNUSED(mesh);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -180,7 +174,7 @@ cs_user_mesh_smoothe(cs_mesh_t  *mesh)
 void
 cs_user_mesh_save(cs_mesh_t  *mesh)
 {
-
+  CS_UNUSED(mesh);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -196,7 +190,8 @@ void
 cs_user_mesh_bad_cells_tag(cs_mesh_t             *mesh,
                            cs_mesh_quantities_t  *mesh_quantities)
 {
-
+  CS_UNUSED(mesh);
+  CS_UNUSED(mesh_quantities);
 }
 
 /*----------------------------------------------------------------------------*/

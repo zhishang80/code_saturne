@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -79,7 +79,7 @@ integer          iel   , ifac
 integer          inc   , iccocg, f_id
 integer          mmprpl, nswrsp
 integer          imucpp, idftnp
-integer          nswrgp
+integer          imrgrp, nswrgp
 integer          icvflb, iescap, imligp, ircflp, iswdyp, isstpp, ischcp, iwarnp
 integer          ivoid(1)
 integer          init, counter
@@ -132,6 +132,12 @@ call field_get_key_struct_var_cal_opt(f_id, vcopt)
 
 call field_get_val_s(f_id, cvar_var)
 call field_get_val_prev_s(f_id, cvara_var)
+
+! Always start from a 0 previous wall distance
+do iel = 1, ncel
+  cvara_var(iel) = 0.d0
+enddo
+call synsce(cvara_var)
 
 !===============================================================================
 ! 2. Boundary conditions
@@ -225,6 +231,7 @@ iconvp = vcopt%iconv
 idiffp = vcopt%idiff
 idftnp = vcopt%idften
 nswrsp = vcopt%nswrsm
+imrgrp = vcopt%imrgra
 nswrgp = vcopt%nswrgr
 imligp = vcopt%imligr
 ircflp = vcopt%ircflu
@@ -262,7 +269,7 @@ enddo
 
 call codits &
  ( idtvar , init, f_id   , iconvp , idiffp , ndircp ,             &
-   imrgra , nswrsp , nswrgp , imligp , ircflp ,                   &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp ,                   &
    ischcp , isstpp , iescap , imucpp , idftnp , iswdyp ,          &
    iwarnp , normp  ,                                              &
    blencp , epsilp , epsrsp , epsrgp , climgp , extrap ,          &
@@ -333,7 +340,7 @@ allocate(grad(3,ncelet))
 inc    = 1
 iccocg = 1
 
-call field_gradient_scalar(f_id, 0, imrgra, inc, iccocg, grad)
+call field_gradient_scalar(f_id, 0, 0, inc, iccocg, grad)
 
 counter = 0
 do iel = 1, ncel

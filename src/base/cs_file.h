@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -92,14 +92,14 @@ typedef enum {
 
 } cs_file_access_t;
 
-/* MPI-IO file positionning methods */
+/* MPI-IO file positioning methods */
 
 typedef enum {
 
   CS_FILE_MPI_EXPLICIT_OFFSETS,
   CS_FILE_MPI_INDIVIDUAL_POINTERS
 
-} cs_file_mpi_positionning_t;
+} cs_file_mpi_positioning_t;
 
 /* Offset for file position indicator (int64_t in C99) */
 
@@ -117,9 +117,9 @@ typedef long cs_file_off_t;
 
 extern const char  *cs_file_access_name[];
 
-/* names associated with MPI-IO positionning */
+/* names associated with MPI-IO positioning */
 
-extern const char  *cs_file_mpi_positionning_name[];
+extern const char  *cs_file_mpi_positioning_name[];
 
 /*=============================================================================
  * Public function prototypes
@@ -133,7 +133,7 @@ extern const char  *cs_file_mpi_positionning_name[];
  *
  * parameters:
  *   name       <-- file name
- *   mode       <-- file acces mode: read, write, or append
+ *   mode       <-- file access mode: read, write, or append
  *   method     <-- file access method
  *   hints      <-- associated hints for MPI-IO, or MPI_INFO_NULL
  *   block_comm <-- handle to MPI communicator used for distributed file
@@ -174,7 +174,7 @@ cs_file_open(const char        *name,
  *
  * parameters:
  *   name    <-- file name
- *   mode    <-- file acces mode: read, write, or append
+ *   mode    <-- file access mode: read, write, or append
  *
  * returns:
  *   pointer to cs_file_t file descriptor (NULL in case of failure);
@@ -194,7 +194,7 @@ cs_file_open_default(const char        *name,
  * modified by cs_file_set_swap_endian().
  *
  * \param[in]  name   file name
- * \param[in]  mode   file acces mode: read, write, or append
+ * \param[in]  mode   file access mode: read, write, or append
  *
  * \return pointer to cs_file_t file descriptor (NULL in case of failure);
  *   currently, errors are fatal.
@@ -612,19 +612,19 @@ cs_file_block_comm(int       block_rank_step,
 #endif /* defined(HAVE_MPI) */
 
 /*----------------------------------------------------------------------------
- * Get the positionning method for MPI-IO
+ * Get the positioning method for MPI-IO
  *
- * For details, see cs_file_set_mpi_io_positionning().
+ * For details, see cs_file_set_mpi_io_positioning().
  *
  * returns:
- *   positionning method for MPI-IO
+ *   positioning method for MPI-IO
  *----------------------------------------------------------------------------*/
 
-cs_file_mpi_positionning_t
-cs_file_get_mpi_io_positionning(void);
+cs_file_mpi_positioning_t
+cs_file_get_mpi_io_positioning(void);
 
 /*----------------------------------------------------------------------------
- * Set the positionning method for MPI-IO
+ * Set the positioning method for MPI-IO
  *
  * It is not always known whether a performance or robustness difference is
  * to be expected using explicit file offsets or individual file pointers.
@@ -637,11 +637,11 @@ cs_file_get_mpi_io_positionning(void);
  * showing this would be useful.
  *
  * parameters:
- *   positionning <-- chosen positionning method for MPI-IO
+ *   positioning <-- chosen positioning method for MPI-IO
  *----------------------------------------------------------------------------*/
 
 void
-cs_file_set_mpi_io_positionning(cs_file_mpi_positionning_t  positionning);
+cs_file_set_mpi_io_positioning(cs_file_mpi_positioning_t  positioning);
 
 /*----------------------------------------------------------------------------
  * Print information on default options for file access.
@@ -830,6 +830,21 @@ cs_file_size(const char  *path);
 
 int
 cs_file_remove(const char  *path);
+
+/*----------------------------------------------------------------------------
+ * Check if a file name ends with a specific string (extension)
+ *
+ * parameters
+ *   path <-- file path.
+ *   end  <-- string to compare
+ *
+ * returns:
+ *   1 in case of success, 0 otherwise.
+ *----------------------------------------------------------------------------*/
+
+int
+cs_file_endswith(const char *path,
+                 const char *end);
 
 /*----------------------------------------------------------------------------*/
 

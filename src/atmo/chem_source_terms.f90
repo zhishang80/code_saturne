@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -124,13 +124,14 @@ do iel = 1, ncel
       call fexchem_3 (nespg,nrg,dlconc,rk,source,conv_factor,dchema)
     endif
   else if (ichemistry.eq.4) then
-    call fexchem (nespg,nrg,dlconc,rk,source,conv_factor,dchema)
+    call fexchem_4 (nespg,nrg,dlconc,rk,source,conv_factor,dchema)
   endif
 
   ! Adding source term to crvexp
   ! The first nespg user scalars are supposed to be chemical species
   ! TODO: try to implicit the ST
-  crvexp(iel) = crvexp(iel)+dchema(chempoint(iscal))*rom*volume(iel)
+  crvexp(iel) = crvexp(iel) + rom * cell_f_vol(iel) &
+              * dchema(chempoint(iscal-isca_chem(1)+1))
 
 enddo
 

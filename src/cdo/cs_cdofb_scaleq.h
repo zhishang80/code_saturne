@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -191,6 +191,30 @@ cs_cdofb_scaleq_init_values(cs_real_t                     t_eval,
                             const cs_equation_param_t    *eqp,
                             cs_equation_builder_t        *eqb,
                             void                         *context);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Build and solve the linear system arising from a scalar steady-state
+ *         convection/diffusion/reaction equation with a CDO-Fb scheme
+ *         Use for interpolation purpose from cell values to face values.
+ *         One works cellwise and then process to the assembly
+ *
+ * \param[in]      mesh         pointer to a cs_mesh_t structure
+ * \param[in]      cell_values  array of cell values
+ * \param[in]      field_id     id of the variable field
+ * \param[in]      eqp          pointer to a cs_equation_param_t structure
+ * \param[in, out] eqb          pointer to a cs_equation_builder_t structure
+ * \param[in, out] context      pointer to cs_cdofb_scaleq_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cdofb_scaleq_interpolate(const cs_mesh_t            *mesh,
+                            const cs_real_t            *cell_values,
+                            const int                   field_id,
+                            const cs_equation_param_t  *eqp,
+                            cs_equation_builder_t      *eqb,
+                            void                       *context);
 
 /*----------------------------------------------------------------------------*/
 /*!

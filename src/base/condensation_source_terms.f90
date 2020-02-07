@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -35,7 +35,6 @@
 !   mode          name          role
 !------------------------------------------------------------------------------
 !> \param[in]     ncelet        number of extended (real + ghost) cells
-!> \param[in]     ncel          number of cells
 !> \param[in]     iscal         scalar number
 !> \param[in]     nfbpcd        number of faces with condensation source terms
 !> \param[in]     ifbpcd        index of faces with condensation source terms
@@ -57,7 +56,7 @@
 !______________________________________________________________________________
 
 subroutine condensation_source_terms &
-  (ncelet  , ncel    ,                                   &
+  (ncelet  ,                                             &
    iscal   ,                                             &
    nfbpcd  , ifbpcd  , itypcd ,                          &
    ncmast  , ltmast  , itypst ,                          &

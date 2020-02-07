@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -44,6 +44,17 @@ BEGIN_C_DECLS
 /*============================================================================
  * Type definitions
  *============================================================================*/
+
+/*----------------------------------------------------------------------------
+ * Time stepping algorithme
+ *----------------------------------------------------------------------------*/
+
+enum {
+  CS_STEADY = -1,
+  CS_CONSTANT_TIME_STEP = 0,
+  CS_ADAPTATIVE_TIME_STEP = 1,
+  CS_LOCAL_TIME_STEP = 2
+};
 
 /* time step descriptor */
 /*----------------------*/
@@ -84,10 +95,10 @@ typedef struct {
                        - 1: true. */
 
   int       idtvar; /* Option for a variable time step
-                       - -1: steady algorithm
-                       -  0: constant time step
-                       -  1: time step constant in space but variable in time
-                       -  2: variable time step in space and in time. */
+                       - CS_STEADY: steady algorithm
+                       - CS_CONSTANT_TIME_STEP: constant time step
+                       - CS_ADAPTATIVE_TIME_STEP: time step constant in space but variable in time
+                       - CS_LOCAL_TIME_STEP: variable time step in space and in time. */
 
   double    coumax; /* Maximum Courant number (when idtvar is
                        different from 0). */
@@ -95,16 +106,19 @@ typedef struct {
   double    cflmmx; /* Maximum Courant number for the continuity equation
                        in compressible model. */
 
-  double    foumax; /* Maximum Fourier number (when idtvar is different from 0). */
+  double    foumax; /* Maximum Fourier number
+                       (when idtvar is different from CS_CONSTANT_TIME_STEP). */
 
   double    varrdt; /* Relative allowed variation of dt (when idtvar is
-                       different from 0). */
+                       different from CS_CONSTANT_TIME_STEP). */
 
-  double    dtmin;  /* Minimum value of dt (when idtvar is different from 0).
+  double    dtmin;  /* Minimum value of dt (when idtvar is different
+                       from CS_CONSTANT_TIME_STEP).
                        Take
                        dtmin = min(ld/ud, sqrt(lt/(gdelta rho/rho)), ...). */
 
-  double    dtmax;  /* Maximum value of dt (when idtvar is different from 0).
+  double    dtmax;  /* Maximum value of dt (when idtvar is different
+                       from CS_CONSTANT_TIME_STEP).
                        Take
                        dtmax = max(ld/ud, sqrt(lt/(gdelta rho/rho)), ...). */
 
@@ -127,7 +141,7 @@ extern const cs_time_step_options_t  *cs_glob_time_step_options;
  *============================================================================*/
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_time_step
+ * Provide access to cs_glob_time_step
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/
@@ -136,7 +150,7 @@ cs_time_step_t *
 cs_get_glob_time_step(void);
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_time_step_options
+ * Provide access to cs_glob_time_step_options
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/

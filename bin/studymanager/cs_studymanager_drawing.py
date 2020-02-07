@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -190,6 +190,15 @@ class Plot(object):
                 j += 1
                 line = line.replace(", ", " ") # compatibility with CSV
                 line = line.lstrip()
+
+                # for CSV files, try to detect a header to skip it
+                if j == 1:
+                    try:
+                        val = float(line.split()[0])
+                    # if it can not be converted to float
+                    except ValueError as not_float:
+                        continue
+
                 if xcol:
                     self.xspan.append(float(line.split()[xcol-1])*xscale + xplus)
                 else:
@@ -214,19 +223,38 @@ class Plot(object):
 
             if len(errorbar) == 2:
                 error = [ [], [] ]
+                j = 0
                 for line in self.f.readlines():
-                    line = line.replace(", ", " ") # compatibility with CSV
                     line = line.lstrip()
                     if line and line[0] != '#':
+                        j += 1
+                        line = line.replace(", ", " ") # compatibility with CSV
+                        line = line.lstrip()
+                        # for CSV files, try to detect a header to skip it
+                        if j == 1:
+                            try:
+                                val = float(line.split()[0])
+                            except ValueError as not_float:
+                                continue
                         error[0].append(float(line.split()[errorbar[0]-1]))
                         error[1].append(float(line.split()[errorbar[1]-1]))
                 return error
 
             elif len(errorbar) == 1:
                 error = []
+                j = 0
                 for line in self.f.readlines():
                     line = line.lstrip()
                     if line and line[0] != '#':
+                        j += 1
+                        line = line.replace(", ", " ") # compatibility with CSV
+                        line = line.lstrip()
+                        # for CSV files, try to detect a header to skip it
+                        if j == 1:
+                            try:
+                                val = float(line.split()[0])
+                            except ValueError as not_float:
+                                continue
                         error.append(float(line.split()[errorbar[0]-1]))
                 return error
         elif errorp:
@@ -236,10 +264,19 @@ class Plot(object):
                 sys.exit(1)
             else:
                 error = []
+                j = 0
                 for line in self.f.readlines():
-                    line = line.replace(", ", " ") # compatibility with CSV
                     line = line.lstrip()
                     if line and line[0] != '#':
+                        j += 1
+                        line = line.replace(", ", " ") # compatibility with CSV
+                        line = line.lstrip()
+                        # for CSV files, try to detect a header to skip it
+                        if j == 1:
+                            try:
+                                val = float(line.split()[0])
+                            except ValueError as not_float:
+                                continue
                         error.append(errorp/100.*float(line.split()[col-1]))
                 return error
 

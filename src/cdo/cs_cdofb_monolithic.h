@@ -3,13 +3,14 @@
 
 /*============================================================================
  * Build an algebraic CDO face-based system for the Navier-Stokes equations
- * and solved it with a monolithic algorithm
+ * and solved it as one block (monolithic approach of the velocity-pressure
+ * coupling)
  *============================================================================*/
 
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -88,6 +89,7 @@ cs_cdofb_monolithic_get_face_velocity(void    *scheme_context)
 /*!
  * \brief  Set shared pointers from the main domain members
  *
+ * \param[in]  nsp         pointer to NavSto parameter settings
  * \param[in]  mesh        pointer to a cs_mesh_t structure
  * \param[in]  quant       additional mesh quantities struct.
  * \param[in]  connect     pointer to a \ref cs_cdo_connect_t struct.
@@ -96,10 +98,22 @@ cs_cdofb_monolithic_get_face_velocity(void    *scheme_context)
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdofb_monolithic_init_common(const cs_mesh_t               *mesh,
+cs_cdofb_monolithic_init_common(const cs_navsto_param_t       *nsp,
+                                const cs_mesh_t               *mesh,
                                 const cs_cdo_quantities_t     *quant,
                                 const cs_cdo_connect_t        *connect,
                                 const cs_time_step_t          *time_step);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Free shared pointers with lifecycle dedicated to this file
+ *
+ * \param[in]  nsp         pointer to NavSto parameter settings
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cdofb_monolithic_finalize_common(const cs_navsto_param_t       *nsp);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -133,21 +147,6 @@ cs_cdofb_monolithic_free_scheme_context(void   *scheme_context);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Start setting-up the Navier-Stokes equations when a monolithic
- *         algorithm is used to coupled the system.
- *         No mesh information is available at this stage
- *
- * \param[in]      nsp      pointer to a \ref cs_navsto_param_t structure
- * \param[in, out] context  pointer to a context structure cast on-the-fly
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_cdofb_monolithic_set_sles(const cs_navsto_param_t    *nsp,
-                             void                       *context);
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief  Solve the steady Navier-Stokes system with a CDO face-based scheme
  *         using a monolithic approach.
  *
@@ -158,14 +157,33 @@ cs_cdofb_monolithic_set_sles(const cs_navsto_param_t    *nsp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdofb_monolithic_compute_steady(const cs_mesh_t            *mesh,
-                                   const cs_navsto_param_t    *nsp,
-                                   void                       *scheme_context);
+cs_cdofb_monolithic_steady(const cs_mesh_t            *mesh,
+                           const cs_navsto_param_t    *nsp,
+                           void                       *scheme_context);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Solve the steady Navier-Stokes system with a CDO face-based scheme
+ *         using a monolithic approach and Picard iterations to solve the
+ *         on-linearities arising from the advection term
+ *
+ * \param[in]      mesh            pointer to a \ref cs_mesh_t structure
+ * \param[in]      nsp             pointer to a \ref cs_navsto_param_t structure
+ * \param[in, out] scheme_context  pointer to a structure cast on-the-fly
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cdofb_monolithic_steady_nl(const cs_mesh_t           *mesh,
+                              const cs_navsto_param_t   *nsp,
+                              void                      *scheme_context);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Solve the unsteady Navier-Stokes system with a CDO face-based scheme
- *         using a monolithic approach and an Euler time scheme.
+ *         using a monolithic approach.
+ *         According to the settings, this function can handle either an
+ *         implicit Euler time scheme or more generally a theta time scheme.
  *
  * \param[in] mesh            pointer to a \ref cs_mesh_t structure
  * \param[in] nsp             pointer to a \ref cs_navsto_param_t structure
@@ -174,25 +192,29 @@ cs_cdofb_monolithic_compute_steady(const cs_mesh_t            *mesh,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdofb_monolithic_compute_implicit(const cs_mesh_t         *mesh,
-                                     const cs_navsto_param_t *nsp,
-                                     void                    *scheme_context);
+cs_cdofb_monolithic(const cs_mesh_t          *mesh,
+                    const cs_navsto_param_t  *nsp,
+                    void                     *scheme_context);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Solve the unsteady Navier-Stokes system with a CDO face-based scheme
- *         using a monolithic approach and a theta time scheme.
+ *         using a monolithic approach.
+ *         According to the settings, this function can handle either an
+ *         implicit Euler time scheme or more generally a theta time scheme.
+ *         Rely on Picard iterations to solve the on-linearities arising from
+ *         the advection term
  *
- * \param[in] mesh            pointer to a \ref cs_mesh_t structure
- * \param[in] nsp             pointer to a \ref cs_navsto_param_t structure
- * \param[in] scheme_context  pointer to a structure cast on-the-fly
+ * \param[in]      mesh            pointer to a \ref cs_mesh_t structure
+ * \param[in]      nsp             pointer to a \ref cs_navsto_param_t structure
+ * \param[in, out] scheme_context  pointer to a structure cast on-the-fly
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdofb_monolithic_compute_theta(const cs_mesh_t         *mesh,
-                                  const cs_navsto_param_t *nsp,
-                                  void                    *scheme_context);
+cs_cdofb_monolithic_nl(const cs_mesh_t           *mesh,
+                       const cs_navsto_param_t   *nsp,
+                       void                      *scheme_context);
 
 /*----------------------------------------------------------------------------*/
 

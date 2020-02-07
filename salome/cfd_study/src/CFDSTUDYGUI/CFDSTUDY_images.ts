@@ -82,6 +82,30 @@
             <translation>LaunchGUI.png</translation>
         </message>
         <message>
+            <source>CFDSTUDY_COMPILER_OBJ_ICON</source>
+            <translation>compiler-icon.png</translation>
+        </message>
+        <message>
+            <source>CFDSTUDY_FILE_EDITOR_OBJ_ICON</source>
+            <translation>editor-icon.png</translation>
+        </message>
+        <message>
+            <source>CFDSTUDY_FILE_VIEWER_OBJ_ICON</source>
+            <translation>viewer-icon.png</translation>
+        </message>
+        <message>
+            <source>CFDSTUDY_FILE_TRANSFER_OBJ_ICON</source>
+            <translation>file_transfer.png</translation>
+        </message>
+        <message>
+            <source>CFDSTUDY_SOLVER_LAUNCH_ICON</source>
+            <translation>run_button.png</translation>
+        </message>
+        <message>
+            <source>CFDSTUDY_SOLVER_LAUNCH_OT_ICON</source>
+            <translation>ot-logo.png</translation>
+        </message>
+        <message>
             <source>MESH_OBJ_ICON</source>
             <translation>mesh.png</translation>
         </message>
@@ -185,10 +209,6 @@
         <message>
             <source>SOLVER_SAVE_ACTION_ICON</source>
             <translation>Save.png</translation>
-        </message>
-        <message>
-            <source>SOLVER_SAVEAS_ACTION_ICON</source>
-            <translation>SaveAs.png</translation>
         </message>
     </context>
 </TS>

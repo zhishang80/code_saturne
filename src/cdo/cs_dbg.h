@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -37,6 +37,7 @@
 #include "cs_defs.h"
 #include "cs_equation_param.h"
 #include "cs_math.h"
+#include "cs_matrix.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -96,17 +97,17 @@ cs_dbg_check_hmg_dirichlet_cw(const char           *fname,
  */
 /*----------------------------------------------------------------------------*/
 
-_Bool
+bool
 cs_dbg_cw_test(const cs_equation_param_t   *eqp,
                const cs_cell_mesh_t        *cm,
                const cs_cell_sys_t         *csys);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief   Print a cs_sdm_t structure which is defined by block
+ * \brief   Print an array.
  *          Print into the file f if given otherwise open a new file named
  *          fname if given otherwise print into the standard output
- *          The usage of threshold allows one to compare more easier matrices
+ *          The usage of threshold allows one to compare more easier arrays.
  *          without taking into account numerical roundoff.
  *
  * \param[in]  fp         pointer to a file structure or NULL
@@ -181,6 +182,19 @@ cs_dbg_iarray_to_listing(const char        *header,
                          const cs_lnum_t    size,
                          const cs_lnum_t    array[],
                          int                n_cols);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  In debug mode, dump a linear system. Case of scalar-valued entries.
+ *
+ * \param[in] eqname     name of the equation related to the current system
+ * \param[in] matrix     pointer to the matrix to dump
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_dbg_dump_local_scalar_msr_matrix(const char          *name,
+                                    const cs_matrix_t   *matrix);
 
 /*----------------------------------------------------------------------------*/
 /*!

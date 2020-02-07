@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -40,7 +40,6 @@ use cstnum
 use ppppar
 use ppthch
 use ppincl
-use ihmpre
 use field
 use atincl
 
@@ -75,13 +74,17 @@ if (ippmod(iatmos).eq.2) then
   call add_property_field_1d('liquid_water', 'LiqWater', iliqwt)
 
   ! sedimentation and deposition model enabled
-  if (modsedi.eq.1.and.moddep.gt.0) then
+  if (modsedi.ge.1.and.moddep.gt.0) then
     idim1  = 1
     itycat = FIELD_INTENSIVE + FIELD_PROPERTY
     ityloc = 3 ! boundary faces
 
     ! wall friction velocity if not already created
     call field_find_or_create('ustar', itycat, ityloc, idim1, f_id)
+
+    ! boundary roughness
+    call add_boundary_property_field_owner('boundary_roughness',  &
+                                           'Boundary Roughness', f_id)
 
     ! boundary thermal roughness
     call add_boundary_property_field_owner('boundary_thermal_roughness',  &

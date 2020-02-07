@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -34,10 +34,11 @@ endif
 
 AM_CPPFLAGS = \
 -I$(top_srcdir)/src/alge \
--I$(top_srcdir)/src/bft \
--I$(top_srcdir)/src/fvm \
+-I$(top_srcdir)/src/bft  \
+-I$(top_srcdir)/src/fvm  \
 -I$(top_srcdir)/src/base \
 -I$(top_srcdir)/src/mesh \
+-I$(top_srcdir)/src/turb \
 $(CPPFLAGS_PLE) \
 $(PETSC_CPPFLAGS) $(MPI_CPPFLAGS)
 
@@ -54,12 +55,15 @@ cs_cdo_advection.h \
 cs_cdo_bc.h \
 cs_cdo_connect.h \
 cs_cdo_diffusion.h \
+cs_cdo_field_interpolation.h \
 cs_cdo_local.h \
 cs_cdo_main.h \
 cs_cdo_quantities.h \
 cs_cdo_time.h \
 cs_cdofb_ac.h \
+cs_cdoeb_vecteq.h \
 cs_cdofb_monolithic.h \
+cs_cdofb_monolithic_sles.h \
 cs_cdofb_navsto.h \
 cs_cdofb_predco.h \
 cs_cdofb_priv.h \
@@ -90,9 +94,11 @@ cs_hho_scaleq.h \
 cs_hho_vecteq.h \
 cs_hho_stokes.h \
 cs_hodge.h \
+cs_maxwell.h \
 cs_mesh_deform.h \
 cs_navsto_coupling.h \
 cs_navsto_param.h \
+cs_navsto_sles.h \
 cs_navsto_system.h \
 cs_param.h \
 cs_param_cdo.h \
@@ -101,8 +107,10 @@ cs_quadrature.h \
 cs_reco.h \
 cs_scheme_geometry.h \
 cs_sdm.h \
+cs_solidification.h \
 cs_source_term.h \
 cs_static_condensation.h \
+cs_thermal_system.h \
 cs_walldistance.h \
 cs_xdef.h \
 cs_xdef_cw_eval.h \
@@ -119,12 +127,15 @@ cs_cdo_advection.c \
 cs_cdo_bc.c \
 cs_cdo_connect.c \
 cs_cdo_diffusion.c \
+cs_cdo_field_interpolation.c \
 cs_cdo_local.c \
 cs_cdo_main.c \
 cs_cdo_quantities.c \
 cs_cdo_time.c \
+cs_cdoeb_vecteq.c \
 cs_cdofb_ac.c \
 cs_cdofb_monolithic.c \
+cs_cdofb_monolithic_sles.c \
 cs_cdofb_navsto.c \
 cs_cdofb_predco.c \
 cs_cdofb_scaleq.c \
@@ -152,9 +163,11 @@ cs_hho_scaleq.c \
 cs_hho_vecteq.c \
 cs_hho_stokes.c \
 cs_hodge.c \
+cs_maxwell.c \
 cs_mesh_deform.c \
 cs_navsto_coupling.c \
 cs_navsto_param.c \
+cs_navsto_sles.c \
 cs_navsto_system.c \
 cs_param.c \
 cs_param_cdo.c \
@@ -163,8 +176,10 @@ cs_quadrature.c \
 cs_reco.c \
 cs_scheme_geometry.c \
 cs_sdm.c \
+cs_solidification.c \
 cs_source_term.c \
 cs_static_condensation.c \
+cs_thermal_system.c \
 cs_walldistance.c \
 cs_xdef.c \
 cs_xdef_cw_eval.c \

@@ -4,7 +4,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -413,13 +413,13 @@ use cstnum
 use entsor
 use parall
 use period
-use ihmpre
 use ppppar
 use ppthch
 use coincl
 use cpincl
 use ppincl
 use ppcpfu
+use atchem
 use atincl
 use atsoil
 use ctincl
@@ -452,7 +452,6 @@ integer, allocatable, dimension(:) :: lstelt
 integer          ielt, nlelt, ifac
 
 !===============================================================================
-
 
 !===============================================================================
 ! Initialization

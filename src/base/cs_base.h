@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -163,6 +163,20 @@ void
 cs_base_mpi_init(int    *argc,
                  char  **argv[]);
 
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Return a reduced communicator matching a multiple of the total
+ *        number of ranks.
+ *
+ * This updates the number of reduced communicators if necessary.
+ *
+ * \param[in]  n_ranks  number of ranks of reduced communicator
+ */
+/*----------------------------------------------------------------------------*/
+
+MPI_Comm
+cs_base_get_rank_step_comm(int  rank_step);
+
 #endif /* defined(HAVE_MPI) */
 
 /*----------------------------------------------------------------------------
@@ -310,7 +324,7 @@ cs_base_warn(const char  *file_name,
  * Define a function to be called when entering cs_exit() or bft_error().
  *
  * Compared to the C atexit(), only one function may be called (latest
- * setting wins), but the function is called slighty before exit,
+ * setting wins), but the function is called slightly before exit,
  * so it is well adapted to cleanup such as flushing of non-C API logging.
  *
  * parameters:
@@ -449,7 +463,7 @@ cs_base_dlopen(const char *filename);
 /*!
  * \brief Load a plugin's dynamic library
  *
- * This function is similar to \ref cs_base_dlopen, execpt that only
+ * This function is similar to \ref cs_base_dlopen, except that only
  * the base plugin file name (with no extension) needs to be given.
  * It is assumed the file is available in the code's "pkglibdir" directory,
  *

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -182,7 +182,7 @@ if test "x$cs_gcc" = "xgcc"; then
   test -n "$cs_cc_vers_patch" || cs_cc_vers_patch=0
 
   # Default compiler flags
-  cflags_default="-std=c99 -fms-extensions -funsigned-char -pedantic -W -Wall -Wshadow -Wpointer-arith -Wcast-qual -Wcast-align -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs -Wunused -Wfloat-equal -Werror=implicit-function-declaration"
+  cflags_default="-std=c99 -fms-extensions -funsigned-char -W -Wall -Wshadow -Wpointer-arith -Wcast-qual -Wcast-align -Wwrite-strings -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs -Wunused -Wfloat-equal -Werror=implicit-function-declaration"
   cflags_default_dbg="-g"
   cflags_default_opt="-O2"
   cflags_default_hot="-O3"
@@ -218,7 +218,7 @@ if test "x$cs_gcc" = "xgcc"; then
     gcc-4.[012345678]*)
       ;;
     *)
-      cflags_default="$cflags_default -fdiagnostics-color=auto"
+      cflags_default="$cflags_default -fdiagnostics-color=auto -Werror=format-security"
       ;;
   esac
 
@@ -238,9 +238,8 @@ if test "x$cs_gcc" = "xgcc"; then
   esac
 
   case "$host_os" in
-    mingw32)
+    mingw64)
       cflags_default="`echo $cflags_default | sed -e 's/-std=c99/-std=gnu99/g'`"
-      cflags_default="$cflags_default -Wno-format -Wno-pedantic-ms-format"
       ;;
   esac
 
@@ -556,7 +555,7 @@ if test "x$cs_gxx" = "xg++"; then
     g++-[45]*)
       ;;
     *)
-      cxxflags_default="$cxxflags_default -Wmisleading-indentation -Wduplicated-cond"
+      cxxflags_default="$cxxflags_default -std=c++11 -Wmisleading-indentation -Wduplicated-cond"
       ;;
   esac
 
@@ -600,7 +599,7 @@ elif test "x$cs_gxx" = "xicpc" -o "x$cs_gxx" = "xicc"; then
   test -n "$cs_cxx_vers_patch" || cs_cxx_vers_patch=0
 
   # Default compiler flags
-  cxxflags_default="-Wall -Wcheck -Wshadow -Wpointer-arith -Wmissing-prototypes -Wuninitialized -Wunused"
+  cxxflags_default="-std=c++11 -Wall -Wcheck -Wshadow -Wpointer-arith -Wmissing-prototypes -Wuninitialized -Wunused"
   cxxflags_default_dbg="-g -O0 -traceback -w2 -Wp64 -ftrapuv"
   cxxflags_default_opt="-O2"
   cxxflags_default_hot="-O3"

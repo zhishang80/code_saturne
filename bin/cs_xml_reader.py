@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -107,7 +107,6 @@ class Parser:
 
     def __init__(self,
                  fileName,
-                 root_str = None,
                  version_str = None):
 
         self.dict = {}
@@ -129,13 +128,17 @@ class Parser:
 
         self.root = self.doc.documentElement
 
-        if root_str != None:
-            if root_str != self.root.tagName:
-                errStr = '%s\n' \
-                    +'type: "%s", but "%s" expected.'
-                raise XMLError(errStr % (fileName,
-                                         self.root.tagName,
-                                         root_str))
+        root_names = ('Code_Saturne_GUI',
+                      'NEPTUNE_CFD_GUI')
+
+        if self.root.tagName not in root_names:
+            errStr = '%s\n' \
+                     +'type: "%s", but one of "%s" expected.'
+            raise XMLError(errStr % (fileName,
+                                     self.root.tagName,
+                                     str(root_names)))
+
+        self.dict['xml_root_name'] = self.root.tagName
 
         if version_str != None:
             version = self.root.getAttribute('version')

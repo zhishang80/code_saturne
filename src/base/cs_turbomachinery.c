@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -47,6 +47,8 @@
 #include "cs_base.h"
 #include "cs_boundary_zone.h"
 #include "cs_coupling.h"
+#include "cs_cell_to_vertex.h"
+#include "cs_ext_neighborhood.h"
 #include "cs_gradient.h"
 #include "cs_gui.h"
 #include "cs_gui_mesh.h"
@@ -1086,6 +1088,9 @@ _update_mesh(bool     restart_mode,
   cs_mesh_bad_cells_detect(cs_glob_mesh, cs_glob_mesh_quantities);
   cs_user_mesh_bad_cells_tag(cs_glob_mesh, cs_glob_mesh_quantities);
 
+  cs_ext_neighborhood_reduce(cs_glob_mesh,
+                             cs_glob_mesh_quantities);
+
   /* Initialize selectors and locations for the mesh */
 
   cs_mesh_init_selectors();
@@ -1119,6 +1124,8 @@ _update_mesh(bool     restart_mode,
 
   }
 
+  cs_gradient_free_quantities();
+  cs_cell_to_vertex_free();
   cs_mesh_adjacencies_update_mesh();
 
   /* Update linear algebra APIs relative to mesh */

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -335,7 +335,7 @@ void CS_PROCF (perinr, PERINR)
   cs_field_t  *f = NULL;
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   const cs_mesh_t  *mesh = cs_glob_mesh;
 

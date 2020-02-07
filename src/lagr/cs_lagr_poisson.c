@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -106,7 +106,7 @@ diverv (cs_real_t    *diverg,
    * ====================================================================*/
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(cs_glob_space_disc->imrgra,
                              &gradient_type,
@@ -445,7 +445,7 @@ cs_lagr_poisson(const int  itypfb[])
     coefbp[ifac] = 0.0;
   }
 
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
 
   cs_gradient_type_by_imrgra(cs_glob_space_disc->imrgra,

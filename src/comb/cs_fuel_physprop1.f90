@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -272,8 +272,7 @@ do iel = 1, ncel
 enddo
 
 call cs_gascomb &
-!==============
- ( ncelet , ncel   , ifo0 , ifov ,                                &
+ ( ncel   , ifo0 , ifov ,                                         &
    intpdf ,                                                       &
    f1m    , f2m , f3m , f4m , f5m , f6m , f7m , f8m , f9m ,       &
    pdfm1  , pdfm2  , doxyd    , dfuel  , hrec ,                   &
@@ -351,9 +350,7 @@ enddo
 if ( ieqnox .eq. 1 .and. ipass .gt. 1 ) then
 
   call cs_fuel_noxst &
- !==================
- ( ncelet , ncel   ,                                              &
-   intpdf ,                                                       &
+ ( ncel   , intpdf ,                                              &
    pdfm1  , pdfm2  , doxyd  , dfuel  , hrec ,                     &
    f3m    , f4m    , f5m    , f6m    , f7m  , f8m , f9m ,         &
    fs3no  , fs4no  , yfs4no , enthox )

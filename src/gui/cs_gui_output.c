@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -283,9 +283,6 @@ _init_mei_tree(const char      *formula,
 
 void CS_PROCF (cspstb, CSPSTB) (cs_int_t        *ipstdv)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   /* Surfacic variables output */
 
   for (int i = 0; i < 5; i++)
@@ -305,7 +302,18 @@ void CS_PROCF (cspstb, CSPSTB) (cs_int_t        *ipstdv)
       ipstdv[2] = 1;
     if (_surfacic_variable_post("thermal_flux", true))
       ipstdv[3] = 1;
-    if (_surfacic_variable_post("boundary_temperature", true)) {
+    bool post_b_temp = _surfacic_variable_post("boundary_temperature", true);
+    /* activate by default using GUI; ignore for non-temperature variable
+       when properties not present in GUI, or the thermal model is not
+       set in the GUI, as this implies the GUI was probably not used
+       and we cannot determine easily whether enthalpy to temperature
+       conversion is available */
+    if (cs_glob_thermal_model->itherm != CS_THERMAL_MODEL_TEMPERATURE) {
+      if (   cs_tree_find_node_simple(cs_glob_tree, "property") == NULL
+          || cs_gui_thermal_model() <= 0)
+        post_b_temp = false;
+    }
+    if (post_b_temp) {
       cs_field_t *bf = cs_parameters_add_boundary_temperature();
       if (bf != NULL) {
         int k_vis = cs_field_key_id("post_vis");
@@ -480,6 +488,11 @@ cs_gui_postprocess_meshes(void)
 
   if (n_probes > 0) {
 
+    char **probe_labels;
+    BFT_MALLOC(probe_labels, n_probes, char *);
+    for (int ii = 0; ii < n_probes; ii++)
+      BFT_MALLOC(probe_labels[ii], 128, char);
+
     const char *coord_node_name[] = {"probe_x", "probe_y", "probe_z"};
 
     cs_real_3_t *p_coords;
@@ -490,42 +503,52 @@ cs_gui_postprocess_meshes(void)
          tn != NULL;
          tn = cs_tree_node_get_next_of_name(tn), i++) {
 
+      /* Probe coordinates */
       for (int j = 0; j < 3; j++) {
         v_r = cs_tree_node_get_child_values_real(tn, coord_node_name[j]);
         p_coords[i][j] = (v_r != NULL) ? v_r[0] : 0;
       }
+
+      /* Probe name */
+      const char *pn = cs_tree_node_get_child_value_str(tn, "name");
+      strcpy(probe_labels[i], pn);
     }
 
     cs_probe_set_create_from_array("probes",
                                    n_probes,
                                    (const cs_real_3_t *)p_coords,
-                                   NULL);
+                                   (const char **)probe_labels);
 
     BFT_FREE(p_coords);
 
-    v_i = cs_tree_node_get_child_values_int(tn_o, "probe_recording_frequency");
-    int frequency_n = (v_i != NULL) ? v_i[0] : 1;
+    for (int ii = 0; ii < n_probes; ii++)
+      BFT_FREE(probe_labels[ii]);
+    BFT_FREE(probe_labels);
 
-    v_r = cs_tree_node_get_child_values_real
-           (tn_o, "probe_recording_frequency_time");
-    cs_real_t frequency_t = (v_r != NULL) ? v_r[0] : -1.;
-
-    /* Time plot (probe) format string */
-    const char *fmt_opts
-      = cs_tree_node_get_tag(cs_tree_node_get_child(tn_o, "probe_format"),
-                             "choice");
-
-    cs_post_define_writer(CS_POST_WRITER_PROBES,   /* writer_id */
-                          "",                      /* case_name */
-                          "monitoring",            /* dir_name */
-                          "time_plot",
-                          fmt_opts,
-                          FVM_WRITER_FIXED_MESH,
-                          false,                   /* output_at_start */
-                          false,                   /* output_at_end */
-                          frequency_n,
-                          frequency_t);
   }
+
+  v_i = cs_tree_node_get_child_values_int(tn_o, "probe_recording_frequency");
+  int frequency_n = (v_i != NULL) ? v_i[0] : 1;
+
+  v_r = cs_tree_node_get_child_values_real
+    (tn_o, "probe_recording_frequency_time");
+  cs_real_t frequency_t = (v_r != NULL) ? v_r[0] : -1.;
+
+  /* Time plot (probe) format string */
+  const char *fmt_opts
+    = cs_tree_node_get_tag(cs_tree_node_get_child(tn_o, "probe_format"),
+                           "choice");
+
+  cs_post_define_writer(CS_POST_WRITER_PROBES,   /* writer_id */
+                        "",                      /* case_name */
+                        "monitoring",            /* dir_name */
+                        "time_plot",
+                        fmt_opts,
+                        FVM_WRITER_FIXED_MESH,
+                        false,                   /* output_at_start */
+                        false,                   /* output_at_end */
+                        frequency_n,
+                        frequency_t);
 }
 
 /*----------------------------------------------------------------------------

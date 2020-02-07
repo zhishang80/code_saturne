@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -259,6 +259,8 @@ _zone_define(const char  *name)
   z->time_varying = false;
   z->allow_overlay = true;
 
+  z->n_g_elts = 0;
+
   z->measure = -1.;
   z->boundary_measure = -1.;
 
@@ -311,13 +313,13 @@ _log_type(int type)
  */
 /*----------------------------------------------------------------------------*/
 
-void
-_volume_zone_compute_measure(bool       mesh_modified,
-                             cs_zone_t *z)
+static void
+_volume_zone_compute_metadata(bool       mesh_modified,
+                              cs_zone_t *z)
 {
   /* We recompute values only if mesh is modified or zone is time varying.
    * FIXME: For the moment, the boundary measure is not computed, but set to -1.
-   * to be improved in a next patch
+   * to be improved in the future.
    */
   if (z->time_varying || mesh_modified) {
     cs_real_t *cell_vol   = cs_glob_mesh_quantities->cell_vol;
@@ -334,13 +336,21 @@ _volume_zone_compute_measure(bool       mesh_modified,
       z->f_measure += cell_f_vol[c_id];
     }
 
-    cs_parall_sum(1, CS_REAL_TYPE, &z->measure);
-    cs_parall_sum(1, CS_REAL_TYPE, &z->f_measure);
-    cs_parall_sum(1, CS_REAL_TYPE, &z->boundary_measure);
-    cs_parall_sum(1, CS_REAL_TYPE, &z->f_boundary_measure);
-  }
+    cs_real_t measures[4] = {z->measure, z->f_measure,
+                             z->boundary_measure, z->f_boundary_measure};
 
-  return;
+    cs_gnum_t n_g_elts = z->n_elts;
+    cs_parall_sum(1, CS_GNUM_TYPE, &n_g_elts);
+
+    cs_parall_sum(4, CS_REAL_TYPE, measures);
+
+    z->n_g_elts = n_g_elts;
+
+    z->measure = measures[0];
+    z->f_measure = measures[1];
+    z->boundary_measure = measures[2];
+    z->f_boundary_measure = measures[3];
+  }
 }
 
 /*============================================================================
@@ -542,7 +552,7 @@ cs_volume_zone_build_all(bool  mesh_modified)
     /* Compute or update zone geometrical measures */
     for (int i = 0; i < _n_zones; i++) {
       cs_zone_t *z = _zones[i];
-      _volume_zone_compute_measure(mesh_modified, z);
+      _volume_zone_compute_metadata(mesh_modified, z);
     }
   }
 }
@@ -928,6 +938,57 @@ cs_volume_zone_select_type_cells(int        type_flag,
       }
     }
   }
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Print volume zones information to listing file
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_volume_zone_print_info(void)
+{
+
+  bft_printf("\n");
+  bft_printf(" --- Information on volume zones\n");
+
+  /* Cell volumes and fluid cell volume */
+  cs_real_t *cell_vol   = cs_glob_mesh_quantities->cell_vol;
+  cs_real_t *cell_f_vol = cs_glob_mesh_quantities->cell_f_vol;
+  cs_real_t *b_face_surf   = cs_glob_mesh_quantities->b_face_surf;
+  cs_real_t *b_f_face_surf = cs_glob_mesh_quantities->b_f_face_surf;
+
+  for (int i = 0; i < _n_zones; i++) {
+    cs_zone_t *z = _zones[i];
+    bft_printf(_("  Volume zone \"%s\"\n"
+                 "    id              = %d\n"
+                 "    Number of cells = %llu\n"
+                 "    Volume          = %14.7e\n"),
+               z->name, z->id, (unsigned long long)z->n_g_elts,
+               z->measure);
+    /* Only log fluid volumes when different to volumes */
+    if (cell_f_vol != cell_vol && cell_f_vol != NULL)
+      bft_printf(_("    Fluid volume    = %14.7e\n"),
+                 z->f_measure);
+
+    if (z->boundary_measure < 0.) {
+      bft_printf(_("    Surface         = -1 (not computed)\n"));
+      /* Only log fluid fluid when different to surface */
+      if (b_f_face_surf != b_face_surf && b_f_face_surf != NULL)
+        bft_printf(_("    Fluid surface   = -1 (not computed)\n"));
+    }
+    else {
+      bft_printf(_("    Surface         = %14.7e\n"),
+                 z->f_boundary_measure);
+      /* Only log fluid fluid when different to surface */
+      if (b_f_face_surf != b_face_surf && b_f_face_surf != NULL)
+        bft_printf(_("    Fluid surface   = %14.7e\n"),
+                   z->f_boundary_measure);
+    }
+  }
+
+  bft_printf_flush();
 }
 
 /*----------------------------------------------------------------------------*/

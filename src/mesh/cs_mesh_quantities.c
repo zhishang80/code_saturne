@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -53,6 +53,7 @@
 #include "cs_mesh_connect.h"
 #include "cs_parall.h"
 #include "cs_bad_cells_regularisation.h"
+#include "cs_preprocess.h"
 
 /*----------------------------------------------------------------------------
  *  Header for the current file
@@ -98,13 +99,6 @@ cs_mesh_quantities_t  *cs_glob_mesh_quantities = NULL;
 static int _cell_cen_algorithm = 0;
 static int _ajust_face_cog_compat_v11_v52 = 0;
 
-/* Choice of the option for computing cocg
-   (iterative or least squares method) or not */
-
-static bool _compute_cocg_s_it = false;
-static bool _compute_cocg_it = false;
-static bool _compute_cocg_lsq = false;
-
 /* Flag (mask) to activate bad cells correction
  * CS_BAD_CELLS_WARPED_CORRECTION
  * CS_FACE_DISTANCE_CLIP
@@ -134,410 +128,6 @@ cs_f_mesh_quantities_fluid_vol_reductions(void);
 /*=============================================================================
  * Private function definitions
  *============================================================================*/
-
-/*----------------------------------------------------------------------------
- * Compute 3x3 matrix cocg for the scalar gradient iterative algorithm
- *
- * parameters:
- *   m    <--  mesh
- *   fvq  <->  mesh quantities
- *----------------------------------------------------------------------------*/
-
-static void
-_compute_cell_cocg_s_it(const cs_mesh_t         *m,
-                        cs_mesh_quantities_t    *fvq)
-{
-  const int n_cells = m->n_cells;
-  const int n_cells_ext = m->n_cells_with_ghosts;
-  const int n_i_groups = m->i_face_numbering->n_groups;
-  const int n_i_threads = m->i_face_numbering->n_threads;
-  const cs_lnum_t *restrict i_group_index = m->i_face_numbering->group_index;
-
-  const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
-
-  const cs_real_t *restrict cell_vol = fvq->cell_vol;
-  const cs_real_3_t *restrict i_face_normal
-    = (const cs_real_3_t *restrict)fvq->i_face_normal;
-  const cs_real_3_t *restrict dofij
-    = (const cs_real_3_t *restrict)fvq->dofij;
-
-  cs_real_33_t   *restrict cocgb;
-  cs_real_33_t   *restrict cocg;
-  cocg = fvq->cocg_s_it;
-  cocgb = fvq->cocgb_s_it;
-
-  if (cocg == NULL) {
-    BFT_MALLOC(cocg, n_cells_ext, cs_real_33_t);
-    BFT_MALLOC(cocgb, m->n_b_cells, cs_real_33_t);
-    fvq->cocgb_s_it = cocgb;
-    fvq->cocg_s_it = cocg;
-  }
-
-  /* Compute cocg */
-
-# pragma omp parallel for
-  for (cs_lnum_t cell_id = 0; cell_id < n_cells_ext; cell_id++) {
-    cocg[cell_id][0][0] = cell_vol[cell_id];
-    cocg[cell_id][0][1] = 0.0;
-    cocg[cell_id][0][2] = 0.0;
-    cocg[cell_id][1][0] = 0.0;
-    cocg[cell_id][1][1] = cell_vol[cell_id];
-    cocg[cell_id][1][2] = 0.0;
-    cocg[cell_id][2][0] = 0.0;
-    cocg[cell_id][2][1] = 0.0;
-    cocg[cell_id][2][2] = cell_vol[cell_id];
-  }
-
-  /* Contribution from interior faces */
-
-  for (int g_id = 0; g_id < n_i_groups; g_id++) {
-
-#   pragma omp parallel for
-    for (int t_id = 0; t_id < n_i_threads; t_id++) {
-
-      for (cs_lnum_t face_id = i_group_index[(t_id*n_i_groups + g_id)*2];
-           face_id < i_group_index[(t_id*n_i_groups + g_id)*2 + 1];
-           face_id++) {
-
-        cs_real_t  fctb[4];
-
-        cs_lnum_t ii = i_face_cells[face_id][0];
-        cs_lnum_t jj = i_face_cells[face_id][1];
-
-        for (cs_lnum_t ll = 0; ll < 3; ll++) {
-          for (cs_lnum_t mm = 0; mm < 3; mm++) {
-            fctb[mm] = -dofij[face_id][mm] * 0.5 * i_face_normal[face_id][ll];
-            cocg[ii][ll][mm] += fctb[mm];
-            cocg[jj][ll][mm] -= fctb[mm];
-          }
-        }
-
-      } /* loop on faces */
-
-    } /* loop on threads */
-
-  } /* loop on thread groups */
-
-  /* Save partial cocg at interior faces of boundary cells */
-
-# pragma omp parallel for if (m->n_b_cells > CS_THR_MIN)
-  for (cs_lnum_t ii = 0; ii < m->n_b_cells; ii++) {
-    cs_lnum_t cell_id = m->b_cells[ii];
-    for (cs_lnum_t ll = 0; ll < 3; ll++) {
-      for (cs_lnum_t mm = 0; mm < 3; mm++)
-        cocgb[ii][ll][mm] = cocg[cell_id][ll][mm];
-    }
-  }
-
-  /* Invert for all cells. */
-  /*-----------------------*/
-
-  /* The cocg term for interior cells only changes if the mesh does */
-
-# pragma omp parallel for
-  for (cs_lnum_t cell_id = 0; cell_id < n_cells; cell_id++)
-    cs_math_33_inv_cramer_in_place(cocg[cell_id]);
-}
-
-/*----------------------------------------------------------------------------
- * Compute 3x3 matrix cocg for the scalar gradient least squares algorithm
- *
- * parameters:
- *   m    <--  mesh
- *   fvq  <->  mesh quantities
- *   ce   <->  coupling entity
- *----------------------------------------------------------------------------*/
-
-static void
-_compute_cell_cocg_lsq(const cs_mesh_t        *m,
-                       cs_mesh_quantities_t   *fvq,
-                       cs_internal_coupling_t *ce)
-{
-  const int n_cells = m->n_cells;
-  const int n_cells_ext = m->n_cells_with_ghosts;
-  const int n_i_groups = m->i_face_numbering->n_groups;
-  const int n_i_threads = m->i_face_numbering->n_threads;
-  const int n_b_groups = m->b_face_numbering->n_groups;
-  const int n_b_threads = m->b_face_numbering->n_threads;
-  const cs_lnum_t *restrict i_group_index = m->i_face_numbering->group_index;
-  const cs_lnum_t *restrict b_group_index = m->b_face_numbering->group_index;
-
-  const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
-  const cs_lnum_t *restrict b_face_cells
-    = (const cs_lnum_t *restrict)m->b_face_cells;
-  const cs_lnum_t *restrict cell_cells_idx
-    = (const cs_lnum_t *restrict)m->cell_cells_idx;
-  const cs_lnum_t *restrict cell_cells_lst
-    = (const cs_lnum_t *restrict)m->cell_cells_lst;
-
-  const cs_real_3_t *restrict cell_cen
-    = (const cs_real_3_t *restrict)fvq->cell_cen;
-  const cs_real_3_t *restrict b_face_normal
-    = (const cs_real_3_t *restrict)fvq->b_face_normal;
-
-  cs_real_33_t   *restrict cocgb;
-  if (ce == NULL) {
-    cocgb = fvq->cocgb_s_lsq;
-  } else {
-    cocgb = ce->cocgb_s_lsq;
-  }
-  cs_real_33_t   *restrict cocg = fvq->cocg_lsq;
-
-  const bool *coupled_faces;
-  if (ce != NULL) {
-    coupled_faces = ce->coupled_faces;
-  }
-
-  if (ce == NULL) {
-    if (cocg == NULL) {
-      BFT_MALLOC(cocg, n_cells_ext, cs_real_33_t);
-      fvq->cocg_lsq = cocg;
-    }
-    if (cocgb == NULL) {
-      BFT_MALLOC(cocgb, m->n_b_cells, cs_real_33_t);
-      fvq->cocgb_s_lsq = cocgb;
-    }
-  } else if (ce != NULL) {
-    if (cocgb == NULL) {
-      BFT_MALLOC(cocgb, m->n_b_cells, cs_real_33_t);
-      ce->cocgb_s_lsq = cocgb;
-    }
-  }
-
-  /* Initialization */
-
-# pragma omp parallel
-  for (cs_lnum_t cell_id = 0; cell_id < n_cells_ext; cell_id++) {
-    for (cs_lnum_t ll = 0; ll < 3; ll++) {
-      for (cs_lnum_t mm = 0; mm < 3; mm++)
-        cocg[cell_id][ll][mm] = 0.0;
-    }
-  }
-
-  /* Contribution from interior faces */
-
-  for (int g_id = 0; g_id < n_i_groups; g_id++) {
-
-#   pragma omp parallel for
-    for (int t_id = 0; t_id < n_i_threads; t_id++) {
-
-      for (cs_lnum_t face_id = i_group_index[(t_id*n_i_groups + g_id)*2];
-           face_id < i_group_index[(t_id*n_i_groups + g_id)*2 + 1];
-           face_id++) {
-
-        cs_real_t dc[3];
-        cs_lnum_t ii = i_face_cells[face_id][0];
-        cs_lnum_t jj = i_face_cells[face_id][1];
-
-        for (cs_lnum_t ll = 0; ll < 3; ll++)
-          dc[ll] = cell_cen[jj][ll] - cell_cen[ii][ll];
-        cs_real_t ddc = 1. / (dc[0]*dc[0] + dc[1]*dc[1] + dc[2]*dc[2]);
-
-        for (cs_lnum_t ll = 0; ll < 3; ll++) {
-          for (cs_lnum_t mm = 0; mm < 3; mm++)
-            cocg[ii][ll][mm] += dc[ll] * dc[mm] * ddc;
-        }
-        for (cs_lnum_t ll = 0; ll < 3; ll++) {
-          for (cs_lnum_t mm = 0; mm < 3; mm++)
-            cocg[jj][ll][mm] += dc[ll] * dc[mm] * ddc;
-        }
-
-      } /* loop on faces */
-
-    } /* loop on threads */
-
-  } /* loop on thread groups */
-
-  /* Contribution for internal coupling */
-  if (ce != NULL) {
-    cs_internal_coupling_lsq_cocg_contribution(ce, cocg);
-  }
-
-  /* Contribution from extended neighborhood */
-
-  if (m->halo_type == CS_HALO_EXTENDED) {
-
-    /* Not compatible with internal coupling */
-    if (ce != NULL) {
-      bft_error(__FILE__, __LINE__, 0,
-                "Extended least-square gradient reconstruction \
-                 is not supported with internal coupling");
-    }
-
-#   pragma omp parallel for
-    for (cs_lnum_t ii = 0; ii < n_cells; ii++) {
-      for (cs_lnum_t cidx = cell_cells_idx[ii];
-           cidx < cell_cells_idx[ii+1];
-           cidx++) {
-
-        cs_real_t dc[3];
-        cs_lnum_t jj = cell_cells_lst[cidx];
-
-        for (cs_lnum_t ll = 0; ll < 3; ll++)
-          dc[ll] = cell_cen[jj][ll] - cell_cen[ii][ll];
-        cs_real_t ddc = 1. / (dc[0]*dc[0] + dc[1]*dc[1] + dc[2]*dc[2]);
-
-        for (cs_lnum_t ll = 0; ll < 3; ll++) {
-          for (cs_lnum_t mm = 0; mm < 3; mm++)
-            cocg[ii][ll][mm] += dc[ll] * dc[mm] * ddc;
-        }
-
-      }
-    }
-
-  } /* End for extended neighborhood */
-
-  /* Save partial cocg at interior faces of boundary cells */
-
-# pragma omp parallel for
-  for (cs_lnum_t ii = 0; ii < m->n_b_cells; ii++) {
-    cs_lnum_t cell_id = m->b_cells[ii];
-    for (cs_lnum_t ll = 0; ll < 3; ll++) {
-      for (cs_lnum_t mm = 0; mm < 3; mm++)
-        cocgb[ii][ll][mm] = cocg[cell_id][ll][mm];
-    }
-  }
-
-  /* Contribution from boundary faces, assuming symmetry everywhere
-     so as to avoid obtaining a non-invertible matrix in 2D cases. */
-
-  for (int g_id = 0; g_id < n_b_groups; g_id++) {
-
-#   pragma omp parallel for
-    for (int t_id = 0; t_id < n_b_threads; t_id++) {
-
-      for (cs_lnum_t face_id = b_group_index[(t_id*n_b_groups + g_id)*2];
-           face_id < b_group_index[(t_id*n_b_groups + g_id)*2 + 1];
-           face_id++) {
-
-        if (ce == NULL || !coupled_faces[face_id]) {
-
-          cs_lnum_t ii = b_face_cells[face_id];
-
-          cs_real_3_t normal;
-          /* Normal is vector 0 if the b_face_normal norm is too small */
-          cs_math_3_normalise(b_face_normal[face_id], normal);
-
-          for (cs_lnum_t ll = 0; ll < 3; ll++) {
-            for (cs_lnum_t mm = 0; mm < 3; mm++)
-              cocg[ii][ll][mm] += normal[ll] * normal[mm];
-          }
-
-        } /* face without internal coupling */
-
-      } /* loop on faces */
-
-    } /* loop on threads */
-
-  } /* loop on thread groups */
-
-  /* Invert for all cells. */
-  /*-----------------------*/
-
-  /* The cocg term for interior cells only changes if the mesh does */
-
-# pragma omp parallel for
-  for (cs_lnum_t cell_id = 0; cell_id < n_cells; cell_id++)
-    cs_math_33_inv_cramer_in_place(cocg[cell_id]);
-}
-
-/*----------------------------------------------------------------------------
- * Compute 3x3 matrix cocg for the iterative algorithm
- *
- * parameters:
- *   m               <--  mesh
- *   fvq             <->  mesh quantities
- *   ce              <->  coupling entity
- *----------------------------------------------------------------------------*/
-
-static void
-_compute_cell_cocg_it(const cs_mesh_t        *m,
-                      cs_mesh_quantities_t   *fvq,
-                      cs_internal_coupling_t *ce)
-{
-  /* Local variables */
-
-  const int n_cells = m->n_cells;
-  const int n_cells_with_ghosts = m->n_cells_with_ghosts;
-  const int n_i_faces = m->n_i_faces;
-
-  const cs_lnum_2_t *restrict i_face_cells
-    = (const cs_lnum_2_t *restrict)m->i_face_cells;
-
-  const cs_real_t *restrict cell_vol = fvq->cell_vol;
-  const cs_real_3_t *restrict i_face_normal
-    = (const cs_real_3_t *restrict)fvq->i_face_normal;
-  const cs_real_3_t *restrict dofij
-    = (const cs_real_3_t *restrict)fvq->dofij;
-  cs_real_33_t *restrict cocg
-    = fvq->cocg_it;
-
-  if (ce == NULL) {
-    cocg = fvq->cocg_it;
-  } else {
-    cocg = ce->cocg_it;
-  }
-
-  cs_lnum_t  cell_id, face_id, i, j;
-  cs_real_t  pfac, vecfac;
-  cs_real_t  dvol1, dvol2;
-
-  if (cocg == NULL) {
-    BFT_MALLOC(cocg, n_cells_with_ghosts, cs_real_33_t);
-    if (ce == NULL)
-      fvq->cocg_it = cocg;
-    else
-      ce->cocg_it = cocg;
-  }
-
-  /* compute the dimensionless matrix COCG for each cell*/
-
-  for (cell_id = 0; cell_id < n_cells_with_ghosts; cell_id++) {
-    cocg[cell_id][0][0]= 1.0;
-    cocg[cell_id][0][1]= 0.0;
-    cocg[cell_id][0][2]= 0.0;
-    cocg[cell_id][1][0]= 0.0;
-    cocg[cell_id][1][1]= 1.0;
-    cocg[cell_id][1][2]= 0.0;
-    cocg[cell_id][2][0]= 0.0;
-    cocg[cell_id][2][1]= 0.0;
-    cocg[cell_id][2][2]= 1.0;
-  }
-
-  /* Interior face treatment */
-
-  for (face_id = 0; face_id < n_i_faces; face_id++) {
-    cs_lnum_t cell_id1 = i_face_cells[face_id][0];
-    cs_lnum_t cell_id2 = i_face_cells[face_id][1];
-
-    dvol1 = 1./cell_vol[cell_id1];
-    dvol2 = 1./cell_vol[cell_id2];
-
-    for (i = 0; i < 3; i++) {
-
-      pfac = -0.5*dofij[face_id][i];
-
-      for (j = 0; j < 3; j++) {
-        vecfac = pfac*i_face_normal[face_id][j];
-        cocg[cell_id1][i][j] += vecfac * dvol1;
-        cocg[cell_id2][i][j] -= vecfac * dvol2;
-      }
-    }
-  }
-
-  /* Contribution for internal coupling */
-  if (ce != NULL) {
-    cs_internal_coupling_it_cocg_contribution(ce, cocg);
-  }
-
-  /* 3x3 Matrix inversion */
-
-# pragma omp parallel for
-  for (cell_id = 0; cell_id < n_cells; cell_id++)
-    cs_math_33_inv_cramer_in_place(cocg[cell_id]);
-}
 
 /*----------------------------------------------------------------------------
  * Build the geometrical matrix linear gradient correction
@@ -2235,7 +1825,6 @@ _compute_face_distances(cs_lnum_t          n_i_faces,
  *   i_face_cog     <--  center of gravity of interior faces
  *   b_face_cog     <--  center of gravity of border faces
  *   i_face_surf    <--  interior faces surface
- *   b_face_surf    <--  border faces surface
  *   cell_cen       <--  cell center
  *   weight         <--  weighting factor (Aij=pond Ai+(1-pond)Aj)
  *   dijpf          -->  vector i'j' for interior faces
@@ -2254,7 +1843,6 @@ _compute_face_vectors(int                dim,
                       const cs_real_t    i_face_cog[],
                       const cs_real_t    b_face_cog[],
                       const cs_real_t    i_face_surf[],
-                      const cs_real_t    b_face_surf[],
                       const cs_real_t    cell_cen[],
                       const cs_real_t    weight[],
                       const cs_real_t    b_dist[],
@@ -2548,28 +2136,6 @@ _b_thickness(const cs_mesh_t             *m,
 /*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
 
 /*============================================================================
- * Public function definitions for Fortran API
- *============================================================================*/
-
-/*----------------------------------------------------------------------------
- * Set behavior for computing the cocg matrixes for the iterative algo
- * and for the least squares method for scalar and vector gradients.
- *
- * Fortran interface :
- *
- * subroutine comcoc (imrgra)
- * *****************
- *
- * integer          imrgra        : <-- : gradient reconstruction option
- *----------------------------------------------------------------------------*/
-
-void
-CS_PROCF (comcoc, COMCOC) (const cs_int_t  *const imrgra)
-{
-  cs_mesh_quantities_set_cocg_options(*imrgra);
-}
-
-/*============================================================================
  * Fortran wrapper function definitions
  *============================================================================*/
 
@@ -2655,62 +2221,8 @@ cs_mesh_quantities_face_cog_choice(int  algo_choice)
 }
 
 /*----------------------------------------------------------------------------
- * Compute cocg for iterative gradient reconstruction for scalars.
- *
- * parameters:
- *   gradient_option <-- gradient option (Fortran IMRGRA)
- *----------------------------------------------------------------------------*/
-
-void
-cs_mesh_quantities_set_cocg_options(int  gradient_option)
-{
-  int _gradient_option = CS_ABS(gradient_option);
-
-  assert(_gradient_option <= 16);
-
-  switch (_gradient_option) {
-  case 0:
-    _compute_cocg_s_it = true;
-    break;
-  case 1:
-  case 2:
-  case 3:
-    _compute_cocg_lsq = true;
-    break;
-  case 4:
-  case 5:
-  case 6:
-    _compute_cocg_lsq = true;
-    break;
-  /* deprecated options */
-  case 10:
-    _compute_cocg_s_it = true;
-    break;
-  case 11:
-  case 12:
-  case 13:
-    _compute_cocg_lsq = true;
-    break;
-  case 14:
-  case 15:
-  case 16:
-    _compute_cocg_s_it = true;
-    _compute_cocg_lsq = true;
-    break;
-
-  default:
-    break;
-  }
-
-  if (gradient_option < 0)
-    _compute_cocg_s_it = true;
-
-  _compute_cocg_it = _compute_cocg_s_it;
-}
-
-/*----------------------------------------------------------------------------
- * Compute Fluid volumes and fluid surface in addition to
- * cell volumes and surfaces.
+ * Compute fluid volumes and fluid surfaces in addition to cell volumes
+ * and surfaces.
  *
  * parameters:
  *   porous_model <-- porous model option (> 0 for porosity)
@@ -2726,13 +2238,60 @@ cs_mesh_quantities_set_porous_model(int  porous_model)
 /*!
  * \brief  Set (unset) has_disable_flag
  *
- * \param[in]  flag   1: on, 0: off
+ * \param[in]  flag 1: on, 0: off
  */
 /*----------------------------------------------------------------------------*/
 void
 cs_mesh_quantities_set_has_disable_flag(int  flag)
 {
-  cs_glob_mesh_quantities->has_disable_flag = flag;
+  cs_mesh_quantities_t *mq =cs_glob_mesh_quantities;
+
+  mq->has_disable_flag = flag;
+  /* if off, fluid surfaces point toward cell surfaces */
+  /* Porous models */
+  if (cs_glob_porous_model > 0) {
+    if (flag == 0) {
+      /* Set pointers of face quantities to the standard ones */
+      if (cs_glob_porous_model == 3) {
+        mq->i_f_face_normal = mq->i_face_normal;
+        mq->b_f_face_normal = mq->b_face_normal;
+        mq->i_f_face_surf   = mq->i_face_surf;
+        mq->b_f_face_surf   = mq->b_face_surf;
+        mq->i_f_face_factor = NULL;
+        mq->b_f_face_factor = NULL;
+      }
+      mq->cell_f_vol = mq->cell_vol;
+    } else {
+      /* Use fluid surfaces and volumes */
+      if (cs_glob_porous_model == 3) {
+        mq->i_f_face_normal = cs_field_by_name("i_f_face_normal")->val;
+        mq->b_f_face_normal = cs_field_by_name("b_f_face_normal")->val;
+        mq->i_f_face_surf   = cs_field_by_name("i_f_face_surf")->val;
+        mq->b_f_face_surf   = cs_field_by_name("b_f_face_surf")->val;
+        mq->i_f_face_factor
+          = (cs_real_2_t *)cs_field_by_name("i_f_face_factor")->val;
+        mq->b_f_face_factor = cs_field_by_name("b_f_face_factor")->val;
+      }
+      mq->cell_f_vol        = cs_field_by_name("cell_f_vol")->val;
+    }
+  }
+
+  /* Update Fortran pointer quantities */
+  cs_preprocess_mesh_update_fortran();
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Init fluid quantities
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_mesh_init_fluid_quantities(void)
+{
+  if (cs_glob_porous_model == 3) {
+    cs_mesh_init_fluid_sections(cs_glob_mesh, cs_glob_mesh_quantities);
+  }
 }
 
 /*----------------------------------------------------------------------------*/
@@ -2773,11 +2332,6 @@ cs_mesh_quantities_create(void)
   mesh_quantities->dofij = NULL;
   mesh_quantities->diipf = NULL;
   mesh_quantities->djjpf = NULL;
-  mesh_quantities->cocgb_s_it = NULL;
-  mesh_quantities->cocg_s_it = NULL;
-  mesh_quantities->cocgb_s_lsq = NULL;
-  mesh_quantities->cocg_it = NULL;
-  mesh_quantities->cocg_lsq = NULL;
   mesh_quantities->corr_grad_lin_det = NULL;
   mesh_quantities->corr_grad_lin = NULL;
   mesh_quantities->b_sym_flag = NULL;
@@ -2821,24 +2375,12 @@ cs_mesh_quantities_free_all(cs_mesh_quantities_t  *mq)
 {
   BFT_FREE(mq->cell_cen);
   BFT_FREE(mq->cell_vol);
-  if (cs_glob_porous_model > 0)
-    BFT_FREE(mq->cell_f_vol);
   BFT_FREE(mq->i_face_normal);
   BFT_FREE(mq->b_face_normal);
-  if (cs_glob_porous_model == 3) {
-    BFT_FREE(mq->i_f_face_normal);
-    BFT_FREE(mq->b_f_face_normal);
-  }
   BFT_FREE(mq->i_face_cog);
   BFT_FREE(mq->b_face_cog);
   BFT_FREE(mq->i_face_surf);
   BFT_FREE(mq->b_face_surf);
-  if (cs_glob_porous_model == 3) {
-    BFT_FREE(mq->i_f_face_surf);
-    BFT_FREE(mq->b_f_face_surf);
-    BFT_FREE(mq->i_f_face_factor);
-    BFT_FREE(mq->b_f_face_factor);
-  }
   BFT_FREE(mq->i_dist);
   BFT_FREE(mq->b_dist);
   BFT_FREE(mq->weight);
@@ -2847,11 +2389,6 @@ cs_mesh_quantities_free_all(cs_mesh_quantities_t  *mq)
   BFT_FREE(mq->dofij);
   BFT_FREE(mq->diipf);
   BFT_FREE(mq->djjpf);
-  BFT_FREE(mq->cocgb_s_it);
-  BFT_FREE(mq->cocg_s_it);
-  BFT_FREE(mq->cocgb_s_lsq);
-  BFT_FREE(mq->cocg_it);
-  BFT_FREE(mq->cocg_lsq);
   BFT_FREE(mq->corr_grad_lin_det);
   BFT_FREE(mq->corr_grad_lin);
   BFT_FREE(mq->b_sym_flag);
@@ -3117,57 +2654,34 @@ cs_mesh_quantities_compute(const cs_mesh_t       *mesh,
 
   cs_mesh_quantities_compute_preprocess(mesh, mesh_quantities);
 
-  /* Balance porous model */
-  if (cs_glob_porous_model == 3) {
-    if (mesh_quantities->i_f_face_normal == NULL)
-      BFT_MALLOC(mesh_quantities->i_f_face_normal, n_i_faces*dim, cs_real_t);
+  /* Fluid surfaces and volumes: point to standard quantities and
+   * may be modified afterwards */
+  mesh_quantities->i_f_face_normal = mesh_quantities->i_face_normal;
+  mesh_quantities->b_f_face_normal = mesh_quantities->b_face_normal;
+  mesh_quantities->i_f_face_surf = mesh_quantities->i_face_surf;
+  mesh_quantities->b_f_face_surf = mesh_quantities->b_face_surf;
 
-    if (mesh_quantities->b_f_face_normal == NULL)
-      BFT_MALLOC(mesh_quantities->b_f_face_normal, n_b_faces*dim, cs_real_t);
-
-    if (mesh_quantities->i_f_face_surf == NULL)
-      BFT_MALLOC(mesh_quantities->i_f_face_surf, n_i_faces, cs_real_t);
-
-    if (mesh_quantities->b_f_face_surf == NULL)
-      BFT_MALLOC(mesh_quantities->b_f_face_surf, n_b_faces, cs_real_t);
-
-    if (mesh_quantities->i_f_face_factor == NULL)
-      BFT_MALLOC(mesh_quantities->i_f_face_factor, n_i_faces, cs_real_2_t);
-
-    if (mesh_quantities->b_f_face_factor == NULL)
-      BFT_MALLOC(mesh_quantities->b_f_face_factor, n_b_faces, cs_real_t);
-
-  }
-  else {
-    mesh_quantities->i_f_face_normal = mesh_quantities->i_face_normal;
-    mesh_quantities->b_f_face_normal = mesh_quantities->b_face_normal;
-    mesh_quantities->i_f_face_surf = mesh_quantities->i_face_surf;
-    mesh_quantities->b_f_face_surf = mesh_quantities->b_face_surf;
-  }
+  mesh_quantities->cell_f_vol = mesh_quantities->cell_vol;
 
   /* Porous models */
   if (cs_glob_porous_model > 0) {
     mesh_quantities->has_disable_flag = 1;
-    if (mesh_quantities->cell_f_vol == NULL)
-      BFT_MALLOC(mesh_quantities->cell_f_vol, n_cells_with_ghosts, cs_real_t);
-
   }
   else {
-    mesh_quantities->cell_f_vol = mesh_quantities->cell_vol;
-
     mesh_quantities->min_f_vol = mesh_quantities->min_vol;
     mesh_quantities->max_f_vol = mesh_quantities->max_vol;
     mesh_quantities->tot_f_vol = mesh_quantities->tot_vol;
-
   }
 
   if (mesh_quantities->has_disable_flag == 1) {
-    BFT_MALLOC(mesh_quantities->c_disable_flag, n_cells_with_ghosts, int);
+    if (mesh_quantities->c_disable_flag == NULL)
+      BFT_MALLOC(mesh_quantities->c_disable_flag, n_cells_with_ghosts, int);
     for (cs_lnum_t cell_id = 0; cell_id < n_cells_with_ghosts; cell_id++)
       mesh_quantities->c_disable_flag[cell_id] = 0;
   }
   else {
-    BFT_MALLOC(mesh_quantities->c_disable_flag, 1, int);
+    if (mesh_quantities->c_disable_flag == NULL)
+      BFT_MALLOC(mesh_quantities->c_disable_flag, 1, int);
     mesh_quantities->c_disable_flag[0] = 0;
   }
 
@@ -3194,20 +2708,6 @@ cs_mesh_quantities_compute(const cs_mesh_t       *mesh,
 
   if (mesh_quantities->djjpf == NULL)
     BFT_MALLOC(mesh_quantities->djjpf, n_i_faces*dim, cs_real_t);
-
-
-  /* Compute 3x3 cocg dimensionless matrix */
-
-  if (_compute_cocg_it == 1) {
-    if (mesh_quantities->cocg_it == NULL)
-      BFT_MALLOC(mesh_quantities->cocg_it, n_cells_with_ghosts, cs_real_33_t);
-  }
-
-  if (_compute_cocg_lsq == 1) {
-    if (mesh_quantities->cocg_lsq == NULL) {
-      BFT_MALLOC(mesh_quantities->cocg_lsq, n_cells_with_ghosts, cs_real_33_t);
-    }
-  }
 
   if (mesh_quantities->b_sym_flag == NULL)
     BFT_MALLOC(mesh_quantities->b_sym_flag, n_b_faces, cs_int_t);
@@ -3240,7 +2740,6 @@ cs_mesh_quantities_compute(const cs_mesh_t       *mesh,
                         mesh_quantities->i_face_cog,
                         mesh_quantities->b_face_cog,
                         mesh_quantities->i_face_surf,
-                        mesh_quantities->b_face_surf,
                         mesh_quantities->cell_cen,
                         mesh_quantities->weight,
                         mesh_quantities->b_dist,
@@ -3261,17 +2760,6 @@ cs_mesh_quantities_compute(const cs_mesh_t       *mesh,
      mesh_quantities->i_dist,
      (cs_real_3_t *)(mesh_quantities->diipf),
      (cs_real_3_t *)(mesh_quantities->djjpf));
-
-  /* Compute 3x3 cocg matrixes */
-
-  if (_compute_cocg_s_it == 1)
-    _compute_cell_cocg_s_it(mesh, mesh_quantities);
-
-  if (_compute_cocg_lsq == 1)
-    _compute_cell_cocg_lsq(mesh, mesh_quantities, NULL);
-
-  if (_compute_cocg_it == 1)
-    _compute_cell_cocg_it(mesh, mesh_quantities, NULL);
 
   /* Build the geometrical matrix linear gradient correction */
   if (cs_glob_mesh_quantities_flag & CS_BAD_CELLS_WARPED_CORRECTION)
@@ -3781,23 +3269,6 @@ cs_mesh_quantities_check_vol(const cs_mesh_t             *mesh,
 }
 
 /*----------------------------------------------------------------------------
- * Update mesh quantities relative to extended ghost cells when the
- * neighborhood is reduced.
- *
- * parameters:
- *   mesh            <-- pointer to a cs_mesh_t structure
- *   mesh_quantities <-> pointer to a cs_mesh_quantities_t structure
- *----------------------------------------------------------------------------*/
-
-void
-cs_mesh_quantities_reduce_extended(const cs_mesh_t       *mesh,
-                                   cs_mesh_quantities_t  *mesh_quantities)
-{
-  if (_compute_cocg_lsq == 1)
-    _compute_cell_cocg_lsq(mesh, mesh_quantities, NULL);
-}
-
-/*----------------------------------------------------------------------------
  * Return the number of times mesh quantities have been computed.
  *
  * returns:
@@ -4084,42 +3555,6 @@ cs_mesh_quantities_dump(const cs_mesh_t             *mesh,
 
   bft_printf("\n\nEND OF DUMP OF MESH QUANTITIES STRUCTURE\n\n");
   bft_printf_flush();
-}
-
-/*----------------------------------------------------------------------------
- * Compute 3x3 matrix cocg for the scalar gradient least squares algorithm
- * adapted for internal coupling.
- *
- * parameters:
- *   m    <--  mesh
- *   fvq  <->  mesh quantities
- *   ce   <->  coupling
- *----------------------------------------------------------------------------*/
-
-void
-cs_compute_cell_cocg_lsq_coupling(const cs_mesh_t         *m,
-                                  cs_mesh_quantities_t    *fvq,
-                                  cs_internal_coupling_t  *ce)
-{
-  _compute_cell_cocg_lsq(m, fvq, ce);
-}
-
-/*----------------------------------------------------------------------------
- * Compute 3x3 matrix cocg for the scalar gradient iterative algorithm
- * adapted for internal coupling.
- *
- * parameters:
- *   m    <--  mesh
- *   fvq  <->  mesh quantities
- *   ce   <->  coupling
- *----------------------------------------------------------------------------*/
-
-void
-cs_compute_cell_cocg_it_coupling(const cs_mesh_t         *m,
-                                 cs_mesh_quantities_t    *fvq,
-                                 cs_internal_coupling_t  *ce)
-{
-  _compute_cell_cocg_it(m, fvq, ce);
 }
 
 /*----------------------------------------------------------------------------*/

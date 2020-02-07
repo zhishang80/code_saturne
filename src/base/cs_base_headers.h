@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -62,10 +62,13 @@
 #include "cs_log.h"
 #include "cs_map.h"
 #include "cs_math.h"
+#include "cs_measures_util.h"
 #include "cs_notebook.h"
 #include "cs_numbering.h"
+#include "cs_order.h"
 #include "cs_parall.h"
 #include "cs_parameters.h"
+#include "cs_part_to_block.h"
 #include "cs_physical_constants.h"
 #include "cs_physical_properties.h"
 #include "cs_porosity_from_scan.h"
@@ -76,18 +79,20 @@
 #include "cs_probe.h"
 #include "cs_prototypes.h"
 #include "cs_random.h"
+#include "cs_renumber.h"
 #include "cs_restart.h"
 #include "cs_restart_map.h"
 #include "cs_rotation.h"
 #include "cs_sat_coupling.h"
 #include "cs_selector.h"
 #include "cs_stokes_model.h"
+#include "cs_syr_coupling.h"
+#include "cs_thermal_model.h"
 #include "cs_time_moment.h"
 #include "cs_time_plot.h"
 #include "cs_time_step.h"
 #include "cs_timer.h"
 #include "cs_timer_stats.h"
-#include "cs_thermal_model.h"
 #include "cs_tree.h"
 #include "cs_turbomachinery.h"
 #include "cs_volume_zone.h"
@@ -101,6 +106,10 @@
 
 #if defined(HAVE_PARAMEDMEM)
 #include "cs_paramedmem_coupling.hxx"
+#endif
+
+#if defined(HAVE_PARAMEDMEM) && defined (HAVE_MEDCOUPLING_LOADER)
+#include "cs_paramedmem_remapper.hxx"
 #endif
 
 /*----------------------------------------------------------------------------*/

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -42,8 +42,10 @@
  *----------------------------------------------------------------------------*/
 
 #include "cs_base.h"
+#include "cs_boundary.h"
 #include "cs_boundary_zone.h"
 #include "cs_ctwr.h"
+#include "cs_domain.h"
 #include "cs_fan.h"
 #include "cs_field.h"
 #include "cs_log.h"
@@ -160,6 +162,10 @@ _log_global_model_options(void)
   /* Zone information */
   cs_volume_zone_log_setup();
   cs_boundary_zone_log_setup();
+
+  /* BC information */
+  cs_boundary_log_setup(cs_glob_domain->boundaries);
+  cs_boundary_log_setup(cs_glob_domain->ale_boundaries);
 }
 
 

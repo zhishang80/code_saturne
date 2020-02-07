@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -83,7 +83,7 @@ double precision smbrs(ncelet)
 
 integer          ifac, init, inc, iprev
 integer          iccocg,iflmb0
-integer          nswrgp, imligp, iwarnp
+integer          imrgrp, nswrgp, imligp, iwarnp
 integer          itypfl
 integer          ivar , iel, ii, jj
 integer          itt
@@ -160,10 +160,7 @@ iprev = 1
 iccocg = 1
 inc = 1
 
-call field_gradient_scalar( &
-  ivarfl(ivar)    , iprev, imrgra, inc    , &
-  iccocg ,                                  &
-  gradt  )
+call field_gradient_scalar(ivarfl(ivar), iprev, 0, inc, iccocg, gradt)
 
 ! Name of the scalar ivar
 call field_get_name(ivarfl(ivar), fname)
@@ -185,10 +182,7 @@ if (iturt(iscal).eq.11 .or. iturt(iscal).eq.21 .or. iturt(iscal).eq.31) then
 
   allocate(grad_al(3,ncelet))
 
-  call field_gradient_scalar( &
-    f_id_al , iprev, imrgra, inc    , &
-    iccocg ,                          &
-    grad_al)
+  call field_gradient_scalar(f_id_al, iprev, 0, inc, iccocg, grad_al)
 
 endif
 
@@ -198,8 +192,7 @@ inc    = 1
 
 ! WARNING: gradv(xyz, uvw, iel)
 
-call field_gradient_vector(ivarfl(iu), iprev, imrgra, inc,  &
-                           gradv)
+call field_gradient_vector(ivarfl(iu), iprev, 0, inc, gradv)
 
 ! Find the variance of the thermal scalar
 itt = -1
@@ -369,7 +362,10 @@ if (ityturt(iscal).ne.3) then
           ! Only the i.ne.j  components are added.
           if (ii.ne.jj) then
             temp(ii) = temp(ii)                                              &
-                     - ctheta(iscal)*xtt*xiafm*gradv(jj,ii,iel)*xut(jj,iel)
+                     - ctheta(iscal)*xtt*xiafm*xut(jj,iel)*gradv(jj,ii,iel)
+          else
+            temp(ii) = temp(ii)                                              &
+                     - min(ctheta(iscal)*xtt*xiafm*xut(jj,iel)*gradv(jj,ii,iel), 0.d0)
           endif
         enddo
       endif
@@ -389,6 +385,12 @@ if (ityturt(iscal).ne.3) then
             temp(ii) = temp(ii)                                                 &
                      - ctheta(iscal)*xtt*xi_ebafm*gradv(jj,ii,iel)*xut(jj,iel)  &
                      - ctheta(iscal)*gamma_ebafm*xnal(ii)*xnal(jj)*xut(jj,iel)
+          else
+            temp(ii) = temp(ii)                                                 &
+                     - ctheta(iscal)                                            &
+                     * min(xtt*xi_ebafm*gradv(jj,ii,iel)*xut(jj,iel)            &
+                          +gamma_ebafm*xnal(ii)*xnal(jj)*xut(jj,iel), 0.d0)
+
           endif
         enddo
       end if
@@ -419,11 +421,12 @@ if (ityturt(iscal).ne.3) then
 
       ! Partial implicitation of "-C_theta*k/eps*( xi* uT'.Grad u )" for
       ! EB-GGDH & (EB)-AFM
+      ! if positive
       ! X_i = C*Y_ij*X_j -> X_i = Coeff_imp * Y_ij * X_j for i.ne.j
       ! with Coeff_imp = C/(1+C*Y_ii)
       if (iturt(iscal).eq.20) then
         ! AFM
-        coeff_imp = 1.d0+ctheta(iscal)*xtt*xiafm*gradv(ii,ii,iel)
+        coeff_imp = 1.d0 + max(ctheta(iscal)*xtt*xiafm*gradv(ii,ii,iel), 0.d0)
 
         xut(ii,iel) = xut(ii,iel)/ coeff_imp
         temp(ii)    = temp(ii)   / coeff_imp
@@ -433,8 +436,8 @@ if (ityturt(iscal).ne.3) then
 
       else if(iturt(iscal).eq.21) then
         ! EB-AFM
-        coeff_imp = 1.d0 + ctheta(iscal)*xtt*xi_ebafm*gradv(ii,ii,iel) &
-                         + ctheta(iscal)*gamma_ebafm*xnal(ii)*xnal(ii)
+        coeff_imp = 1.d0 + max(ctheta(iscal)*xtt*xi_ebafm*gradv(ii,ii,iel) &
+                             + ctheta(iscal)*gamma_ebafm*xnal(ii)*xnal(ii), 0.d0)
 
         xut(ii,iel) = xut(ii,iel)/ coeff_imp
         temp(ii)    = temp(ii)   / coeff_imp
@@ -474,6 +477,7 @@ if (ityturt(iscal).ne.3) then
   iflmb0 = 1
   init   = 1
   inc    = 1
+  imrgrp = vcopt%imrgra
   nswrgp = vcopt%nswrgr
   imligp = vcopt%imligr
   iwarnp = vcopt%iwarni
@@ -499,7 +503,7 @@ if (ityturt(iscal).ne.3) then
 
   call inimav &
   ( f_id0  , itypfl ,                                     &
-    iflmb0 , init   , inc    , imrgra , nswrgp  , imligp, &
+    iflmb0 , init   , inc    , imrgrp , nswrgp  , imligp, &
     iwarnp ,                                              &
     epsrgp , climgp ,                                     &
     crom   , brom   ,                                     &
@@ -530,6 +534,7 @@ else
   iflmb0 = 1
   init   = 1
   inc    = 1
+  imrgrp = vcopt%imrgra
   nswrgp = vcopt%nswrgr
   imligp = vcopt%imligr
   iwarnp = vcopt%iwarni
@@ -552,7 +557,7 @@ else
 
   call inimav &
   ( f_id0  , itypfl ,                                     &
-    iflmb0 , init   , inc    , imrgra , nswrgp  , imligp, &
+    iflmb0 , init   , inc    , imrgrp , nswrgp  , imligp, &
     iwarnp ,                                              &
     epsrgp , climgp ,                                     &
     crom   , brom   ,                                     &

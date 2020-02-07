@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -97,6 +97,7 @@ extern "C" {
 #include "cs_log.h"
 #include "cs_mesh.h"
 #include "cs_mesh_builder.h"
+#include "cs_order.h"
 #include "cs_part_to_block.h"
 #include "cs_timer.h"
 
@@ -597,11 +598,9 @@ _precompute_cell_center_g(const cs_mesh_builder_t  *mb,
 
   cs_lnum_t _n_cells = 0;
   cs_lnum_t _n_faces = 0;
-  cs_lnum_t _n_vertices = 0;
 
   cs_gnum_t *_cell_num = NULL;
   cs_gnum_t *_face_num = NULL;
-  cs_gnum_t *_vtx_num = NULL;
   cs_gnum_t *_face_gcells = NULL;
   cs_gnum_t *_face_gvertices = NULL;
 
@@ -609,9 +608,7 @@ _precompute_cell_center_g(const cs_mesh_builder_t  *mb,
   cs_lnum_t *_face_vertices_idx = NULL;
   cs_lnum_t *_face_vertices = NULL;
 
-  cs_real_t *_vtx_coord = NULL;
-
-  cs_block_to_part_t *d = NULL;
+  cs_all_to_all_t *d = NULL;
 
   /* Initialization */
 
@@ -635,19 +632,20 @@ _precompute_cell_center_g(const cs_mesh_builder_t  *mb,
                                        2,
                                        mb->face_cells,
                                        NULL,
-                                       NULL);
-
-  _n_faces = cs_block_to_part_get_n_part_ents(d);
+                                       NULL,
+                                       &_n_faces,
+                                       &_face_num);
 
   BFT_MALLOC(_face_gcells, _n_faces*2, cs_gnum_t);
 
   /* Face -> cell connectivity */
 
-  cs_block_to_part_copy_array(d,
-                              gnum_type,
-                              2,
-                              mb->face_cells,
-                              _face_gcells);
+  cs_all_to_all_copy_array(d,
+                           gnum_type,
+                           2,
+                           true,  /* reverse */
+                           mb->face_cells,
+                           _face_gcells);
 
   /* Now convert face -> cell connectivity to local cell numbers */
 
@@ -668,43 +666,50 @@ _precompute_cell_center_g(const cs_mesh_builder_t  *mb,
 
   BFT_MALLOC(_face_vertices_idx, _n_faces + 1, cs_lnum_t);
 
-  cs_block_to_part_copy_index(d,
-                              mb->face_vertices_idx,
-                              _face_vertices_idx);
+  cs_all_to_all_copy_index(d,
+                           true,  /* reverse */
+                           mb->face_vertices_idx,
+                           _face_vertices_idx);
 
   BFT_MALLOC(_face_gvertices, _face_vertices_idx[_n_faces], cs_gnum_t);
 
-  cs_block_to_part_copy_indexed(d,
-                                gnum_type,
-                                mb->face_vertices_idx,
-                                mb->face_vertices,
-                                _face_vertices_idx,
-                                _face_gvertices);
+  cs_all_to_all_copy_indexed(d,
+                             gnum_type,
+                             true,  /* reverse */
+                             mb->face_vertices_idx,
+                             mb->face_vertices,
+                             _face_vertices_idx,
+                             _face_gvertices);
 
-  _face_num = cs_block_to_part_transfer_gnum(d);
-
-  cs_block_to_part_destroy(&d);
+  cs_all_to_all_destroy(&d);
 
   /* Vertices */
 
-  d = cs_block_to_part_create_adj(comm,
-                                  mb->vertex_bi,
-                                  _face_vertices_idx[_n_faces],
-                                  _face_gvertices);
+  size_t     _n_vertices = 0;
+  cs_gnum_t *_vtx_num = NULL;
 
-  _n_vertices = cs_block_to_part_get_n_part_ents(d);
+  cs_order_single_gnum(_face_vertices_idx[_n_faces],
+                       1, /* base */
+                       _face_gvertices,
+                       &_n_vertices,
+                       &_vtx_num);
 
-  BFT_MALLOC(_vtx_coord, _n_vertices*3, cs_real_t);
+  cs_all_to_all_t *dv
+    = cs_all_to_all_create_from_block(_n_vertices,
+                                      CS_ALL_TO_ALL_USE_DEST_ID,
+                                      _vtx_num,
+                                      mb->vertex_bi,
+                                      comm);
 
-  cs_block_to_part_copy_array(d,
-                              real_type,
-                              3,
-                              mb->vertex_coords,
-                              _vtx_coord);
+  cs_real_t *_vtx_coord
+    = cs_all_to_all_copy_array(dv,
+                               real_type,
+                               3,
+                               true, /* reverse */
+                               mb->vertex_coords,
+                               NULL);
 
-  _vtx_num = cs_block_to_part_transfer_gnum(d);
-
-  cs_block_to_part_destroy(&d);
+  cs_all_to_all_destroy(&dv);
 
   /* Now convert face -> vertex connectivity to local vertex numbers */
 
@@ -965,7 +970,8 @@ _cell_rank_by_sfc(cs_gnum_t                 n_g_cells,
 #endif
 {
   cs_lnum_t i;
-  double  start_time, end_time;
+  cs_timer_t  start_time, end_time;
+  cs_timer_counter_t dt;
 
   cs_lnum_t n_cells = 0, block_size = 0;
 
@@ -976,7 +982,7 @@ _cell_rank_by_sfc(cs_gnum_t                 n_g_cells,
   bft_printf(_("\n Partitioning by space-filling curve: %s.\n"),
              _(fvm_io_num_sfc_type_name[sfc_type]));
 
-  start_time = cs_timer_wtime();
+  start_time = cs_timer_time();
 
   n_cells = mb->cell_bi.gnum_range[1] - mb->cell_bi.gnum_range[0];
   block_size = mb->cell_bi.block_size;
@@ -989,6 +995,14 @@ _cell_rank_by_sfc(cs_gnum_t                 n_g_cells,
 #endif
   if (n_ranks == 1)
     _precompute_cell_center_l(mb, cell_center);
+
+  end_time = cs_timer_time();
+  dt = cs_timer_diff(&start_time, &end_time);
+  start_time = end_time;
+
+  cs_log_printf(CS_LOG_PERFORMANCE,
+                _("  precompute cell centers:    %.3g s\n"),
+                (double)(dt.wall_nsec)/1.e9);
 
   cell_io_num = fvm_io_num_create_from_sfc(cell_center,
                                            3,
@@ -1044,16 +1058,17 @@ _cell_rank_by_sfc(cs_gnum_t                 n_g_cells,
 
   cell_io_num = fvm_io_num_destroy(cell_io_num);
 
-  end_time = cs_timer_wtime();
+  end_time = cs_timer_time();
+  dt = cs_timer_diff(&start_time, &end_time);
 
   if (sfc_type < FVM_IO_NUM_SFC_HILBERT_BOX)
     cs_log_printf(CS_LOG_PERFORMANCE,
-                  _("  Morton (Z) curve:           %.3g s \n"),
-                  (double)(end_time - start_time));
+                  _("  Morton (Z) curve:           %.3g s\n"),
+                  (double)(dt.wall_nsec)/1.e9);
   else
     cs_log_printf(CS_LOG_PERFORMANCE,
-                  _("  Peano-Hilbert curve:        %.3g s \n"),
-                  (double)(end_time - start_time));
+                  _("  Peano-Hilbert curve:        %.3g s\n"),
+                  (double)(dt.wall_nsec)/1.e9);
 }
 
 #if defined(HAVE_MPI)
@@ -2083,10 +2098,6 @@ _prepare_input(const cs_mesh_t           *mesh,
 
   cs_gnum_t *_g_face_cells = NULL;
 
-#if defined(HAVE_MPI)
-  cs_block_to_part_t *d = NULL;
-#endif
-
   cs_block_dist_info_t cell_bi =  cs_block_dist_compute_sizes(rank_id,
                                                               n_ranks,
                                                               rank_step,
@@ -2186,32 +2197,34 @@ _prepare_input(const cs_mesh_t           *mesh,
       = (sizeof(cs_gnum_t) == 8) ? CS_UINT64 : CS_UINT32;
     cs_gnum_t *g_face_cells_tmp = NULL;
 
-    d = cs_block_to_part_create_by_adj_s(cs_glob_mpi_comm,
-                                         mb->face_bi,
-                                         cell_bi,
-                                         2,
-                                         *g_face_cells,
-                                         NULL,
-                                         NULL);
-
-    *n_faces = cs_block_to_part_get_n_part_ents(d);
+    cs_all_to_all_t
+      *d = cs_block_to_part_create_by_adj_s(cs_glob_mpi_comm,
+                                            mb->face_bi,
+                                            cell_bi,
+                                            2,
+                                            *g_face_cells,
+                                            NULL,
+                                            NULL,
+                                            n_faces,
+                                            NULL);
 
     BFT_MALLOC(g_face_cells_tmp, (*n_faces)*2, cs_gnum_t);
 
     /* Face -> cell connectivity */
 
-    cs_block_to_part_copy_array(d,
-                                gnum_type,
-                                2,
-                                *g_face_cells,
-                                g_face_cells_tmp);
+    cs_all_to_all_copy_array(d,
+                             gnum_type,
+                             2,
+                             true,  /* reverse */
+                             *g_face_cells,
+                             g_face_cells_tmp);
 
     if (_g_face_cells != NULL) /* in case of periodicity */
       BFT_FREE(_g_face_cells);
 
     *g_face_cells = g_face_cells_tmp;
 
-    cs_block_to_part_destroy(&d);
+    cs_all_to_all_destroy(&d);
   }
 
 #endif /* defined(HAVE_MPI) */

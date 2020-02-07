@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -68,7 +68,6 @@ use ctincl
 use atsoil
 use lagran
 use vorinc
-use ihmpre
 use radiat
 use cplsat
 use ppcpfu
@@ -85,6 +84,7 @@ use cs_tagms, only: t_metal, tmet0
 use cs_nz_tagmr
 use cs_nz_condensation
 use turbomachinery
+use cdomod
 
 ! les " use pp* " ne servent que pour recuperer le pointeur IIZFPP
 
@@ -129,10 +129,12 @@ integer          ipass
 data             ipass /0/
 save             ipass
 
+integer :: verbosity
+
 integer, pointer, dimension(:,:) :: icodcl
 integer, allocatable, dimension(:) :: isostd
 
-double precision, pointer, dimension(:) :: flmalf, flmalb, xprale
+double precision, pointer, dimension(:) :: xprale
 double precision, pointer, dimension(:,:) :: cofale
 double precision, pointer, dimension(:,:) :: dttens
 double precision, pointer, dimension(:,:,:) :: rcodcl
@@ -178,7 +180,7 @@ interface
   ( nvar   , nscal  , iterns ,                                     &
     isvhb  ,                                                       &
     itrale , italim , itrfin , ineefl , itrfup ,                   &
-    flmalf , flmalb , cofale , xprale ,                            &
+    cofale , xprale ,                                              &
     icodcl , isostd ,                                              &
     dt     , rcodcl ,                                              &
     visvdr , hbord  , theipb )
@@ -190,7 +192,7 @@ interface
     integer          nvar, nscal, iterns, isvhb
     integer          itrale , italim , itrfin , ineefl , itrfup
 
-    double precision, pointer, dimension(:) :: flmalf, flmalb, xprale
+    double precision, pointer, dimension(:) :: xprale
     double precision, pointer, dimension(:,:) :: cofale
     integer, pointer, dimension(:,:) :: icodcl
     integer, dimension(nfabor+1) :: isostd
@@ -257,6 +259,12 @@ call field_get_key_struct_var_cal_opt(ivarfl(ipr), vcopt_p)
 ! 1. Initialisation
 !===============================================================================
 
+if (cs_log_default_is_active()) then
+  verbosity = 1
+else
+  verbosity = 0
+endif
+
 allocate(isostd(nfabor+1))
 
 must_return = .false.
@@ -319,9 +327,10 @@ if (ippmod(idarcy).eq.-1) then
 ! On ne le fait pas dans le cas de la prise en compte de la pression
 !   hydrostatique, ni dans le cas du compressible
 
-  if( ntcabs.le.ntinit .and. isuite.eq.0 .and. (iphydr.eq.0.or.iphydr.eq.2)    &
-                  .and. ippmod(icompf).lt.0                               &
-                  .and. idilat .le.1                 ) then
+  if (      ntcabs.le.ntinit .and. isuite.eq.0               &
+      .and. (iphydr.eq.0.or.iphydr.eq.2)                     &
+      .and. ippmod(icompf).lt.0                              &
+      .and. idilat.le.1) then
 
     if(vcopt_p%iwarni.ge.2) then
       write(nfecra,2000) ntcabs
@@ -332,10 +341,9 @@ if (ippmod(idarcy).eq.-1) then
     xzp0   = xyzp0(3)
     do iel = 1, ncel
       cvar_pr(iel) = pred0
-      cpro_prtot(iel) = p0                                   &
-           + ro0*( gx*(xyzcen(1,iel)-xxp0)                   &
-           +       gy*(xyzcen(2,iel)-xyp0)                   &
-           +       gz*(xyzcen(3,iel)-xzp0) )
+      cpro_prtot(iel) = p0 + ro0*(  gx*(xyzcen(1,iel)-xxp0)   &
+                                  + gy*(xyzcen(2,iel)-xyp0)   &
+                                  + gz*(xyzcen(3,iel)-xzp0))
     enddo
   endif
 
@@ -359,24 +367,28 @@ if (irangp.ge.0 .or. iperio.eq.1) then
 
     ! Is the field of type FIELD_VARIABLE?
     if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-      if (f_dim.eq.1) then
+      ! Is this field not managed by CDO?
+      if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
 
-        call field_get_val_s(f_id, cvar_sca)
-        call synsce (cvar_sca)
+        if (f_dim.eq.1) then
 
-      else if (f_dim.eq.3) then
+          call field_get_val_s(f_id, cvar_sca)
+          call synsce (cvar_sca)
 
-        call field_get_val_v(f_id, cvar_vec)
-        call synvie(cvar_vec)
+        else if (f_dim.eq.3) then
 
-      else if (f_dim.eq.6) then
+          call field_get_val_v(f_id, cvar_vec)
+          call synvie(cvar_vec)
 
-        call field_get_val_v(f_id, cvar_vec)
-        call syntis(cvar_vec)
-      else
-        call csexit(1)
+        else if (f_dim.eq.6) then
+
+          call field_get_val_v(f_id, cvar_vec)
+          call syntis(cvar_vec)
+        else
+          call csexit(1)
+        endif
+
       endif
-
     endif
   enddo
 
@@ -531,7 +543,7 @@ if(nctsmt.gt.0) then
     ! Cooling tower model
     ! Evaporation mass exchange term
     call cs_ctwr_bulk_mass_source_term &
-      (p0   , molmass_rat, mass_source)
+      (p0, molmass_rat, mass_source)
 
     do ii = 1, ncetsm
       iel = icetsm(ii)
@@ -587,7 +599,6 @@ if (nftcdt.gt.0) then
 
   call condensation_copain_model &
 ( nvar   , nfbpcd , ifbpcd , izzftcd ,                           &
-  tpar   ,                                                       &
   spcond , hpcond )
 
 endif
@@ -649,12 +660,17 @@ do f_id = 0, nfld - 1
   call field_get_type(f_id, f_type)
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-    call field_current_to_previous(f_id)
+    ! Is this field not managed by CDO ?
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
 
-    ! For buoyant scalar with source termes, current to previous for them
-    call field_get_key_int(f_id, kst, st_id)
-    if (st_id .ge.0) then
-      call field_current_to_previous(st_id)
+      call field_current_to_previous(f_id)
+
+      ! For buoyant scalar with source terms, current to previous for them
+      call field_get_key_int(f_id, kst, st_id)
+      if (st_id .ge.0) then
+        call field_current_to_previous(st_id)
+      endif
+
     endif
   endif
 enddo
@@ -692,7 +708,7 @@ endif
 !     CALCUL DU PAS DE TEMPS SI VARIABLE
 !===============================================================================
 
-if(vcopt_u%iwarni.ge.1) then
+if (vcopt_u%iwarni.ge.1) then
   write(nfecra,1020)
 endif
 
@@ -705,7 +721,7 @@ call dttvar &
 
 if (nbaste.gt.0.and.itrale.gt.nalinf) then
   ntrela = ntcabs - ntpabs
-  call astpdt(dt, ncelet, ntrela)
+  call astpdt(dt, ntrela)
 endif
 
 ! Compute the pseudo tensorial time step if needed for the pressure solving
@@ -791,7 +807,7 @@ if (ivrtex.eq.1) then
 endif
 
 ! --- Methode ALE : debut de boucle d'implicitation du deplacement des
-!       structures. ITRFIN=0 indique qu'on a besoin de refaire une iteration
+!       structures. itrfin=0 indique qu'on a besoin de refaire une iteration
 !       pour Syrthes, T1D ou rayonnement.
 italim = 1
 itrfin = 1
@@ -799,15 +815,13 @@ ineefl = 0
 if (iale.ge.1 .and. nalimx.gt.1 .and. itrale.gt.nalinf) then
 !     On reserve certains tableaux pour permettre le retour a l'etat
 !       initial en fin d'iteration ALE
-!       - flux de masse
+!       - mass flux: save at the first call of schtmp
 !       - conditions aux limites de gradient de P et U (car on a un appel
 !         a GDRCEL pour les non orthogonalites pour calculer les CL reelles)
 !         -> n'est peut-etre pas reellement necessaire
 !       - la pression initiale (car RTPA est aussi ecrase dans le cas
 !         ou NTERUP>1) -> on pourrait optimiser en ne reservant que si
 !         necessaire ...
-  allocate(flmalf(nfac))
-  allocate(flmalb(nfabor))
   allocate(cofale(nfabor,11))
   allocate(xprale(ncelet))
   ineefl = 1
@@ -815,14 +829,18 @@ if (iale.ge.1 .and. nalimx.gt.1 .and. itrale.gt.nalinf) then
   if (nbccou.gt.0 .or. nfpt1t.gt.0 .or. iirayo.gt.0) itrfin = 0
 
 else
-  flmalf => null()
-  flmalb => null()
   cofale => null()
   xprale => null()
 endif
 
+icodcl => null()
+rcodcl => null()
+
 300 continue
 
+hbord => null()
+theipb => null()
+visvdr => null()
 
 ! --- Boucle sur navstv pour couplage vitesse/pression
 !     on s'arrete a NTERUP ou quand on a converge
@@ -839,12 +857,6 @@ endif
 if (nterup.gt.1.or.isno2t.gt.0) then
   if (nbccou.gt.0 .or. nfpt1t.gt.0 .or. iirayo.gt.0) itrfup = 0
 endif
-
-icodcl => null()
-rcodcl => null()
-hbord => null()
-theipb => null()
-visvdr => null()
 
 ! Allocate temporary arrays for boundary conditions
 if (italim .eq. 1) then
@@ -879,7 +891,7 @@ do while (iterns.le.nterup)
     (nvar   , nscal  , iterns ,                                    &
      isvhb  ,                                                      &
      itrale , italim , itrfin , ineefl , itrfup ,                  &
-     flmalf , flmalb , cofale , xprale ,                           &
+     cofale , xprale ,                                             &
      icodcl , isostd ,                                             &
      dt     , rcodcl ,                                             &
      visvdr , hbord  , theipb )
@@ -915,7 +927,7 @@ do while (iterns.le.nterup)
   if (ippmod(iatmos).eq.2.and.iatsoil.eq.1.and.nfmodsol.gt.0) then
     call field_get_val_s(icrom, crom)
     call field_get_val_s(ivarfl(isca(iscalt)), cvar_scalt)
-    call field_get_val_s(ivarfl(isca(itotwt)), cvar_totwt)
+    call field_get_val_s(ivarfl(isca(iymw)), cvar_totwt)
     call solvar(cvar_scalt , cvar_totwt ,                &
                 crom   , dt ,                            &
                 rcodcl )
@@ -1009,6 +1021,9 @@ do while (iterns.le.nterup)
   ! Compute y+ if needed
   ! and Van Driest "amortissement"
   if (itytur.eq.4 .and. idries.eq.1) then
+    ! Disable solid cells in fluid_solid mode
+    if (fluid_solid) call cs_mesh_quantities_set_has_disable_flag(1)
+
     call distyp(itypfb, visvdr)
   endif
 
@@ -1081,6 +1096,9 @@ do while (iterns.le.nterup)
         write(nfecra,1060)
       endif
 
+      ! Enable solid cells in fluid_solid mode
+      if (fluid_solid) call cs_mesh_quantities_set_has_disable_flag(0)
+
       ! Update buoyant scalar(s)
       call scalai(nvar, nscal , iterns , dt)
 
@@ -1123,14 +1141,12 @@ do while (iterns.le.nterup)
 
       call richards (icvrge, dt)
 
-      if (iihmpr.eq.1) then
-        call uidapp                                                    &
-         ( darcy_anisotropic_permeability,                             &
-           darcy_anisotropic_dispersion,                               &
-           darcy_gravity,                                              &
-           darcy_gravity_x, darcy_gravity_y, darcy_gravity_z,          &
-           darcy_unsaturated)
-      endif
+      call uidapp                                                    &
+       ( darcy_anisotropic_permeability,                             &
+         darcy_anisotropic_dispersion,                               &
+         darcy_gravity,                                              &
+         darcy_gravity_x, darcy_gravity_y, darcy_gravity_z,          &
+         darcy_unsaturated)
 
       ! Darcy : update data specific to underground flow
       mbrom = 0
@@ -1212,7 +1228,7 @@ if (ippmod(idarcy).eq.1) then
     (nvar   , nscal  , iterns ,                                    &
      isvhb  ,                                                      &
      itrale , italim , itrfin , ineefl , itrfup ,                  &
-     flmalf , flmalb , cofale , xprale ,                           &
+     cofale , xprale ,                                             &
      icodcl , isostd ,                                             &
      dt     , rcodcl ,                                             &
      visvdr , hbord  , theipb )
@@ -1237,11 +1253,7 @@ if (iccvfg.eq.0) then
 
   if (nbstru.gt.0.or.nbaste.gt.0) then
 
-    call strdep &
-  ( itrale , italim , itrfin ,                                     &
-    nvar   ,                                                       &
-    dt     ,                                                       &
-    flmalf , flmalb , cofale , xprale )
+    call strdep(itrale, italim, itrfin, nvar, dt, cofale, xprale)
 
     !     On boucle eventuellement sur de deplacement des structures
     if (itrfin.ne.-1) then
@@ -1250,8 +1262,7 @@ if (iccvfg.eq.0) then
     endif
 
     ! Free memory
-    if (associated(flmalf)) then
-      deallocate(flmalf, flmalb)
+    if (associated(cofale)) then
       deallocate(cofale)
       deallocate(xprale)
     endif
@@ -1401,25 +1412,28 @@ endif  ! Fin si calcul sur champ de vitesse fige SUITE
 ! Re enable solid cells in fluid_solid mode
 if (fluid_solid) call cs_mesh_quantities_set_has_disable_flag(0)
 
-!     Ici on peut liberer les eventuels tableaux SKW et DIVUKW
-
 !===============================================================================
 ! 15.  RESOLUTION DES SCALAIRES
 !===============================================================================
 
 if (nscal.ge.1 .and. iirayo.gt.0) then
 
-  if (vcopt_u%iwarni.ge.1 .and. mod(ntcabs,nfreqr).eq.0) then
+  if (vcopt_u%iwarni.ge.1) then
     write(nfecra,1070)
   endif
 
-  call cs_rad_transfer_solve(itypfb, nclacp, nclafu, &
-                             dt, cp2fol, cp2ch, ichcor)
+  ! Call the 1D radiative model
+  ! Compute the divergence of the ir and solar radiative fluxes:
+  if (ippmod(iatmos).ge.1.and.iatra1.ge.1) then
+    call atr1vf()
+  endif
+
+  call cs_rad_transfer_solve(verbosity, itypfb, cp2fol, cp2ch, ichcor)
 endif
 
 if (nscal.ge.1) then
 
-  if(vcopt_u%iwarni.ge.1) then
+  if (vcopt_u%iwarni.ge.1) then
     write(nfecra,1060)
   endif
 

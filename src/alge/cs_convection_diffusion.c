@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -1745,7 +1745,7 @@ cs_convection_diffusion_scalar(int                       idtvar,
 
   /* Local variables */
 
-  char var_name[32];
+  char var_name[64];
 
   int iupwin = 0;
   int tr_dim = 0;
@@ -1794,7 +1794,7 @@ cs_convection_diffusion_scalar(int                       idtvar,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -1841,15 +1841,15 @@ cs_convection_diffusion_scalar(int                       idtvar,
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else if (isstpp > 1) {
     bft_error(__FILE__, __LINE__, 0,
               _("invalid value of isstpp for a work array"));
   } else {
-    strcpy(var_name, "Work array");
+    strncpy(var_name, "[scalar convection-diffusion]", 63);
   }
-  var_name[31] = '\0';
+  var_name[63] = '\0';
 
   if (iwarnp >= 2) {
     if (ischcp == 1) {
@@ -2556,7 +2556,7 @@ cs_convection_diffusion_scalar(int                       idtvar,
                                    _pvar[ic],
                                    _pvar[id],
                                    local_max[ic],
-                                   local_max[id],
+                                   local_min[ic],
                                    courant_c,
                                    &pif,
                                    &pjf);
@@ -3096,7 +3096,7 @@ cs_face_convection_scalar(int                       idtvar,
 
   /* Local variables */
 
-  char var_name[32];
+  char var_name[64];
 
   int iupwin = 0;
   int tr_dim = 0;
@@ -3137,7 +3137,7 @@ cs_face_convection_scalar(int                       idtvar,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -3184,15 +3184,15 @@ cs_face_convection_scalar(int                       idtvar,
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else if (isstpp > 1) {
     bft_error(__FILE__, __LINE__, 0,
               _("invalid value of isstpp for a work array"));
   } else {
-    strcpy(var_name, "Work array");
+    strncpy(var_name, "[scalar face flux from convection]", 63);
   }
-  var_name[31] = '\0';
+  var_name[63] = '\0';
 
   if (iwarnp >= 2) {
     if (ischcp == 1) {
@@ -3813,7 +3813,7 @@ cs_face_convection_scalar(int                       idtvar,
                                    _pvar[ic],
                                    _pvar[id],
                                    local_max[ic],
-                                   local_max[id],
+                                   local_min[ic],
                                    courant_c,
                                    &pif,
                                    &pjf);
@@ -4229,30 +4229,24 @@ cs_convection_diffusion_vector(int                         idtvar,
 
   /* Local variables */
 
-  cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
   cs_field_t *f = NULL;
-  char var_name[32];
+  char var_name[64];
 
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
-
-    int cv_limiter_id =
-      cs_field_get_key_int(f, cs_field_key_id("convection_limiter_id"));
-    if (cv_limiter_id > -1)
-      cv_limiter = cs_field_by_id(cv_limiter_id)->val;
 
     int df_limiter_id =
       cs_field_get_key_int(f, cs_field_key_id("diffusion_limiter_id"));
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[convection-diffusion, vector]", 63);
+  var_name[63] = '\0';
 
   /* Discontinuous porous treatment */
   if (cs_glob_porous_model == 3 && f == CS_F_(vel)) {
@@ -4297,7 +4291,7 @@ cs_convection_diffusion_vector(int                         idtvar,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -5644,6 +5638,7 @@ cs_convection_diffusion_vector(int                         idtvar,
       int ityp = bc_type[face_id];
       if (   ityp == CS_OUTLET
           || ityp == CS_INLET
+          || ityp == CS_FREE_INLET
           || ityp == CS_CONVECTIVE_INLET
           || ityp == CS_COUPLED_FD)
         bndcel[b_face_cells[face_id]] = 0.;
@@ -5847,14 +5842,13 @@ cs_convection_diffusion_tensor(int                         idtvar,
   const cs_real_3_t *restrict diipb
     = (const cs_real_3_t *restrict)fvq->diipb;
 
-  cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
   const int *bc_type = cs_glob_bc_type;
 
   /* Local variables */
 
-  char var_name[32];
+  char var_name[64];
 
   int tr_dim = 0;
 
@@ -5879,7 +5873,7 @@ cs_convection_diffusion_tensor(int                         idtvar,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -5904,22 +5898,17 @@ cs_convection_diffusion_tensor(int                         idtvar,
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
 
-    int cv_limiter_id =
-      cs_field_get_key_int(f, cs_field_key_id("convection_limiter_id"));
-    if (cv_limiter_id > -1)
-      cv_limiter = cs_field_by_id(cv_limiter_id)->val;
-
     int df_limiter_id =
       cs_field_get_key_int(f, cs_field_key_id("diffusion_limiter_id"));
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
     cs_gradient_perio_init_rij_tensor(&tr_dim, grad);
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[convection-diffusion, tensor]", 63);
+  var_name[63] = '\0';
 
   if (iwarnp >= 2 && iconvp == 1) {
     if (ischcp == 1) {
@@ -6827,7 +6816,7 @@ cs_convection_diffusion_thermal(int                       idtvar,
 
   /* Local variables */
 
-  char var_name[32];
+  char var_name[64];
 
   cs_gnum_t n_upwind;
   int iupwin;
@@ -6873,7 +6862,7 @@ cs_convection_diffusion_thermal(int                       idtvar,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -6917,11 +6906,11 @@ cs_convection_diffusion_thermal(int                       idtvar,
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[convection-diffusion, thermal]", 63);
+  var_name[63] = '\0';
 
   if (iwarnp >= 2) {
     if (ischcp == 1) {
@@ -7629,7 +7618,7 @@ cs_convection_diffusion_thermal(int                       idtvar,
                                    _pvar[ic],
                                    _pvar[id],
                                    local_max[ic],
-                                   local_max[id],
+                                   local_min[ic],
                                    -1., /* courant */
                                    &pif,
                                    &pjf);
@@ -8031,10 +8020,9 @@ cs_anisotropic_diffusion_scalar(int                       idtvar,
 
   /* Local variables */
 
-  cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
-  char var_name[32];
+  char var_name[64];
 
   int tr_dim = 0;
   int w_stride = 1;
@@ -8070,7 +8058,7 @@ cs_anisotropic_diffusion_scalar(int                       idtvar,
 
   /* Choose gradient type */
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -8091,21 +8079,16 @@ cs_anisotropic_diffusion_scalar(int                       idtvar,
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
 
-    int cv_limiter_id =
-      cs_field_get_key_int(f, cs_field_key_id("convection_limiter_id"));
-    if (cv_limiter_id > -1)
-      cv_limiter = cs_field_by_id(cv_limiter_id)->val;
-
     int df_limiter_id =
       cs_field_get_key_int(f, cs_field_key_id("diffusion_limiter_id"));
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[anisotropic diffusion, scalar]", 63);
+  var_name[63] = '\0';
 
   /* Porosity fields */
   cs_field_t *fporo = cs_field_by_name_try("porosity");
@@ -8804,10 +8787,9 @@ cs_anisotropic_left_diffusion_vector(int                         idtvar,
 
   /* Local variables */
 
-  cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
-  char var_name[32];
+  char var_name[64];
 
   cs_real_33_t *gradv;
   cs_real_t *bndcel;
@@ -8822,7 +8804,7 @@ cs_anisotropic_left_diffusion_vector(int                         idtvar,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -8847,21 +8829,16 @@ cs_anisotropic_left_diffusion_vector(int                         idtvar,
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
 
-    int cv_limiter_id =
-      cs_field_get_key_int(f, cs_field_key_id("convection_limiter_id"));
-    if (cv_limiter_id > -1)
-      cv_limiter = cs_field_by_id(cv_limiter_id)->val;
-
     int df_limiter_id =
       cs_field_get_key_int(f, cs_field_key_id("diffusion_limiter_id"));
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[anisotropic left diffusion, vector]", 63);
+  var_name[63] = '\0';
 
   if (icoupl > 0) {
     assert(f_id != -1);
@@ -9164,6 +9141,7 @@ cs_anisotropic_left_diffusion_vector(int                         idtvar,
       int ityp = bc_type[face_id];
       if (   ityp == CS_OUTLET
           || ityp == CS_INLET
+          || ityp == CS_FREE_INLET
           || ityp == CS_CONVECTIVE_INLET
           || ityp == CS_COUPLED_FD) {
         bndcel[b_face_cells[face_id]] = 0.;
@@ -9359,10 +9337,9 @@ cs_anisotropic_right_diffusion_vector(int                         idtvar,
 
   /* Local variables */
 
-  cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
-  char var_name[32];
+  char var_name[64];
 
   cs_real_6_t *viscce;
   cs_real_33_t *grad;
@@ -9379,7 +9356,7 @@ cs_anisotropic_right_diffusion_vector(int                         idtvar,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -9404,21 +9381,16 @@ cs_anisotropic_right_diffusion_vector(int                         idtvar,
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
 
-    int cv_limiter_id =
-      cs_field_get_key_int(f, cs_field_key_id("convection_limiter_id"));
-    if (cv_limiter_id > -1)
-      cv_limiter = cs_field_by_id(cv_limiter_id)->val;
-
     int df_limiter_id =
       cs_field_get_key_int(f, cs_field_key_id("diffusion_limiter_id"));
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[anisotropic right diffusion, vector]", 63);
+  var_name[63] = '\0';
 
   viscce = viscel;
 
@@ -9433,7 +9405,6 @@ cs_anisotropic_right_diffusion_vector(int                         idtvar,
                                        &n_distant,
                                        &faces_distant);
   }
-
 
   /* 2. Compute the diffusive part with reconstruction technics */
 
@@ -10068,7 +10039,7 @@ cs_anisotropic_diffusion_tensor(int                         idtvar,
   cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
-  char var_name[32];
+  char var_name[64];
 
   cs_real_6_t *viscce;
   cs_real_6_t *w2;
@@ -10086,7 +10057,7 @@ cs_anisotropic_diffusion_tensor(int                         idtvar,
 
   /* Choose gradient type */
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -10121,11 +10092,11 @@ cs_anisotropic_diffusion_tensor(int                         idtvar,
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[anisotropic diffusion, tensor]", 63);
+  var_name[63] = '\0';
 
   /* Porosity fields */
   cs_field_t *fporo = cs_field_by_name_try("porosity");
@@ -10577,7 +10548,7 @@ cs_anisotropic_diffusion_tensor(int                         idtvar,
  *
  * Please refer to the
  * <a href="../../theory.pdf#itrmas"><b>itrmas/itrgrp</b></a> section of the
- * theory guide for more informations.
+ * theory guide for more information.
  *
  * \param[in]     f_id          field id (or -1)
  * \param[in]     m             pointer to mesh
@@ -10683,7 +10654,7 @@ cs_face_diffusion_potential(const int                 f_id,
 
   /* Local variables */
 
-  char var_name[32];
+  char var_name[64];
   int tr_dim = 0;
   int w_stride = 1;
 
@@ -10719,7 +10690,7 @@ cs_face_diffusion_potential(const int                 f_id,
   /* Use iterative gradient */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   if (imrgra < 0)
     imrgra = 0;
@@ -10730,11 +10701,11 @@ cs_face_diffusion_potential(const int                 f_id,
 
   if (f_id > -1) {
     f = cs_field_by_id(f_id);
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[face mass flux update]", 63);
+  var_name[63] = '\0';
 
   /* Handle parallelism and periodicity */
 
@@ -11045,10 +11016,9 @@ cs_face_anisotropic_diffusion_potential(const int                 f_id,
 
   /* Local variables */
 
-  cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
-  char var_name[32];
+  char var_name[64];
   int tr_dim = 0;
   int w_stride = 6;
 
@@ -11081,7 +11051,7 @@ cs_face_anisotropic_diffusion_potential(const int                 f_id,
   /* Use iterative gradient */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   if (imrgra < 0)
     imrgra = 0;
@@ -11093,21 +11063,16 @@ cs_face_anisotropic_diffusion_potential(const int                 f_id,
   if (f_id > -1) {
     f = cs_field_by_id(f_id);
 
-    int cv_limiter_id =
-      cs_field_get_key_int(f, cs_field_key_id("convection_limiter_id"));
-    if (cv_limiter_id > -1)
-      cv_limiter = cs_field_by_id(cv_limiter_id)->val;
-
     int df_limiter_id =
       cs_field_get_key_int(f, cs_field_key_id("diffusion_limiter_id"));
     if (df_limiter_id > -1)
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[face mass flux update]", 63);
+  var_name[63] = '\0';
 
   /* Porosity fields */
   cs_field_t *fporo = cs_field_by_name_try("porosity");
@@ -11530,7 +11495,7 @@ cs_diffusion_potential(const int                 f_id,
 
   /* Local variables */
 
-  char var_name[32];
+  char var_name[64];
   int tr_dim = 0;
   int mass_flux_rec_type = cs_glob_stokes_model->irecmf;
   int w_stride = 1;
@@ -11566,7 +11531,7 @@ cs_diffusion_potential(const int                 f_id,
   /* Use iterative gradient */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   if (imrgra < 0)
     imrgra = 0;
@@ -11576,11 +11541,11 @@ cs_diffusion_potential(const int                 f_id,
                              &halo_type);
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[cell mass flux divergence update]", 63);
+  var_name[63] = '\0';
 
   /* Handle parallelism and periodicity */
 
@@ -11914,7 +11879,7 @@ cs_anisotropic_diffusion_potential(const int                 f_id,
   cs_real_t *cv_limiter = NULL;
   cs_real_t *df_limiter = NULL;
 
-  char var_name[32];
+  char var_name[64];
   int tr_dim = 0;
   int w_stride = 6;
 
@@ -11949,7 +11914,7 @@ cs_anisotropic_diffusion_potential(const int                 f_id,
   /* Use iterative gradient */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   if (imrgra < 0)
     imrgra = 0;
@@ -11972,11 +11937,11 @@ cs_anisotropic_diffusion_potential(const int                 f_id,
       df_limiter = cs_field_by_id(df_limiter_id)->val;
 
 
-    snprintf(var_name, 31, "%s", f->name);
+    snprintf(var_name, 63, "%s", f->name);
   }
   else
-    strcpy(var_name, "Work array");
-  var_name[31] = '\0';
+    strncpy(var_name, "[cell mass flux divergence update]", 63);
+  var_name[63] = '\0';
 
   /* Porosity fields */
   cs_field_t *fporo = cs_field_by_name_try("porosity");

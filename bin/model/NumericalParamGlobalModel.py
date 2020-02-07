@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -74,17 +74,12 @@ class NumericalParamGlobalModel(Model):
         self.default['velocity_pressure_coupling'] ='off'
         self.default['hydrostatic_pressure'] ='off'
         from code_saturne.model.HgnModel import HgnModel
-        if HgnModel(self.case).getHgnModel() != 'free_surface':
+        if HgnModel(self.case).getHgnModel() == 'no_mass_transfer':
             self.default['hydrostatic_pressure'] ='on'
-        self.default['hydrostatic_equilibrium'] ='on'
-        self.default['wall_pressure_extrapolation'] = 'neumann'
+        self.default['hydrostatic_equilibrium'] ='off'
         self.default['time_scheme_order'] = 1
-        from code_saturne.model.GroundwaterModel import GroundwaterModel
-        if GroundwaterModel(self.case).getGroundwaterModel() != 'off':
-            self.default['gradient_reconstruction'] = 1
-        else:
-            self.default['gradient_reconstruction'] = 0
-        del GroundwaterModel
+        self.default['gradient_reconstruction'] = 'default'
+        self.default['extended_neighborhood'] = 'default'
         return self.default
 
 
@@ -142,24 +137,6 @@ class NumericalParamGlobalModel(Model):
 
 
     @Variables.noUndo
-    def getWallPressureExtrapolation(self):
-        """
-        Return EXTRAG value
-        """
-        value = self.node_np.xmlGetString('wall_pressure_extrapolation')
-        if not value:
-            value = self._defaultValues()['wall_pressure_extrapolation']
-            self.setWallPressureExtrapolation(value)
-        else:
-            if value == '0':
-                value = 'neumann'
-            else:
-                value = 'extrapolation'
-
-        return value
-
-
-    @Variables.noUndo
     def getPressureRelaxation(self):
         """
         Return RELAXP value
@@ -186,13 +163,24 @@ class NumericalParamGlobalModel(Model):
     @Variables.noUndo
     def getGradientReconstruction(self):
         """
-        Return IMRGRA value : 0, 1, 2, 3, 4, 5, or 6
+        Return gradient reconstruction method
         """
         node = self.node_np.xmlInitNode('gradient_reconstruction', 'choice')
         choice = node['choice']
         if not choice:
             choice = self._defaultValues()['gradient_reconstruction']
-            self.setGradientReconstruction(choice)
+        return choice
+
+
+    @Variables.noUndo
+    def getExtendedNeighborType(self):
+        """
+        Return extended neighborhood type
+        """
+        node = self.node_np.xmlInitNode('extended_neighborhood', 'choice')
+        choice = node['choice']
+        if not choice:
+            choice = self._defaultValues()['extended_neighborhood']
         return choice
 
 
@@ -270,27 +258,27 @@ class NumericalParamGlobalModel(Model):
 
 
     @Variables.undoLocal
-    def setWallPressureExtrapolation(self, value):
-        """
-        Put value of wall pressure extrapolation
-        """
-        self.isInList(value, ('neumann', 'extrapolation'))
-        if value == 'neumann':
-            value = '0'
-        else:
-            value = '1'
-        self.node_np.xmlSetData('wall_pressure_extrapolation', value)
-
-
-    @Variables.undoLocal
     def setGradientReconstruction(self, value):
         """
         Put value of gradient_reconstruction
         """
-        self.isInt(value)
-        self.isInList(value, (0, 1, 2, 3, 4, 5, 6))
         node = self.node_np.xmlInitNode('gradient_reconstruction', 'choice')
-        node['choice'] = value
+        if value == self._defaultValues()['gradient_reconstruction']:
+            node.xmlRemoveNode()
+        else:
+            node['choice'] = value
+
+
+    @Variables.undoLocal
+    def setExtendedNeighborType(self, value):
+        """
+        Put value of extended_neighborhood
+        """
+        node = self.node_np.xmlInitNode('extended_neighborhood', 'choice')
+        if value == self._defaultValues()['extended_neighborhood']:
+            node.xmlRemoveNode()
+        else:
+            node['choice'] = value
 
 
     @Variables.undoLocal
@@ -379,23 +367,6 @@ class NumericalParamGlobalTestCase(ModelTest):
                 'Could not set velocity_pressure_coupling in NumericalParamGlobalModel'
         assert model.getVelocityPressureCoupling() == 'on',\
                 'Could not get velocity_pressure_coupling in NumericalParamGlobalModel'
-
-    def checkSetandGetWallPressureExtrapolation(self):
-        """
-        Check whether the NumericalParamEquatModel class could be set
-        and get wall pressure extrapolation
-        """
-        model = None
-        model = NumericalParamGlobalModel(self.case)
-        model.setWallPressureExtrapolation('extrapolation')
-
-        doc = '''<numerical_parameters>
-                    <wall_pressure_extrapolation>1</wall_pressure_extrapolation>
-                 </numerical_parameters>'''
-        assert model.node_np == self.xmlNodeFromString(doc),\
-                'Could not set wall pressure extrapolation in NumericalParamGlobalModel'
-        assert model.getWallPressureExtrapolation() == 'extrapolation',\
-                'Could not get wall pressure extrapolation in NumericalParamGlobalModel'
 
     def checkGetandSetHydrostaticPressure(self):
         """

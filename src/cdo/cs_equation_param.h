@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -65,7 +65,14 @@ BEGIN_C_DECLS
  * \brief Convection term is needed
  *
  * \def CS_EQUATION_DIFFUSION
- * \brief Diffusion term is needed
+ * \brief Diffusion term is needed. A scalar-/vector-valued Laplacian
+ * with div .grad
+ *
+ * \def CS_EQUATION_CURLCURL
+ * \brief The term related to the curl-curl operator is needed
+ *
+ * \def CS_EQUATION_GRADDIV
+ * \brief The term related to the grad-div operator is needed
  *
  * \def CS_EQUATION_REACTION
  * \brief Reaction term is needed
@@ -75,12 +82,15 @@ BEGIN_C_DECLS
  *       interior degrees of freedom
  *
  */
-#define CS_EQUATION_LOCKED        (1 <<  0)  /* 1 */
-#define CS_EQUATION_UNSTEADY      (1 <<  1)  /* 2 */
-#define CS_EQUATION_CONVECTION    (1 <<  2)  /* 4 */
-#define CS_EQUATION_DIFFUSION     (1 <<  3)  /* 8 */
-#define CS_EQUATION_REACTION      (1 <<  4)  /* 16 */
-#define CS_EQUATION_FORCE_VALUES  (1 <<  5)  /* 32 */
+
+#define CS_EQUATION_LOCKED        (1 <<  0)  /*   1 */
+#define CS_EQUATION_UNSTEADY      (1 <<  1)  /*   2 */
+#define CS_EQUATION_CONVECTION    (1 <<  2)  /*   4 */
+#define CS_EQUATION_DIFFUSION     (1 <<  3)  /*   8 */
+#define CS_EQUATION_CURLCURL      (1 <<  4)  /*  16 */
+#define CS_EQUATION_GRADDIV       (1 <<  5)  /*  32 */
+#define CS_EQUATION_REACTION      (1 <<  6)  /*  64 */
+#define CS_EQUATION_FORCE_VALUES  (1 <<  7)  /* 128 */
 
 /*!
  * @}
@@ -106,6 +116,27 @@ BEGIN_C_DECLS
 #define CS_EQUATION_POST_UPWIND_COEF (1 << 2) /* 4 */
 #define CS_EQUATION_POST_NORMAL_FLUX (1 << 3) /* 8 */
 
+/*!
+ * @}
+ * @name Flags to handle the enforcement of degrees of freedom (DoFs)
+ * @{
+ *
+ * \def CS_EQUATION_ENFORCE_BY_CELLS
+ * \brief Definition of a selection of DoFs to enforce using a cell selection
+ *
+ * \def CS_EQUATION_ENFORCE_BY_DOFs
+ * \brief Definition of a selection of DoFs
+ *
+ * \def CS_EQUATION_ENFORCE_BY_REFERENCE_VALUE
+ * \brief Assign to all the selected DoFs the same value. This value is stored
+ *        in enforcement_ref_value
+ *
+ */
+
+#define CS_EQUATION_ENFORCE_BY_CELLS            (1 << 0) /* 1 */
+#define CS_EQUATION_ENFORCE_BY_DOFS             (1 << 1) /* 2 */
+#define CS_EQUATION_ENFORCE_BY_REFERENCE_VALUE  (1 << 2) /* 4 */
+
 /*! @} */
 
 /*============================================================================
@@ -121,9 +152,15 @@ BEGIN_C_DECLS
  * \var CS_EQUATION_TYPE_GROUNDWATER
  * Equation related to the groundwater flow module
  *
+ * \var CS_EQUATION_TYPE_MAXWELL
+ * Equation related to the Maxwell module
+ *
  * \var CS_EQUATION_TYPE_NAVSTO
  * Equation related to the resolution of the Navier-Stokes system
  * - Example: momentum, prediction, correction, energy...
+ *
+ * \var CS_EQUATION_TYPE_THERMAL
+ * Equation related to the heat transfer
  *
  * \var CS_EQUATION_TYPE_PREDEFINED
  * Predefined equation (most part of the setting is already done)
@@ -134,7 +171,9 @@ typedef enum {
 
   CS_EQUATION_TYPE_USER,
   CS_EQUATION_TYPE_GROUNDWATER,
+  CS_EQUATION_TYPE_MAXWELL,
   CS_EQUATION_TYPE_NAVSTO,
+  CS_EQUATION_TYPE_THERMAL,
   CS_EQUATION_TYPE_PREDEFINED,
   CS_EQUATION_N_TYPES
 
@@ -272,7 +311,7 @@ typedef struct {
 
   /*!
    * @}
-   * @name Numerical settings for the diffusion term
+   * @name Numerical settings for the diffusion (Laplacian div-grad) term
    * @{
    *
    * \var diffusion_hodge
@@ -284,6 +323,38 @@ typedef struct {
 
   cs_param_hodge_t              diffusion_hodge;
   cs_property_t                *diffusion_property;
+
+  /*!
+   * @}
+   * @name Numerical settings for the curl-curl term
+   * @{
+   *
+   * \var curlcurl_hodge
+   * Set of parameters for the discrete Hodge operator related to the
+   * curl-curl operator
+   *
+   * \var curlcurl_property
+   * Pointer to the property related to the curl-curl term
+   */
+
+  cs_param_hodge_t              curlcurl_hodge;
+  cs_property_t                *curlcurl_property;
+
+  /*!
+   * @}
+   * @name Numerical settings for the grad-div term
+   * @{
+   *
+   * \var graddiv_hodge
+   * Set of parameters for the discrete Hodge operator related to the grad-div
+   * operator
+   *
+   * \var graddiv_property
+   * Pointer to the property related to the grad-div term
+   */
+
+  cs_param_hodge_t              graddiv_hodge;
+  cs_property_t                *graddiv_property;
 
   /*!
    * @}
@@ -354,11 +425,33 @@ typedef struct {
 
   /*!
    * @}
-   * @name Enforcement of values in the computational domain
-   * Assign a values to a selection of degrees of freedom inside the domain
+   * @name Enforcement of values inside the computational domain
+   *
    * This is different from the enforcement of boundary conditions but rely on
    * the same algebraic manipulation.
+   * Two mechanisms are possible.
+   *
+   * 1) CELL SELECTION: defined a selection of cells and then
+   * automatically built the related selection of degrees of freedom and
+   * assigned a value to each selected degrees of freedom
+   *
+   * 2) DOF SELECTION: defined a selection of degrees of freedom (DoFs) and
+   *    assign a values to a selection of degrees of freedom inside the domain
+   *
    * @{
+   *
+   * \var enforcement_type
+   * Flag specifying which kind of enforcement to perform
+   *
+   * \var enforcement_ref_value
+   * Reference value to use. Avod to allocate an array with the same value
+   * for all selected entities
+   *
+   * \var n_enforced_cells
+   * Number of selected cells related to an enforcement
+   *
+   * \var enforced_cell_ids
+   * List of selected cell ids related to an enforcement
    *
    * \var n_enforced_dofs
    * Number of degrees of freedom (DoFs) to enforce
@@ -369,6 +462,13 @@ typedef struct {
    * \var enforced_dof_values
    * List of related values to enforce
    */
+
+  cs_flag_t                   enforcement_type;
+  cs_real_t                  *enforcement_ref_value;
+
+  cs_lnum_t                   n_enforced_cells;
+  cs_lnum_t                  *enforced_cell_ids;
+  cs_real_t                  *enforced_cell_values;
 
   cs_lnum_t                   n_enforced_dofs;
   cs_lnum_t                  *enforced_dof_ids;
@@ -382,7 +482,7 @@ typedef struct {
    * \var sles_param
    * Set of parameters to specify how to to solve the algebraic
    * - iterative solver
-   * - preconditionner
+   * - preconditioner
    * - tolerance...
    */
 
@@ -417,13 +517,17 @@ typedef struct {
  * - "upwind" (cf. \ref CS_PARAM_ADVECTION_SCHEME_UPWIND)
  * - "centered" (cf. \ref CS_PARAM_ADVECTION_SCHEME_CENTERED)
  * - "mix_centered_upwind" (\ref CS_PARAM_ADVECTION_SCHEME_MIX_CENTERED_UPWIND)
- * - "samarskii" --> switch smoothly betwwen an upwind and a centered scheme
+ * - "samarskii" --> switch smoothly between an upwind and a centered scheme
  *   thanks to a weight depending on the Peclet number. (cf.
  * \ref CS_PARAM_ADVECTION_SCHEME_SAMARSKII). Only for CDO-Vb schemes.
  * - "sg" --> closely related to "samarskii" but with a different definition of
  *   the weight (cf. \ref CS_PARAM_ADVECTION_SCHEME_SG). Only for CDO-Vb schemes
  * - "cip" --> means "continuous interior penalty" (only for CDOVCB schemes).
  *   Enable a better accuracy. (cf. \ref CS_PARAM_ADVECTION_SCHEME_CIP)
+ * - "cip_cw" --> means "continuous interior penalty" (only for CDOVCB schemes).
+ *   Enable a better accuracy.
+ *   Consider a cellwise approximation of the advection field.
+ *   (cf. \ref CS_PARAM_ADVECTION_SCHEME_CIP_CW)
  *
  * \var CS_EQKEY_ADV_UPWIND_PORTION
  * Value between 0 and 1 specifying the portion of upwind added to a centered
@@ -435,6 +539,7 @@ typedef struct {
  * - "none" --> (default) No predefined AMG solver
  * - "boomer" --> Boomer AMG multigrid from the Hypre library
  * - "gamg" --> GAMG multigrid from the PETSc library
+ * - "pcmg" --> MG multigrid as preconditioner from the PETSc library
  * - "v_cycle" --> Code_Saturne's in house multigrid with a V-cycle strategy
  * - "k_cycle" --> Code_Saturne's in house multigrid with a K-cycle strategy
  * WARNING: For "boomer" and "gamg",one needs to install Code_Saturne with
@@ -539,21 +644,29 @@ typedef struct {
  * \var CS_EQKEY_ITSOL
  * Specify the iterative solver for solving the linear system related to an
  * equation. Avalaible choices are:
- * - "jacobi" --> simpliest algorithm
- * - "gauss_seidel" --> Gauss-Seidel algorithm
+ * - "jacobi"           --> simpliest iterative solver
+ * - "gauss_seidel"     --> Gauss-Seidel algorithm
  * - "sym_gauss_seidel" --> Symmetric version of Gauss-Seidel algorithm;
  *                          one backward and forward sweep
- * - "cg" --> (default) the standard conjuguate gradient algorithm
- * - "fcg" --> flexible version of the conjuguate gradient algorithm used
- *             when the preconditioner can change iteration by iteration
- * - "bicg" --> Bi-CG algorithm (for non-symmetric linear systems)
- * - "bicgstab2" --> BiCG-Stab2 algorithm (for non-symmetric linear systems)
- * - "cr3" --> a 3-layer conjugate residual solver (when "cs" is chosen as the
- *    solver family)
- * - "gmres" --> a robust iterative solver but slower as previous one if the
- *   system is not difficult to solve
- * - "amg" --> an algebraic multigrid iterative solver. Good choice for a
- * symmetric positive definite system.
+ * - "cg"               --> conjuguate gradient algorithm
+ * - "fcg"              --> flexible version of the conjuguate gradient
+ *                          algorithm used when the preconditioner can change
+ *                          iteration by iteration
+ * - "bicg"             --> Bi-CG algorithm (for non-symmetric linear systems)
+ * - "bicgstab2"        --> BiCG-Stab2 algorithm (for non-symmetric linear
+ *                          systems)
+ * - "cr3"              --> a 3-layer conjugate residual solver (when "cs" is
+ *                          chosen as the solver family)
+ * - "gmres"            --> robust iterative solver. Not the best choice if the
+ *                          system is easy to solve
+ * - "amg"              --> algebraic multigrid iterative solver. Good choice
+ *                          for a scalable solver related to symmetric positive
+ *                          definite system.
+ * - "minres"           --> Solver of choice for symmetric indefinite systems
+ * - "mumps"            --> Direct solver (very robust but memory consumming)
+ *                          via PETSc only. LU factorization.
+ * - "mumps_ldlt"       --> Direct solver (very robust but memory consumming)
+ *                          via PETSc only. LDLT factorization.
  *
  * \var CS_EQKEY_ITSOL_EPS
  * Tolerance factor for stopping the iterative processus for solving the
@@ -572,10 +685,10 @@ typedef struct {
  * the "vol_tot" option is used for rescaling the residual.
  *
  * Available choices are:
- * "false" or "none"
- * "vol_tot"
- * "weighted_rhs" (default)
- * "matrix_diag"
+ * "false" or "none" (default)
+ * "rhs"
+ * "weighted_rhs" or "weighted"
+ * "filtered_rhs" or "fieltered_rhs"
  *
  * \var CS_EQKEY_OMP_ASSEMBLY_STRATEGY
  * Choice of the way to perform the assembly when OpenMP is active
@@ -583,7 +696,7 @@ typedef struct {
  * - "atomic" or "critical"
  *
  * \var CS_EQKEY_PRECOND
- * Specify the preconditionner associated to an iterative solver. Available
+ * Specify the preconditioner associated to an iterative solver. Available
  * choices are:
  * - "jacobi" --> diagonal preconditoner
  * - "block_jacobi" --> Only with PETSc
@@ -606,6 +719,7 @@ typedef struct {
  * - "cdo_vb"  for CDO vertex-based scheme
  * - "cdo_vcb" for CDO vertex+cell-based scheme
  * - "cdo_fb"  for CDO face-based scheme
+ * - "cdo_eb"  for CDO edge-based scheme
  * - "hho_p1"  for HHO schemes with \f$\mathbb{P}_1\f$ polynomial approximation
  * - "hho_p2"  for HHO schemes with \f$\mathbb{P}_2\f$ polynomial approximation
  *
@@ -701,6 +815,46 @@ cs_equation_param_has_diffusion(const cs_equation_param_t     *eqp)
 {
   assert(eqp != NULL);
   if (eqp->flag & CS_EQUATION_DIFFUSION)
+    return true;
+  else
+    return false;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Ask if the parameters of the equation needs a curl-curl term
+ *
+ * \param[in] eqp          pointer to a \ref cs_equation_param_t
+ *
+ * \return true or false
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline bool
+cs_equation_param_has_curlcurl(const cs_equation_param_t     *eqp)
+{
+  assert(eqp != NULL);
+  if (eqp->flag & CS_EQUATION_CURLCURL)
+    return true;
+  else
+    return false;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Ask if the parameters of the equation needs a grad-div term
+ *
+ * \param[in] eqp          pointer to a \ref cs_equation_param_t
+ *
+ * \return true or false
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline bool
+cs_equation_param_has_graddiv(const cs_equation_param_t     *eqp)
+{
+  assert(eqp != NULL);
+  if (eqp->flag & CS_EQUATION_GRADDIV)
     return true;
   else
     return false;
@@ -905,15 +1059,13 @@ cs_equation_set_param(cs_equation_param_t   *eqp,
  * \brief Set parameters for initializing SLES structures used for the
  *        resolution of the linear system.
  *        Settings are related to this equation.
-
- * \param[in]   eqp          pointer to a \ref cs_equation_param_t struct.
- * \param[in]   field_id     id of the cs_field_t struct. for this equation
+ *
+ * \param[in, out]  eqp       pointer to a \ref cs_equation_param_t struct.
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_param_set_sles(cs_equation_param_t     *eqp,
-                           int                      field_id);
+cs_equation_param_set_sles(cs_equation_param_t     *eqp);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1067,7 +1219,7 @@ cs_equation_add_bc_by_array(cs_equation_param_t        *eqp,
                             const char                 *z_name,
                             cs_flag_t                   loc,
                             cs_real_t                  *array,
-                            _Bool                       is_owner,
+                            bool                        is_owner,
                             cs_lnum_t                  *index);
 
 /*----------------------------------------------------------------------------*/
@@ -1111,8 +1263,10 @@ cs_equation_add_sliding_condition(cs_equation_param_t     *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define and initialize a new structure to store parameters related
- *         to a diffusion term
+ * \brief  Associate a new term related to the Laplacian operator for the
+ *         equation associated to the given \ref cs_equation_param_t structure
+ *         Laplacian means div-grad (either for vector-valued or scalar-valued
+ *         equations)
  *
  * \param[in, out] eqp        pointer to a cs_equation_param_t structure
  * \param[in]      property   pointer to a cs_property_t structure
@@ -1125,8 +1279,37 @@ cs_equation_add_diffusion(cs_equation_param_t   *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define and initialize a new structure to store parameters related
- *         to an unsteady term
+ * \brief  Associate a new term related to the curl-curl operator for the
+ *         equation associated to the given \ref cs_equation_param_t structure
+ *
+ * \param[in, out] eqp        pointer to a cs_equation_param_t structure
+ * \param[in]      property   pointer to a cs_property_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_add_curlcurl(cs_equation_param_t   *eqp,
+                         cs_property_t         *property);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Associate a new term related to the grad-div operator for the
+ *         equation associated to the given \ref cs_equation_param_t structure
+ *
+ * \param[in, out] eqp        pointer to a cs_equation_param_t structure
+ * \param[in]      property   pointer to a cs_property_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_add_graddiv(cs_equation_param_t   *eqp,
+                        cs_property_t         *property);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Associate a new term related to the time derivative operator for
+ *         the equation associated to the given \ref cs_equation_param_t
+ *         structure
  *
  * \param[in, out] eqp        pointer to a cs_equation_param_t structure
  * \param[in]      property   pointer to a cs_property_t structure
@@ -1139,8 +1322,8 @@ cs_equation_add_time(cs_equation_param_t   *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define and initialize a new structure to store parameters related
- *         to an advection term
+ * \brief  Associate a new term related to the advection operator for the
+ *         equation associated to the given \ref cs_equation_param_t structure
  *
  * \param[in, out] eqp        pointer to a cs_equation_param_t structure
  * \param[in]      adv_field  pointer to a cs_adv_field_t structure
@@ -1153,8 +1336,8 @@ cs_equation_add_advection(cs_equation_param_t   *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define and initialize a new structure to store parameters related
- *         to a reaction term
+ * \brief  Associate a new term related to the reaction operator for the
+ *         equation associated to the given \ref cs_equation_param_t structure
  *
  * \param[in, out] eqp        pointer to a cs_equation_param_t structure
  * \param[in]      property   pointer to a cs_property_t structure
@@ -1169,14 +1352,15 @@ cs_equation_add_reaction(cs_equation_param_t   *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define a new source term structure and initialize it by value
+ * \brief  Add a new source term by initializing a cs_xdef_t structure.
+ *         Case of a definition by a constant value
  *
  * \param[in, out] eqp       pointer to a cs_equation_param_t structure
  * \param[in]      z_name    name of the associated zone (if NULL or
  *                           "" all cells are considered)
  * \param[in]      val       pointer to the value
  *
- * \return a pointer to the new cs_xdef_t structure
+ * \return a pointer to the new \ref cs_xdef_t structure
  */
 /*----------------------------------------------------------------------------*/
 
@@ -1187,28 +1371,52 @@ cs_equation_add_source_term_by_val(cs_equation_param_t    *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define a new source term structure and initialize it by an analytical
- *         function
+ * \brief  Add a new source term by initializing a cs_xdef_t structure.
+ *         Case of a definition by an analytical function
  *
  * \param[in, out] eqp       pointer to a cs_equation_param_t structure
  * \param[in]      z_name    name of the associated zone (if NULL or "" if
  *                           all cells are considered)
- * \param[in]      ana       pointer to an analytical function
+ * \param[in]      func      pointer to an analytical function
  * \param[in]      input     NULL or pointer to a structure cast on-the-fly
  *
- * \return a pointer to the new cs_source_term_t structure
+ * \return a pointer to the new \ref cs_xdef_t structure
  */
 /*----------------------------------------------------------------------------*/
 
 cs_xdef_t *
 cs_equation_add_source_term_by_analytic(cs_equation_param_t    *eqp,
                                         const char             *z_name,
-                                        cs_analytic_func_t     *ana,
+                                        cs_analytic_func_t     *func,
                                         void                   *input);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Define a new source term defined by an array
+ * \brief  Add a new source term by initializing a cs_xdef_t structure.
+ *         Case of a definition by a DoF function
+ *
+ * \param[in, out] eqp       pointer to a cs_equation_param_t structure
+ * \param[in]      z_name    name of the associated zone (if NULL or "" if
+ *                           all cells are considered)
+ * \param[in]      loc_flag  location of element ids given as parameter
+ * \param[in]      func      pointer to a DoF function
+ * \param[in]      input     NULL or pointer to a structure cast on-the-fly
+ *
+ * \return a pointer to the new \ref cs_xdef_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_xdef_t *
+cs_equation_add_source_term_by_dof_func(cs_equation_param_t    *eqp,
+                                        const char             *z_name,
+                                        cs_flag_t               loc_flag,
+                                        cs_dof_func_t          *func,
+                                        void                   *input);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Add a new source term by initializing a cs_xdef_t structure.
+ *         Case of a definition by an array.
  *
  * \param[in, out] eqp       pointer to a cs_equation_param_t structure
  * \param[in]      z_name    name of the associated zone (if NULL or "" if
@@ -1219,7 +1427,7 @@ cs_equation_add_source_term_by_analytic(cs_equation_param_t    *eqp,
  *                           (true or false)
  * \param[in]      index     optional pointer to the array index
  *
- * \return a pointer to the new cs_source_term_t structure
+ * \return a pointer to the new \ref cs_xdef_t structure
  */
 /*----------------------------------------------------------------------------*/
 
@@ -1228,7 +1436,7 @@ cs_equation_add_source_term_by_array(cs_equation_param_t    *eqp,
                                      const char             *z_name,
                                      cs_flag_t               loc,
                                      cs_real_t              *array,
-                                     _Bool                   is_owner,
+                                     bool                    is_owner,
                                      cs_lnum_t              *index);
 
 /*----------------------------------------------------------------------------*/
@@ -1237,12 +1445,16 @@ cs_equation_add_source_term_by_array(cs_equation_param_t    *eqp,
  *         mesh vertices.
  *         The spatial discretization scheme for the given equation has to be
  *         CDO-Vertex based or CDO-Vertex+Cell-based schemes.
- *         We assume that values are interlaced (if eqp->dim > 1)
+ *
+ *         One assumes that values are interlaced if eqp->dim > 1
+ *         ref_value or elt_values has to be defined. If both parameters are
+ *         defined, one keeps the definition in elt_values
  *
  * \param[in, out] eqp         pointer to a cs_equation_param_t structure
  * \param[in]      n_elts      number of vertices to enforce
  * \param[in]      elt_ids     list of vertices
- * \param[in]      elt_values  list of associated values
+ * \param[in]      ref_value   ignored if NULL
+ * \param[in]      elt_values  list of associated values, ignored if NULL
  */
 /*----------------------------------------------------------------------------*/
 
@@ -1250,7 +1462,32 @@ void
 cs_equation_enforce_vertex_dofs(cs_equation_param_t    *eqp,
                                 cs_lnum_t               n_elts,
                                 const cs_lnum_t         elt_ids[],
+                                const cs_real_t         ref_value[],
                                 const cs_real_t         elt_values[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Add an enforcement of the value related to the degrees of freedom
+ *         associated to the list of selected cells.
+ *
+ *         One assumes that values are interlaced if eqp->dim > 1
+ *         ref_value or elt_values has to be defined. If both parameters are
+ *         defined, one keeps the definition in elt_values
+ *
+ * \param[in, out] eqp         pointer to a cs_equation_param_t structure
+ * \param[in]      n_elts      number of selected cells
+ * \param[in]      elt_ids     list of cell ids
+ * \param[in]      ref_value   ignored if NULL
+ * \param[in]      elt_values  list of associated values, ignored if NULL
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_enforce_by_cell_selection(cs_equation_param_t    *eqp,
+                                      cs_lnum_t               n_elts,
+                                      const cs_lnum_t         elt_ids[],
+                                      const cs_real_t         ref_value[],
+                                      const cs_real_t         elt_values[]);
 
 /*----------------------------------------------------------------------------*/
 

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -97,11 +97,13 @@ cs_base_cuda_device_info(cs_log_t  log_id)
 
   cudaError_t retval = cudaGetDeviceCount(&n_devices);
 
-  if (retval == cudaErrorNoDevice )
+  if (retval == cudaErrorNoDevice)
     cs_log_printf(log_id,
                   _("  CUDA device:         none available\n"));
-  else
-    CS_CUDA_CHECK(retval);
+  else if (retval)
+    cs_log_printf(log_id,
+                  _("  CUDA device:         %s\n"),
+		  cudaGetErrorString(retval));
 
   char buffer[256] = "";
 

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -88,7 +88,7 @@ double precision grad_al(3,ncelet)
 integer          iel
 integer          ii, ivar
 integer          iflmas, iflmab
-integer          nswrgp, imligp, iwarnp
+integer          imrgrp, nswrgp, imligp, iwarnp
 integer          iconvp, idiffp, ndircp
 integer          nswrsp, ircflp, ischcp, isstpp, iescap
 integer          st_prv_id
@@ -420,13 +420,13 @@ do iel = 1, ncel
     smbrut(isou,iel) = smbrut(isou,iel)                              &
                      + cell_f_vol(iel)*crom(iel)                         &
                        ! Production term due to the mean velcoity
-                       *( -xuta(1,iel)*gradv(1,isou,iel)             &
-                          -xuta(2,iel)*gradv(2,isou,iel)             &
-                          -xuta(3,iel)*gradv(3,isou,iel)             &
+                       *( -gradv(1,isou,iel)*xuta(1,iel)             &
+                          -gradv(2,isou,iel)*xuta(2,iel)             &
+                          -gradv(3,isou,iel)*xuta(3,iel)             &
                        ! Production term due to the mean temperature
-                         -xrij(isou,1)*gradt(1,iel)                  &
-                         -xrij(isou,2)*gradt(2,iel)                  &
-                         -xrij(isou,3)*gradt(3,iel)                  &
+                         -xrij(1,isou)*gradt(1,iel)                  &
+                         -xrij(2,isou)*gradt(2,iel)                  &
+                         -xrij(3,isou)*gradt(3,iel)                  &
                         )
 
     ! Production term due to the gravity
@@ -525,6 +525,7 @@ iconvp = vcopt%iconv
 idiffp = vcopt%idiff
 ndircp = vcopt%ndircl
 nswrsp = vcopt%nswrsm
+imrgrp = vcopt%imrgra
 nswrgp = vcopt%nswrgr
 imligp = vcopt%imligr
 ircflp = vcopt%ircflu
@@ -550,7 +551,7 @@ init   = 1
 
 call coditv &
 (idtvar , init   , f_id   , iconvp , idiffp , ndircp ,          &
- imrgra , nswrsp , nswrgp , imligp , ircflp , ivisep ,          &
+ imrgrp , nswrsp , nswrgp , imligp , ircflp , ivisep ,          &
  ischcp , isstpp , iescap , idftnp , iswdyp ,                   &
  iwarnp ,                                                       &
  blencp , epsilp , epsrsp , epsrgp , climgp ,                   &

@@ -2,7 +2,7 @@
 #   This file is part of the "Parallel Location and Exchange" library,
 #   intended to provide mesh or particle-based code coupling services.
 #
-#   Copyright (C) 2005-2019  EDF S.A.
+#   Copyright (C) 2005-2020  EDF S.A.
 #
 #   This library is free software; you can redistribute it and/or
 #   modify it under the terms of the GNU Lesser General Public
@@ -39,6 +39,7 @@ SUBDIRS = src pyple tests doc po
 EXTRA_DIST = m4/ple_config_info.m4 \
              m4/ple_config_publ.m4 \
              m4/ple_mpi.m4 \
+             m4/ple_mpi4py.m4 \
              m4/ple_types.m4 \
              config/ple_auto_flags.sh \
              sbin/backup \

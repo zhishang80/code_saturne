@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -59,9 +59,9 @@ implicit none
 
 ! Local variables
 
-integer          n_fields, f_id, n_moments
+integer          f_id, n_moments
 integer          ii, jj, imom, iok, ikw
-integer          nbccou, keyvar, flag
+integer          nbccou, flag
 integer          nscacp, iscal
 integer          imrgrp
 integer          kcpsyr, icpsyr
@@ -82,10 +82,6 @@ type(var_cal_opt) :: vcopt , vcopt1
 ! Indicateur erreur (0 : pas d'erreur)
 iok = 0
 
-call field_get_n_fields(n_fields)
-
-call field_get_key_id("variable_id", keyvar)
-
 call field_get_key_id("syrthes_coupling", kcpsyr)
 
 call field_get_key_id("time_extrapolated", key_t_ext_id)
@@ -105,10 +101,6 @@ call cs_f_turb_complete_constants
 if (idtvar.lt.0) then
   call hide_property(icour)
   call hide_property(ifour)
-endif
-
-if (iale.ge.1) then
-  call cs_post_set_deformable
 endif
 
 !---> sorties historiques ?
@@ -497,15 +489,6 @@ do f_id = 0, nfld - 1
   endif
 enddo
 
-! ---> ANOMAX
-!        Si l'utilisateur n'a rien specifie pour l'angle de non
-!          orthogonalite pour la selection du voisinage etendu,
-!          on impose pi/4 (utile aussi en mode verifications)
-
-if (anomax.le.-grand) then
-  anomax = pi*0.25d0
-endif
-
 ! ---> IMLIGR
 !        Si l'utilisateur n'a rien specifie pour la limitation des
 !          gradients (=-999),
@@ -779,8 +762,9 @@ else
   enddo
 endif
 
-! ---> SPECIFIQUE STATIONNAIRE
+! Options specific to steady case
 if (idtvar.lt.0) then
+  ipucou = 0
   dtref = 1.d0
   dtmin = 1.d0
   dtmax = 1.d0
@@ -828,7 +812,15 @@ else
 endif
 
 if (iturb.eq.60) then !sst-ddes
-  cddes = 0.65d0
+  ! SST DDES
+  if (hybrid_turb.eq.2) then
+    cddes = 0.65d0
+  else if (hybrid_turb.eq.1) then
+    cddes = 0.61d0
+  endif
+  ! SST SAS
+  csas  = 0.11d0
+  csas_eta2 = 3.51d0
 elseif (iturb.eq.51) then !phif-ddes
   cddes = 0.60d0
 endif
@@ -941,6 +933,12 @@ if (nscal.gt.0) then
       ctheta(iscal) = csrij
     endif
   enddo
+endif
+
+! VoF model enabled
+if (ivofmt.gt.0) then
+  ro0    = rho2
+  viscl0 = mu2
 endif
 
 ! Anisotropic diffusion/permeability for Darcy module

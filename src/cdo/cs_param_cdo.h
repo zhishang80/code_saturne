@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -65,8 +65,9 @@ BEGIN_C_DECLS
 
 /* The following limitation only results from an optimization in the size of
    the bit mask (can be changed if needed by changing the definition of
-   the type cs_mask_t) */
-#define CS_CDO_N_MAX_REACTIONS  8 // Max number of reaction terms in an equation
+   the type cs_mask_t)
+   Here is the max. number of reaction terms allowed in an equation */
+#define CS_CDO_N_MAX_REACTIONS  8
 
 #define CS_ALL_FACES   0        /* All faces: interior + border */
 #define CS_BND_FACES   1        /* Boundary faces */
@@ -121,6 +122,7 @@ typedef enum {
   CS_PARAM_HODGE_ALGO_WBS,     // WBS: Whitney Barycentric Subdivision
   CS_PARAM_HODGE_ALGO_COST,    // COST: COnsistency & STabilization splitting
   CS_PARAM_HODGE_ALGO_OCS2,    // Orthogonal Consistancy/Sub-Stabilization
+  CS_PARAM_HODGE_ALGO_BUBBLE,  // Orthogonal Consistancy/Bubble-Stabilization
   CS_PARAM_HODGE_ALGO_AUTO,    /* Switch between the previous algo. according to
                                   the type of cell and its property */
   CS_PARAM_N_HODGE_ALGOS
@@ -161,27 +163,27 @@ extern int  cs_param_cdo_mode;
 /*!
  * \brief   Get the name of algorithm related to a discrete Hdoge operator
  *
- * \param[in] h_info     cs_param_hodge_t structure
+ * \param[in] hodgep     cs_param_hodge_t structure
  *
  * \return the name of the algorithm
  */
 /*----------------------------------------------------------------------------*/
 
 const char *
-cs_param_hodge_get_algo_name(const cs_param_hodge_t   h_info);
+cs_param_hodge_get_algo_name(const cs_param_hodge_t   hodgep);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief   Get the type of discrete Hodge operator
  *
- * \param[in] h_info     cs_param_hodge_t structure
+ * \param[in] hodgep     cs_param_hodge_t structure
  *
  * \return the name of the type
  */
 /*----------------------------------------------------------------------------*/
 
 const char *
-cs_param_hodge_get_type_name(const cs_param_hodge_t   h_info);
+cs_param_hodge_get_type_name(const cs_param_hodge_t   hodgep);
 
 /*----------------------------------------------------------------------------*/
 /*!

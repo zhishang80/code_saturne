@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -25,6 +25,8 @@
 
 import os
 import re
+
+from code_saturne.cs_math_parser import cs_math_parser
 
 from code_saturne.model.NotebookModel import NotebookModel
 from code_saturne.model.SolutionDomainModel import getRunType
@@ -87,20 +89,20 @@ END_C_DECLS
 
 _function_header = { \
 'vol':"""void
-cs_meg_volume_function(cs_field_t       *f[],
-                       const cs_zone_t  *vz)
+cs_meg_volume_function(const cs_zone_t  *zone,
+                       cs_field_t       *f[])
 {
 """,
 'bnd':"""cs_real_t *
-cs_meg_boundary_function(const char      *field_name,
-                         const char      *condition,
-                         const cs_zone_t *bz)
+cs_meg_boundary_function(const cs_zone_t *zone,
+                         const char      *field_name,
+                         const char      *condition)
 {
   cs_real_t *new_vals = NULL;
 
 """,
 'src':"""cs_real_t *
-cs_meg_source_terms(const cs_zone_t *vz,
+cs_meg_source_terms(const cs_zone_t *zone,
                     const char      *name,
                     const char      *source_type)
 {
@@ -108,8 +110,8 @@ cs_meg_source_terms(const cs_zone_t *vz,
 
 """,
 'ini':"""cs_real_t *
-cs_meg_initialization(const char      *field_name,
-                      const cs_zone_t *vz)
+cs_meg_initialization(const cs_zone_t *zone,
+                      const char      *field_name)
 {
   cs_real_t *new_vals = NULL;
 
@@ -142,15 +144,11 @@ _func_short_to_long = {'vol':'volume zone',
                        'ibm':'Immersed boundaries'}
 
 #-------------------------------------------------------------------------------
-
-_cs_math_internal_name = {'abs':'cs_math_fabs',
-                          'min':'cs_math_fmin',
-                          'max':'cs_math_fmax'}
-
 _pkg_fluid_prop_dict = {}
 _pkg_fluid_prop_dict['code_saturne'] = {'rho0':'ro0',
                                         'mu0':'viscl0',
                                         'p0':'p0',
+                                        't0':'t0',
                                         'cp0':'cp0'}
 
 _pkg_fluid_prop_dict['neptune_cfd'] = {'rho0':'ro0',
@@ -161,83 +159,61 @@ _pkg_fluid_prop_dict['neptune_cfd'] = {'rho0':'ro0',
 _pkg_glob_struct = {'code_saturne':'cs_glob_fluid_properties',
                     'neptune_cfd':'nc_phases->p_ini[PHASE_ID]'}
 
-_ref_turb_values = {'uref', 'almax'}
+#---------------------------------------------------------------------------
+
+_base_tokens = {'dt':'const cs_real_t dt = cs_glob_time_step->dt[0];',
+                't':'const cs_real_t t = cs_glob_time_step->t_cur;',
+                'iter':'const int iter = cs_glob_time_step->nt_cur;',
+                'volume':'const cs_real_t volume = zone->measure;',
+                'surface':'const cs_real_t volume = zone->measure;',
+                'pi':'const cs_real_t pi = cs_math_pi;',
+                'uref':'const cs_real_t uref = cs_glob_turb_ref_values->uref;',
+                'almax':'const cs_real_t almax = cs_glob_turb_ref_values->almax;'}
+
+#---------------------------------------------------------------------------
+
+def parse_gui_expression(expression,
+                         req,
+                         known_symbols,
+                         func_type,
+                         glob_tokens,
+                         loop_tokens,
+                         need_for_loop = False):
+
+    usr_code = ''
+    usr_defs = ''
+    if_loop = False
+
+    tab = '  '
+    ntabs = 3
+    if func_type == 'ibm':
+        ntabs = 2
+
+    parser = cs_math_parser()
+
+    expr_list, expr_user = parser.parse_expression(expression,
+                                                   req,
+                                                   known_symbols,
+                                                   func_type,
+                                                   glob_tokens,
+                                                   loop_tokens,
+                                                   need_for_loop)
+
+    for exp in expr_user:
+        usr_defs += 2*tab + exp
+
+    for exp in expr_list:
+        usr_code += ntabs*tab + exp
+
+    return usr_code, usr_defs
+
+#---------------------------------------------------------------------------
 
 #===============================================================================
 # Utility functions
 #===============================================================================
 
-#---------------------------------------------------------------------------
-def create_req_field(name, dim=0):
-
-    r = {'name':name,
-         'dim':dim,
-         'components':[]}
-
-    return r
-
-def rfield_add_comp(rf, c):
-
-    rf['components'].append(c)
-    rf['dim'] += 1
-
-def split_req_components(req_list):
-    """
-    Look at a list of field names used in the formula.
-    Check if its a component (f[X], f[XY], ..) or a field (f).
-    return a list with it
-    """
-    req_fields = []
-    for r in req_list:
-
-        rf = r
-        if bool(re.search('\[[A-Za-z0-9]\]', r)):
-            rf = re.sub('\[[A-Za-z0-9]\]', '', r)
-        elif bool(re.search('\[[A-Za-z0-9][A-Za-z0-9]\]', r)):
-            rf = re.sub('\[[A-Za-z0-9][A-Za-z0-9]\]', '', r)
-
-        if rf == r:
-            req_fields.append(create_req_field(r,1))
-
-        else:
-            new_field = True
-            for f in req_fields:
-                if f['name'] == rf:
-                    rfield_add_comp(f,r)
-                    new_field = False
-                    break
-
-            if new_field:
-                req_fields.append(create_req_field(rf))
-                rfield_add_comp(req_fields[-1], r)
-
-    return req_fields
-
-def get_req_field_info(req_fields, r):
-
-    for i in range(len(req_fields)):
-        if req_fields[i]['dim'] == 1:
-            if req_fields[i]['name'] == r:
-                return i, -1, req_fields[i]['dim']
-
-        else:
-            if r in req_fields[i]['components']:
-                return i, req_fields[i]['components'].index(r), req_fields[i]['dim']
-
-    return None, None, None
-
-def dump_req_fields(req_fields):
-
-    print("===========================")
-    for f in req_fields:
-        print("Name: %s" % (f['name']))
-        print("Dim: %d" % (f['dim']))
-        print(f['components'])
-        print("===========================")
-
-
-#---------------------------------------------------------------------------
-
+#-------------------------
 def break_expression(exp):
 
     expression_lines = []
@@ -251,834 +227,7 @@ def break_expression(exp):
         expression_lines.append(line_comp)
 
     return expression_lines
-
-#---------------------------------------------------------------------------
-
-def find_c_comment_close(l, c_id, quotes):
-    """
-    Return index in given string of closing C-style comment,
-    or -1 if not found after given c_id column.
-    Escape characters or strings are handled.
-    """
-
-    w = len(l)
-
-    while c_id < w:
-
-        # Quoting (highest priority);
-        # left inside expressions, but separators in quoted
-        # regions are not considered as separators.
-
-        if l[c_id] == "\\": # use 'e' to represent escape character
-            if quotes[0] == "e":
-                quotes.pop(0)
-            else:
-                quotes.insert(0, "e")
-        elif l[c_id] == "'":
-            if quotes[0] == "'":
-                quotes.pop(0)
-            else:
-                quotes.insert(0, "'")
-        elif l[c_id] == '"':
-            if quotes[0] == '"':
-                quotes.pop(0)
-            else:
-                quotes.insert(0, "'")
-
-        elif quotes[0] == ' ': # found
-            if l[c_id] == '*':
-                if c_id+1 < w:
-                    if l[c_id+1] == '/':
-                        return c_id
-
-        c_id += 1
-
-    return -1
-
-#---------------------------------------------------------------------------
-
-def separate_segments(lines):
-    """
-    Separate segments based on expected separators.
-    This stage is not a parser, but simply splits lines into segments,
-    separating comments (allowing for Python, C, and C++ style comments),
-    and checking for quoting or escape characters.
-    Returns a list of tuples containing the segments, and matching
-    start line and column indexes in the original expression.
-    """
-
-    whitespace = (' ', '\t', '\n', '\l')
-    separators = ('{', '}', ';')
-    segments = []
-
-    in_multiline_comment = False
-    quotes = [' ']
-
-    # Loop on lines
-
-    l_id = 0
-    for l in lines:
-
-        w = len(l)
-
-        # Loop on columns
-
-        s_id = 0
-        c_id = 0
-        while c_id < w:
-
-            # Quoting (highest priority);
-            # left inside segments, but separators in quoted
-            # regions are not considered as separators.
-
-            if l[c_id] == "\\": # use 'e' to represent escape character
-                if quotes[0] == "e":
-                    quotes.pop(0)
-                else:
-                    quotes.insert(0, "e")
-            elif l[c_id] == "'":
-                if quotes[0] == "'":
-                    quotes.pop(0)
-                else:
-                    quotes.insert(0, "'")
-            elif l[c_id] == '"':
-                if quotes[0] == '"':
-                    quotes.pop(0)
-                else:
-                    quotes.insert(0, "'")
-
-            if quotes[0] != ' ':
-                if quotes[0] == 'e' and l[c_id] in whitespace:
-                    # escape character may be a line continuation character
-                    # in this case; handle it like a separator
-                    segments.append(('\\', l_id, c_id))
-                    c_id += 1
-                    s_id = c_id
-                continue
-
-            # In multiline C-style comment
-            # (transform to '#' for easier testing)
-
-            elif in_multiline_comment:
-                j = find_c_comment_close(l, c_id, quotes)
-                if j >= 0: # on same line
-                    j += 2
-                    in_multiline_comment = False
-                else:
-                    j = w
-                segments.append(('# ' + l[c_id:j].strip(), l_id, c_id))
-                c_id = j
-                s_id = c_id
-
-            # Whitespace (handle here rather than using strip()
-            # type functions to keep track of expression start columns
-
-            elif l[c_id] in whitespace:
-                if s_id == c_id:
-                    s_id += 1
-                c_id += 1
-                continue
-
-            # Comments (allow C/C++ style, transform all to '#'
-            # for easier testing)
-
-            elif l[c_id] == '#':
-                e = l[s_id:c_id].strip()
-                if len(e):
-                    segments.append((e, l_id, s_id))
-                segments.append((l[c_id:].strip(), l_id, c_id))
-                c_id = w
-                s_id = c_id
-
-            elif l[c_id:c_id+2] in ('//', '/*'):
-                e = l[s_id:c_id].strip()
-                if len(e):
-                    segments.append((e, l_id, s_id))
-                if l[c_id:c_id+2] == '//':
-                    segments.append(('# ' + l[c_id+2:].strip(),
-                                     l_id, c_id))
-                    c_id = w
-                    s_id = c_id
-                else:
-                    j = find_c_comment_close(l, c_id+2, quotes)
-                    if j >= 0: # on same line
-                        segments.append(('# ' + l[c_id+2:j].strip(),
-                                         l_id, c_id))
-                        j += 2
-                    else:
-                        j = w
-                        segments.append(('# ' + l[c_id+2:j].strip(),
-                                         l_id, c_id))
-                        in_multiline_comment = True
-                    c_id = j
-                    s_id = c_id
-
-            else:
-
-                if l[c_id] in separators:
-                    e = l[s_id:c_id].strip()
-                    if len(e):
-                        segments.append((e, l_id, s_id))
-                    segments.append((l[c_id:c_id+1], l_id, c_id))
-                    c_id += 1
-                    s_id = c_id
-                else:
-                    c_id += 1
-
-        # End of loop on line:
-
-        if s_id < c_id:
-            e = l[s_id:c_id].strip()
-            if len(e):
-                segments.append((e, l_id, s_id))
-
-        l_id += 1
-
-    return segments
-
-#---------------------------------------------------------------------------
-
-def parse_parentheses(line):
-
-    istart = []
-    d = {}
-
-    for i, c in enumerate(line):
-        if c == '(':
-            istart.append(i)
-        if c == ')':
-            try:
-                d[istart.pop()] = i
-            except IndexError:
-                print('There are too many closing parentheses')
-
-    if istart:
-        print('A closing parenthese is missing!')
-
-    return d
-
-#---------------------------------------------------------------------------
-
-def get_start_lc(expr):
-    """
-    Return start line and column for a given expression
-    """
-    if isinstance(expr, (list,)):
-        return get_start_lc(expr[0])
-
-    else:
-        return expr[1], expr[2]
-
-#---------------------------------------------------------------------------
-
-def update_expressions_syntax(expressions):
-    """
-    Update legacy expressions, such as "mod"
-    """
-
-    new_exp = []
-    skip_to = 0
-
-    for i, e in enumerate(expressions):
-
-        if i < skip_to:
-            continue
-
-        if isinstance(e, (list,)):
-            a = update_expressions_syntax(e)
-            new_exp.append(update_expressions_syntax(e))
-
-        else:
-
-            # Translate "modulus" syntax
-            if e[0] == 'mod':
-                valid = True
-                sub_expr = None
-                ic = -1 # start of comma separating x and y,
-                iy = -1 # start of second argument
-                pc = -1 # position of closing parenthesis
-                try:
-                    sub_expr = expressions[i+1]
-                    po = sub_expr[0][0]
-                    if po != '(':
-                        valid = False
-                    # Check position of comma (if x is complex, might not be at i+3)
-                    j = 1
-                    while ic < 0:
-                        if isinstance(sub_expr[j], (list,)):
-                            j += 1
-                        elif sub_expr[j][0] != ',':
-                            j += 1
-                        else:
-                            ic = j
-                    iy = ic+1
-                    j = iy+1
-                    while pc < 0:
-                        if isinstance(sub_expr[j], (list,)):
-                            j += 1
-                        elif sub_expr[j][0] != ')':
-                            j += 1
-                        else:
-                            pc = j
-                    if pc+1 != len(sub_expr):
-                        valid = False
-                except Exception:
-                   valid = False
-
-                if valid:
-                    skip_to = i+2
-                    j = 1
-                    new_sub = []
-                    x = sub_expr[j]
-                    li, ci = get_start_lc(x)
-                    new_sub.append(('(', li, ci))
-                    if ic > 2:
-                        sub_sub = []
-                        sub_sub.append(('(', li, ci))
-                        while j < ic:
-                            x = sub_expr[j]
-                            sub_sub.append(x)
-                            j += 1
-                        li, ci = get_start_lc(x)
-                        sub_sub.append((')', li, ci))
-                        new_sub.append(sub_sub)
-                    else:
-                        new_sub.append(x)
-                    new_sub.append(('%', li, ci))
-                    j = ic+1
-                    x = sub_expr[j]
-                    if pc - j > 1:
-                        sub_sub = []
-                        li, ci = get_start_lc(x)
-                        sub_sub.append(('(', li, ci))
-                        while j < pc:
-                            x = sub_expr[j]
-                            sub_sub.append(x)
-                            j += 1
-                        li, ci = get_start_lc(x)
-                        sub_sub.append((')', li, ci))
-                        new_sub.append(sub_sub)
-                    else:
-                        new_sub.append(x)
-                    li, ci = get_start_lc(x)
-                    new_sub.append((')', li, ci))
-                    new_exp.append(new_sub)
-                else:
-                    new_exp.append(e)
-
-            else:
-                new_exp.append(e)
-
-    return new_exp
-
-#---------------------------------------------------------------------------
-
-def recurse_expressions_syntax(expressions):
-    """
-    Recursively Update expressions
-    """
-
-    new_exp = []
-    skip_to = 0
-
-    for i, e in enumerate(expressions):
-
-        if i < skip_to:
-            continue
-
-        if isinstance(e, (list,)):
-            new_exp.append(recurse_expressions_syntax(e))
-
-        else:
-
-            # Translate "power" syntax
-            if e[0] in ('^', '**') and i > 0:
-                valid = True
-                x = new_exp.pop()
-                y = None
-                try:
-                    y = expressions[i+1]
-                except Exception:
-                    valid = False
-                    new_exp.append(x) # replace after pop() above
-                if valid:
-                    sub_exp = []
-                    li, ci = get_start_lc(x)
-                    sub_exp.append(('(', li, ci))
-                    sub_exp.append(x)
-                    if y[0] in ('2', '3', '4'):
-                        new_exp.append(('cs_math_pow'+y[0], li, ci))
-                    else:
-                        new_exp.append(('pow', li, ci))
-                        sub_exp.append((',', li, ci))
-                        li, ci = get_start_lc(x)
-                        sub_exp.append(y)
-                    sub_exp.append((')', li, ci))
-                    new_exp.append(sub_exp)
-                    skip_to = i+2
-
-            else:
-                new_exp.append(e)
-
-    return new_exp
-
-#---------------------------------------------------------------------------
-
-def rebuild_text(expressions, comments,
-                 level=0, s_line=0, s_col=0, t_prev=''):
-    """
-    Rebuild source code from expressions and comments.
-    Reinsert comments at recorderd lines in expressions.
-    Comments are never inserted before an active token on a given
-    line, event if this was the case in the original expression,
-    both for simplification and because it is not recommeneded.
-    """
-
-    text = ''
-
-    new_exp = []
-
-    # operators adding spacing or not (minimalist prettyfier).
-    spacing_operators = ('+', '-', '*', '%', '/', '=', '>', '<',
-                         '==', '>=', '<=', 'if', 'then', 'else')
-    no_spacing_operators = ('^', '**')
-
-    for i, e in enumerate(expressions):
-
-        li, ci = get_start_lc(e)
-
-        # Restore comments from previous lines
-
-        # column info does not need to be fully updated here,
-        # as comments are always added at the end of a line,
-        # and new lines reset column info.
-
-        if comments:
-            line_ref = comments[0][1]
-            while comments:
-                if comments[0][1] >= li:
-                    break
-                c = comments.pop(0)
-                while s_line < c[1]:
-                    text += '\n'
-                    s_line += 1
-                    s_col = 0
-                if s_col > 0: # add space to nonempty column
-                    text += ' '
-                if s_col < c[2]:
-                    for j in range(c[2]):
-                        text += ' '
-                text += '//' + c[0][1:]
-
-        # Recursive handling of code
-
-        if isinstance(e, (list,)):
-            sub_text, comments, e_line, e_col \
-                = rebuild_text(e, comments, level+1,
-                               s_line, s_col, t_prev)
-            text += sub_text
-            t_prev = sub_text[-1:]
-            if e_line > s_line:
-                s_col = 0
-            else:
-                s_col = e_col
-            s_line = e_line
-
-        else:
-
-            if s_line < li:
-                text += '\n'
-                s_col = 0
-                for i in range(ci):
-                    text += ' '
-                    s_col += 1
-
-            else:      # Try to put spaces in recommended places
-                add_space = True
-                if t_prev in ('(', '[', '{', ''):
-                    add_space = False
-                elif e[0] in (';', ':', ',', ')', ']', '}') \
-                   or e[0] in no_spacing_operators:
-                    add_space = False
-                elif e[0] in ('(', '['):
-                    if t_prev not in spacing_operators:
-                        add_space = False
-                if add_space:
-                    text += ' '
-                    s_col += 1
-
-            # Add actual token
-
-            text += e[0]
-            t_prev = e[0]
-            s_line = li
-            s_col += len(e[0])
-
-    # Restore comments after code
-
-    """
-    if len(comments) > 0:
-        if comments[0][1]:
-        iwhile comments[0][1] < e[1]:
-            c = comments.pop(0)
-            line_cur = c[1]
-            while line_cur < line_ref:
-                text += '\n'
-                line_cur += 1
-                for j in range(c[2]):
-                    text += ' '
-                    text += c[0]
-                line_ref = line_cur
-            text += '\n\n'
-    """
-
-
-    return text, comments, s_line, s_col
-
-#---------------------------------------------------------------------------
-
-def tokenize(segments):
-    """
-    Tokenize segments and separate comments.
-    """
-
-    whitespace = (' ', '\t', '\n', '\l', '\r')
-    sep2 = ('<=', '>=', '!=', '||', '&&', '+=', '-=', '*=', '/=', '**')
-    sep1 = ('=', '(', ')', ';', ',', ':', '[', ']', '{', '}',
-            '+', '-', '*', '/', '<', '>',  '^', '%', '!', '?')
-    digits_p = ('.', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
-
-    tokens = []
-    comments = []
-
-    for s in segments:
-
-        prv = ' '
-        s_id = 0
-        s0 = s[0]
-        if (s0[0] == '#'):
-            comments.append(s)
-            continue
-
-        for i, c in enumerate(s0):
-            if s_id > i:
-                continue
-            elif c in whitespace:
-                if (not prv in whitespace) and (s_id < i):
-                    tokens.append((s0[s_id:i], s[1], s[2]+s_id))
-                s_id = i+1
-            elif s0[i:i+2] in sep2:
-                if (not prv in whitespace) and (s_id < i):
-                    tokens.append((s0[s_id:i], s[1], s[2]+s_id))
-                tokens.append((s0[i:i+2], s[1], s[2]+i))
-                s_id = i+2
-            elif c in sep1:
-                # special case: e+ or e- might not be a separator
-                is_exp = False
-                if c in ('+', '-'):
-                    if s0[i-1:i+1] in ('e+', 'e-', 'E+', 'E-'):
-                        if s0[i-2:i-1] in digits_p and s0[i+1:i+2] in digits_p:
-                            is_exp = True
-                if not is_exp:
-                    if (not prv in whitespace) and (s_id < i):
-                        tokens.append((s0[s_id:i], s[1], s[2]+s_id))
-                    tokens.append((s0[i:i+1], s[1], s[2]+i))
-                    s_id = i+1
-            prv = s0[i]
-        r = s0[s_id:]
-        if len(r) > 0:
-            tokens.append((r, s[1], s[2]+s_id))
-
-    return tokens, comments
-
-#---------------------------------------------------------------------------
-
-def build_expressions(exp_lines, tokens):
-    """
-    Organize expressions as lists of subexpressions based on levels
-    """
-
-    # Now we have a fully tokenized expression, we can buid a list of assignments
-
-    opening_tokens = ('(', '{', '[')
-    closing_tokens = (')', '}', ']')
-    open_match = {')': '(',
-                  '}': '{',
-                  ']': '['}
-    close_match = {'(': ')',
-                  '{': '}',
-                  '[': ']'}
-
-    parent = []
-    current = []
-
-    rvalues = []
-    expression = []
-
-    previous = None
-    level_open = []
-
-    # Build levels based on parenthesis and braces (check consistency)
-
-    match_error = None
-
-    for t in tokens:
-
-        if t[0] in opening_tokens:
-            level_open.append(t)
-            parent.append(current)
-            current = []
-            current.append(t)
-        elif t[0] in closing_tokens:
-            match_open = False
-            if level_open:
-                t_open = level_open.pop()
-                if t_open[0] == open_match[t[0]]:
-                    match_open = True
-                    current.append(t)
-                    sub = current
-                    current = parent.pop()
-                    current.append(sub)
-            if not match_open:
-                match_error = (t[0], t[1], t[2], open_match[t[0]])
-                break
-        else:
-            current.append(t)
-
-    if level_open:
-        t = level_open.pop()
-        match_error = (t[0], t[1], t[2], close_match[t[0]])
-
-    if match_error:
-        err_msg = []
-        n_lines = 7
-        j = match_error[1]  # error line
-        for i in range(n_lines):
-            if i + j + 1 - n_lines > -1:
-                err_msg.append(exp_lines[i + j + 1 - n_lines])
-        c_line = ''
-        for k in range(match_error[2]):  # error column
-            c_line += ' '
-        c_line += '^'
-        err_msg.append(c_line)
-        fmt = "Error: '{0}' at line {1} and column {2} does not have a matching '{3}'"
-        err_msg.append(fmt.format(match_error[0], match_error[1],
-                                  match_error[2], match_error[3]))
-        err_msg.append('')
-        for i in range(n_lines):
-            if j+i < len(exp_lines):
-                err_msg.append(exp_lines[j-i])
-
-        """
-        msg = ''
-        for l in err_msg:
-            msg += l + '\n'
-
-        raise Exception(msg)
-        """
-        for l in err_msg:
-            print(l)
-
-        return None
-
-    return current
-
-
-#---------------------------------------------------------------------------
-
-def split_for_assignment(l):
-    """
-    Check for assignemnt (separating along = but not >=, <=)
-    """
-    lf = []
-    c_idx = 0
-    s_idx = 0
-    e_idx = len(l)
-    for c_idx in range(e_idx):
-        if l[c_idx] == '=':
-            if c_idx > 0 and l[c_idx-1] not in ('>', '<'):
-                lf.append(l[s_idx:c_idx])
-                s_idx = c_idx+1
-    if s_idx <= e_idx:
-        lf.append(l[s_idx:e_idx])
-
-    return lf
-
-#---------------------------------------------------------------------------
-
-def parse_gui_expression(expression,
-                         req,
-                         known_symbols,
-                         func_type,
-                         need_for_loop = False):
-
-    usr_code = ''
-    usr_defs = ''
-    if_loop = False
-
-    tab = '  '
-    ntabs = 3
-    if func_type == 'ibm':
-        ntabs = 2
-
-    if_open = 0
-
-    if func_type == 'vol':
-        req_fields = split_req_components(req)
-#        dump_req_fields(req_fields)
-
-    # ------------------------------------
-    # Parse the Mathematical expression and generate the C block code
-
-    exp_lines = expression.split("\n")
-
-    segments = separate_segments(exp_lines)
-    tokens, comments = tokenize(segments)
-    expr_list = build_expressions(exp_lines, tokens)
-
-    # TODO: better handle parsing error (message printed in build_expressions)
-
-    if expr_list:
-        # Update expressions to new syntax (should be moved to back compatiility)
-        expr_list = update_expressions_syntax(expr_list)
-
-        # Translate expressions such as power functions
-        expr_list = recurse_expressions_syntax(expr_list)
-
-        # Rebuild source text
-        text, comments, s_line, s_col \
-            = rebuild_text(expr_list, comments)
-
-        # Return to previous stage
-        # (we should use the expressions list for more robust parsing
-        # also in the following stages in the future).
-
-        exp_lines = text.split("\n")
-        segments = separate_segments(exp_lines)
-
-    s_idx = 0
-    s_end = len(segments)
-    nreq = len(req)
-
-    for lidx in range(len(exp_lines)):
-
-        # Rebuild line from segments, ignoring comments
-        # segments should be used to improve parsing in the future
-        l = ""
-        while s_idx < s_end:
-            s_l_idx = segments[s_idx][1]
-            if s_l_idx > lidx:
-                break
-            elif s_l_idx == lidx:
-                s = segments[s_idx][0]
-                if s[0] != '#':
-                    l += s + ' '
-            s_idx += 1
-        l = l.rstrip()
-
-        # ------------------------------------
-        # Check that the line is not empty
-        if len(l) > 0:
-
-            # Check for assignemnt (separating along = but not >=, <=)
-            lf = split_for_assignment(l)
-
-            # ------------------------------------
-            # If the line contains an assignment
-            if len(lf) > 1:
-                if lf[0].strip() not in known_symbols:
-                    known_symbols.append(lf[0].strip())
-                    # Test whether we are inside an if loop or not!
-                    if if_open:
-                        usr_defs += 2*tab + 'cs_real_t %s = -1.;\n' % (lf[0])
-                    else:
-                        l = 'cs_real_t '+l
-
-                elif lf[0].strip() in req:
-                    if func_type == 'vol':
-                        fid, fcomp, fdim = get_req_field_info(req_fields, lf[0].strip())
-                        if fid == None:
-                            raise Exception("Uknown field: %s" %(lf[0].strip()))
-
-                        if fcomp < 0:
-                            new_v = 'f[%d]->val[c_id]' % (fid)
-                        else:
-                            new_v = 'f[%d]->val[c_id*%d + %d]' % (fid, fdim, fcomp)
-
-                    elif func_type == 'bnd':
-                        ir = req.index(lf[0].strip())
-                        if need_for_loop:
-                            new_v = 'new_vals[%d * bz->n_elts + e_id]' % (ir)
-                        else:
-                            new_v = 'new_vals[%d]' % (ir)
-
-                    elif func_type == 'src':
-                        if nreq > 1:
-                            ir = req.index(lf[0].strip())
-                            new_v = 'new_vals[%d * e_id + %d]' % (nreq, ir)
-                        else:
-                            new_v = 'new_vals[e_id]'
-
-                    elif func_type == 'ini':
-                        if nreq > 1:
-                            ir = req.index(lf[0].strip())
-                            new_v = 'new_vals[%d * e_id + %d]' % (nreq, ir)
-                        else:
-                            new_v = 'new_vals[e_id]'
-
-                    elif func_type == 'ibm':
-                        new_v = '*ipenal'
-
-                    l = new_v + ' = ' + lf[1]
-
-            # ------------------------------------
-            # If loop :
-            # 1 : Line starting with if
-            if l[:2] == 'if':
-                if l[-1] != '{' and exp_lines[lidx+1][0] != '{':
-                    l = l + ' {'
-                usr_code += '\n'
-                usr_code += (ntabs+if_open)*tab + l
-                if_open += 1
-
-            # 2 : Line with an else
-            elif 'else' in l:
-                if l[0] != '}' and if_open and exp_lines[lidx-1][-1] != '}':
-                    l = '} '+l
-
-                if l[-1] != '{' and exp_lines[lidx+1][0] != '{':
-                    l = l + ' {'
-
-                if_open -= 1
-                usr_code += '\n'
-                usr_code += (ntabs+if_open)*tab + l
-                if_open += 1
-
-            # 3 : Other lines
-            else:
-                if l[0] == '}':
-                    if_open -= 1
-
-                usr_code += '\n'
-                if l[-1] == '}' and len(l) > 1:
-                        usr_code += (ntabs+if_open)*tab + l[:-1]
-                        usr_code += '\n' + (ntabs+if_open)*tab + '}'
-                else:
-                    usr_code += (ntabs+if_open)*tab + l
-
-        else:
-            usr_code += '\n'
-
-    if if_open:
-        for i in range(if_open):
-            if_open -= 1
-            usr_code += '\n' + (ntabs+if_open)*tab + '}\n'
-    else:
-        usr_code += '\n'
-
-    return usr_code, usr_defs
-
-#---------------------------------------------------------------------------
+#-------------------------
 
 
 #===============================================================================
@@ -1089,10 +238,13 @@ class mei_to_c_interpreter:
 
     #---------------------------------------------------------------------------
 
-    def __init__(self, case, create_functions=True):
+    def __init__(self, case, create_functions=True, module_name=None):
 
         self.case = case
-        self.pkg_name = case['package'].name
+        if module_name:
+            self.module_name = module_name
+        else:
+            self.module_name = case.module_name()
 
         self.data_path = os.path.join(case['case_path'], 'DATA')
         self.tmp_path = os.path.join(self.data_path, 'tmp')
@@ -1115,7 +267,7 @@ class mei_to_c_interpreter:
             # Volume code
             self.generate_volume_code()
 
-            # Bouondary code
+            # Boundary code
             self.generate_boundary_code()
 
             # Source terms code
@@ -1194,95 +346,56 @@ class mei_to_c_interpreter:
         coords = ['x', 'y', 'z']
         need_coords = False
 
-        # Add to definitions useful arrays or scalars
-        for line_comp in exp_lines_comp:
-            for s in symbols:
-                sn = s[0]
-                if sn in line_comp and sn not in known_symbols:
-                    if sn == 'dt':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t dt = cs_glob_time_step->dt;\n'
-                        known_symbols.append(sn)
-                    elif sn == 't':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t time = cs_glob_time_step->t_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn == 'iter':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const int iter = cs_glob_time_step->nt_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn in coords:
-                        ic = coords.index(sn)
-                        lxyz = 'const cs_real_t %s = xyz[c_id][%s];\n' % (sn, str(ic))
-                        usr_code += (ntabs+1)*tab + lxyz
-                        known_symbols.append(sn)
-                        need_coords = True
-                    elif sn in self.notebook.keys():
-                        l = 'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");\n' \
-                                % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
 
-                    elif sn in _ref_turb_values:
-                        l = 'const cs_real_t %s = cs_glob_turb_ref_values->%s;\n' % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        # ------------------------
+        # Deal with tokens which require a definition
+        glob_tokens = {}
+        loop_tokens = {}
+        glob_tokens.update(_base_tokens)
 
-                    elif sn in _pkg_fluid_prop_dict[self.pkg_name].keys():
-                        if len(name.split("_")) > 1:
-                            try:
-                                phase_id = int(name.split('_')[-1])-1
-                            except:
-                                phase_id = -1
-                        else:
-                            phase_id = -1
-                        gs = _pkg_glob_struct[self.pkg_name].replace('PHASE_ID',
-                                                                     str(phase_id))
-                        pn = _pkg_fluid_prop_dict[self.pkg_name][sn]
-                        ms = 'const cs_real_t %s = %s->%s;\n' %(sn, gs, pn)
-                        usr_defs += ntabs*tab + ms
-                        known_symbols.append(sn)
+        # Coordinates
+        for kc in coords:
+            ic = coords.index(kc)
+            loop_tokens[kc] = 'const cs_real_t %s = xyz[c_id][%s];' % (kc, str(ic))
 
-                    elif s not in known_fields:
-                        if len(s[1].split('=')) > 1:
-                            sval = s[1].split('=')[-1]
-                            usr_defs += ntabs*tab + 'const cs_real_t '+sn+' = '+str(sval)+';\n'
-                            known_symbols.append(sn)
+        glob_tokens['xyz'] = \
+        'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;'
 
-        if need_coords:
-            usr_defs = ntabs*tab \
-                     + 'const cs_real_3_t xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;' \
-                     + '\n\n' \
-                     + usr_defs
+        # Notebook variables
+        for kn in self.notebook.keys():
+            glob_tokens[kn] = \
+            'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");' % (kn, kn)
 
-        # List of fields where we need to use the label instead of the name:
+        # fluid properties
+        for kp in _pkg_fluid_prop_dict[self.module_name].keys():
+            if len(name.split("_")) > 1:
+                try:
+                    phase_id = int(name.split('_')[-1])-1
+                except:
+                    phase_id = -1
+            else:
+                phase_id = -1
+            gs = _pkg_glob_struct[self.module_name].replace('PHASE_ID',
+                                                         str(phase_id))
+            pn = _pkg_fluid_prop_dict[self.module_name][kp]
+            glob_tokens[kp] = 'const cs_real_t %s = %s->%s;' %(kp, gs, pn)
+
+
+        # Fields
         label_not_name = ['Additional scalar', 'Thermal scalar', 'Pressure']
         for f in known_fields:
             (fl, fn) = f
-            for line in exp_lines_comp:
-                if fl in line:
-                    for lnn in label_not_name:
-                        if lnn in fn:
-                            fn = fl
-                    l = 'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;\n' \
-                            % (fl, fn)
-                    usr_defs += ntabs*tab + l
-                    known_symbols.append(fl)
-                    usr_code += (ntabs+1)*tab + 'const cs_real_t %s = %s_vals[c_id];\n'\
-                            % (fl, fl)
+            for lnn in label_not_name:
+                if lnn in fn:
+                    fn = fl
 
-                    break
+                glob_tokens[fl] = \
+                    'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;' \
+                    % (fl, fn)
 
-        # Internal names of mathematical functions
-        for key in _cs_math_internal_name.keys():
-            if key in expression:
-                expression = expression.replace(key+'(',
-                                                _cs_math_internal_name[key]+'(')
-
-        for line in exp_lines_comp:
-            if 'pi' in line and 'pi' not in known_symbols:
-                usr_defs += ntabs*tab + 'const cs_real_t pi = cs_math_pi;\n'
-                known_symbols.append('pi')
+                loop_tokens[fl] = 'const cs_real_t %s = %s_vals[c_id];' \
+                        % (fl, fl)
+        # ------------------------
 
         for s in required:
             known_symbols.append(s);
@@ -1290,13 +403,14 @@ class mei_to_c_interpreter:
         known_symbols.append('#')
 
         ntabs += 1
-        if_loop = False
 
         # Parse the user expresion
         parsed_exp = parse_gui_expression(expression,
                                           required,
                                           known_symbols,
-                                          'vol')
+                                          'vol',
+                                          glob_tokens,
+                                          loop_tokens)
         usr_code += parsed_exp[0]
         if parsed_exp[1] != '':
             usr_defs += parsed_exp[1]
@@ -1307,14 +421,15 @@ class mei_to_c_interpreter:
         for i in range(1,len(nsplit)):
             usr_blck += tab + '    strcmp(f[%d]->name, "%s") == 0 &&\n' % (i, nsplit[i])
 
-        usr_blck += tab + '    strcmp(vz->name, "%s") == 0) {\n' % (zone)
+        usr_blck += tab + '    strcmp(zone->name, "%s") == 0) {\n' % (zone)
 
-        usr_blck += usr_defs + '\n'
+        usr_blck += usr_defs
 
-        usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < vz->n_elts; e_id++) {\n'
-        usr_blck += 3*tab + 'cs_lnum_t c_id = vz->elt_ids[e_id];\n'
+        usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < zone->n_elts; e_id++) {\n'
+        usr_blck += 3*tab + 'cs_lnum_t c_id = zone->elt_ids[e_id];\n'
 
         usr_blck += usr_code
+
         usr_blck += 2*tab + '}\n'
         usr_blck += tab + '}\n'
 
@@ -1359,81 +474,45 @@ class mei_to_c_interpreter:
         known_symbols = []
         for req in required:
             known_symbols.append(req)
+
         coords = ['x', 'y', 'z']
         need_coords = False
 
         # allocate the new array
         if need_for_loop:
-            usr_defs += ntabs*tab + 'const int vals_size = bz->n_elts * %d;\n' % (len(required))
+            usr_defs += ntabs*tab + 'const int vals_size = zone->n_elts * %d;\n' % (len(required))
         else:
             usr_defs += ntabs*tab + 'const int vals_size = %d;\n' % (len(required))
 
         usr_defs += ntabs*tab + 'BFT_MALLOC(new_vals, vals_size, cs_real_t);\n'
         usr_defs += '\n'
 
-        # Add to definitions useful arrays or scalars
-        for line_comp in exp_lines_comp:
-            for s in symbols:
-                sn = s[0]
-                if sn in line_comp and sn not in known_symbols:
-                    if sn == 'dt':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t dt = cs_glob_time_step->dt;\n'
-                        known_symbols.append(sn)
-                    elif sn == 't':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t t = cs_glob_time_step->t_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn == 'iter':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const int iter = cs_glob_time_step->nt_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn in coords:
-                        ic = coords.index(sn)
-                        lxyz = 'const cs_real_t %s = xyz[f_id][%s];\n' % (sn, str(ic))
-                        usr_code += (ntabs+1)*tab + lxyz
-                        known_symbols.append(sn)
-                        need_coords = True
-                    elif sn in _ref_turb_values:
-                        l = 'const cs_real_t %s = cs_glob_turb_ref_values->%s;\n' % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        # ------------------------
+        # Deal with tokens which require a definition
+        glob_tokens = {}
+        loop_tokens = {}
+        glob_tokens.update(_base_tokens)
 
-            for nb in self.notebook.keys():
-                if nb in line_comp and nb not in known_symbols:
-                        l = 'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");\n' \
-                                % (nb, nb)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        # Coordinates
+        for kc in coords:
+            ic = coords.index(kc)
+            loop_tokens[kc] = 'const cs_real_t %s = xyz[f_id][%s];' % (kc, str(ic))
 
-        if need_coords:
-            usr_defs = ntabs*tab \
-                     + 'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->b_face_cog;' \
-                     + '\n\n' \
-                     + usr_defs
+        glob_tokens['xyz'] = \
+        'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->b_face_cog;'
+
+        # Notebook variables
+        for kn in self.notebook.keys():
+            glob_tokens[kn] = \
+            'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");' % (kn, kn)
 
         # Fields
         for f in known_fields:
-            for line in exp_lines_comp:
-                if f[0] in line:
-                    l = 'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;\n' \
-                            % (f[0], f[1])
-                    usr_defs += ntabs*tab + l
-                    known_symbols.append(f[0])
-                    usr_code += (ntabs+1)*tab + 'const cs_real_t %s = %s_vals[c_id];\n'\
-                            % (f[0], f[0])
-                    break
-
-        # Internal names of mathematical functions
-        for key in _cs_math_internal_name.keys():
-            if key in expression:
-                expression = expression.replace(key+'(',
-                                                _cs_math_internal_name[key]+'(')
-
-        for line in exp_lines_comp:
-            if 'pi' in line and 'pi' not in known_symbols:
-                usr_defs += ntabs*tab + 'const cs_real_t pi = cs_math_pi;\n'
-                known_symbols.append('pi')
+            glob_tokens[f[0]] = \
+            'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;' % (f[0], f[1])
+            loop_tokens[f[0]] = \
+            'const cs_real_t %s = %s_vals[f_id];' % (f[0], f[0])
+        # ------------------------
 
         if need_for_loop:
             ntabs += 1
@@ -1443,6 +522,8 @@ class mei_to_c_interpreter:
                                           required,
                                           known_symbols,
                                           'bnd',
+                                          glob_tokens,
+                                          loop_tokens,
                                           need_for_loop)
 
         usr_code += parsed_exp[0]
@@ -1452,14 +533,14 @@ class mei_to_c_interpreter:
         # Write the block
         block_cond  = tab + 'if (strcmp(field_name, "%s") == 0 &&\n' % (field_name)
         block_cond += tab + '    strcmp(condition, "%s") == 0 &&\n' % (cname)
-        block_cond += tab + '    strcmp(bz->name, "%s") == 0) {\n' % (zone)
+        block_cond += tab + '    strcmp(zone->name, "%s") == 0) {\n' % (zone)
         usr_blck = block_cond + '\n'
 
-        usr_blck += usr_defs + '\n'
+        usr_blck += usr_defs
 
         if need_for_loop:
-            usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < bz->n_elts; e_id++) {\n'
-            usr_blck += 3*tab + 'cs_lnum_t f_id = bz->elt_ids[e_id];\n'
+            usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < zone->n_elts; e_id++) {\n'
+            usr_blck += 3*tab + 'cs_lnum_t f_id = zone->elt_ids[e_id];\n'
 
         usr_blck += usr_code
 
@@ -1502,71 +583,40 @@ class mei_to_c_interpreter:
         tab   = '  '
         ntabs = 2
 
-        known_symbols = []
-        coords = ['x', 'y', 'z']
-        need_coords = False
-
-        usr_defs += ntabs*tab + 'const int vals_size = vz->n_elts * %d;\n' % (len(required))
+        usr_defs += ntabs*tab + 'const int vals_size = zone->n_elts * %d;\n' % (len(required))
         usr_defs += ntabs*tab + 'BFT_MALLOC(new_vals, vals_size, cs_real_t);\n'
         usr_defs += '\n'
 
-        # Add to definitions useful arrays or scalars
-        for line_comp in exp_lines_comp:
-            for s in symbols:
-                sn = s[0]
-                if sn in line_comp and sn not in known_symbols:
-                    if sn == 'dt':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t dt = cs_glob_time_step->dt;\n'
-                        known_symbols.append(sn)
-                    elif sn == 't':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t time = cs_glob_time_step->t_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn == 'iter':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const int iter = cs_glob_time_step->nt_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn in coords:
-                        ic = coords.index(sn)
-                        lxyz = 'const cs_real_t %s = xyz[c_id][%s];\n' % (sn, str(ic))
-                        usr_code += (ntabs+1)*tab + lxyz
-                        known_symbols.append(sn)
-                        need_coords = True
-                    elif sn in self.notebook.keys():
-                        l = 'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");\n' \
-                                % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
-                    elif sn in _ref_turb_values:
-                        l = 'const cs_real_t %s = cs_glob_turb_ref_values->%s;\n' % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        known_symbols = []
+        coords = ['x', 'y', 'z']
 
-                    elif sn in known_fields.keys():
-                        l = 'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;\n'
-                        l = l % (sn, known_fields[sn])
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
-                        usr_code += (ntabs+1)*tab + 'const cs_real_t %s = %s_vals[c_id];\n'\
-                                % (sn, sn)
+        # ------------------------
+        # Deal with tokens which require a definition
+        glob_tokens = {}
+        loop_tokens = {}
+        glob_tokens.update(_base_tokens)
 
-        if need_coords:
-            usr_defs = ntabs*tab \
-                     + 'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;' \
-                     + '\n\n' \
-                     + usr_defs
+        # Coordinates
+        for kc in coords:
+            ic = coords.index(kc)
+            loop_tokens[kc] = 'const cs_real_t %s = xyz[c_id][%s];' % (kc, str(ic))
 
-        # Internal names of mathematical functions
-        for key in _cs_math_internal_name.keys():
-            if key in expression:
-                expression = expression.replace(key+'(',
-                                                _cs_math_internal_name[key]+'(')
+        glob_tokens['xyz'] = \
+        'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;'
 
-        for line in exp_lines_comp:
-            if 'pi' in line and 'pi' not in known_symbols:
-                usr_defs += ntabs*tab + 'const cs_real_t pi = cs_math_pi;\n'
-                known_symbols.append('pi')
+        # Notebook variables
+        for kn in self.notebook.keys():
+            glob_tokens[kn] = \
+            'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");' % (kn, kn)
+
+        for f in known_fields.keys():
+            glob_tokens[f] = \
+            'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;' \
+            % (f, known_fields[f])
+
+            loop_tokens[f] = 'const cs_real_t %s = %s_vals[c_id];' % (f, f)
+        # ------------------------
+
 
         for r in required:
             known_symbols.append(r)
@@ -1575,22 +625,24 @@ class mei_to_c_interpreter:
         parsed_exp = parse_gui_expression(expression,
                                           required,
                                           known_symbols,
-                                          'src')
+                                          'src',
+                                          glob_tokens,
+                                          loop_tokens)
 
         usr_code += parsed_exp[0]
         if parsed_exp[1] != '':
             usr_defs += parsed_exp[1]
 
         # Write the block
-        block_cond  = tab + 'if (strcmp(vz->name, "%s") == 0 &&\n' % (zone)
+        block_cond  = tab + 'if (strcmp(zone->name, "%s") == 0 &&\n' % (zone)
         block_cond += tab + '    strcmp(name, "%s") == 0 && \n' % (name)
         block_cond += tab + '    strcmp(source_type, "%s") == 0 ) {\n' % (source_type)
         usr_blck = block_cond + '\n'
 
-        usr_blck += usr_defs + '\n'
+        usr_blck += usr_defs
 
-        usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < vz->n_elts; e_id++) {\n'
-        usr_blck += 3*tab + 'cs_lnum_t c_id = vz->elt_ids[e_id];\n'
+        usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < zone->n_elts; e_id++) {\n'
+        usr_blck += 3*tab + 'cs_lnum_t c_id = zone->elt_ids[e_id];\n'
 
         usr_blck += usr_code
 
@@ -1628,83 +680,55 @@ class mei_to_c_interpreter:
         tab   = '  '
         ntabs = 2
 
-        known_symbols = []
-        coords = ['x', 'y', 'z']
-        need_coords = False
-
-        usr_defs += ntabs*tab + 'const int vals_size = vz->n_elts * %d;\n' % (len(required))
+        usr_defs += ntabs*tab + 'const int vals_size = zone->n_elts * %d;\n' % (len(required))
         usr_defs += ntabs*tab + 'BFT_MALLOC(new_vals, vals_size, cs_real_t);\n'
         usr_defs += '\n'
 
-        # Add to definitions useful arrays or scalars
-        for line_comp in exp_lines_comp:
-            for s in symbols:
-                sn = s[0]
-                if sn in line_comp and sn not in known_symbols:
-                    if sn in coords:
-                        ic = coords.index(sn)
-                        lxyz = 'const cs_real_t %s = xyz[c_id][%s];\n' % (sn, str(ic))
-                        usr_code += (ntabs+1)*tab + lxyz
-                        known_symbols.append(sn)
-                        need_coords = True
+        known_symbols = []
+        coords = ['x', 'y', 'z']
 
-                    elif sn in self.notebook.keys():
-                        l = 'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");\n' \
-                                % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        # ------------------------
+        # Deal with tokens which require a definition
+        glob_tokens = {}
+        loop_tokens = {}
+        glob_tokens.update(_base_tokens)
 
-                    elif sn in _ref_turb_values:
-                        l = 'const cs_real_t %s = cs_glob_turb_ref_values->%s;\n' % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        # Coordinates
+        for kc in coords:
+            ic = coords.index(kc)
+            loop_tokens[kc] = 'const cs_real_t %s = xyz[c_id][%s];' % (kc, str(ic))
 
-                    elif sn in _pkg_fluid_prop_dict[self.pkg_name].keys():
-                        if len(name.split("_")) > 1:
-                            try:
-                                phase_id = int(name.split('_')[-1])-1
-                            except:
-                                phase_id = -1
-                        else:
-                            phase_id = -1
+        glob_tokens['xyz'] = \
+        'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;'
 
-                        gs = _pkg_glob_struct[self.pkg_name].replace('PHASE_ID',
-                                                                     str(phase_id))
-                        pn = _pkg_fluid_prop_dict[self.pkg_name][sn]
-                        ms = 'const cs_real_t %s = %s->%s;\n' %(sn, gs, pn)
-                        usr_defs += ntabs*tab + ms
-                        known_symbols.append(sn)
+        # Notebook variables
+        for kn in self.notebook.keys():
+            glob_tokens[kn] = \
+            'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");' % (kn, kn)
 
+        # fluid properties
+        for kp in _pkg_fluid_prop_dict[self.module_name].keys():
+            if len(name.split("_")) > 1:
+                try:
+                    phase_id = int(name.split('_')[-1])-1
+                except:
+                    phase_id = -1
+            else:
+                phase_id = -1
+            gs = _pkg_glob_struct[self.module_name].replace('PHASE_ID',
+                                                         str(phase_id))
+            pn = _pkg_fluid_prop_dict[self.module_name][kp]
+            glob_tokens[kp] = 'const cs_real_t %s = %s->%s;' %(kp, gs, pn)
 
-        if need_coords:
-            usr_defs = ntabs*tab \
-                     + 'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;' \
-                     + '\n\n' \
-                     + usr_defs
 
         # known fields
         for f in known_fields:
-            for line in exp_lines_comp:
-                if f[0] in line:
-                    l = 'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;\n' \
-                            % (f[0], f[1])
-                    usr_defs += ntabs*tab + l
-                    known_symbols.append(f[0])
-                    usr_code += (ntabs+1)*tab + 'const cs_real_t %s = %s_vals[c_id];\n'\
-                            % (f[0], f[0])
+            glob_tokens[f[0]] = \
+            'const cs_real_t *%s_vals = cs_field_by_name("%s")->val;' % (f[0], f[1])
+            loop_tokens[f[0]] = \
+            'const cs_real_t %s = %s_vals[c_id];' % (f[0], f[0])
+        # ------------------------
 
-                    break
-
-        # Internal names of mathematical functions
-        for key in _cs_math_internal_name.keys():
-            if key in expression:
-                expression = expression.replace(key+'(',
-                                                _cs_math_internal_name[key]+'(')
-
-        for line in exp_lines_comp:
-            if 'pi' in line and 'pi' not in known_symbols:
-                usr_defs += ntabs*tab + 'const cs_real_t pi = cs_math_pi;\n'
-                known_symbols.append('pi')
 
         for r in required:
             known_symbols.append(r)
@@ -1713,21 +737,23 @@ class mei_to_c_interpreter:
         parsed_exp = parse_gui_expression(expression,
                                           required,
                                           known_symbols,
-                                          'ini')
+                                          'ini',
+                                          glob_tokens,
+                                          loop_tokens)
 
         usr_code += parsed_exp[0]
         if parsed_exp[1] != '':
             usr_defs += parsed_exp[1]
 
         # Write the block
-        block_cond  = tab + 'if (strcmp(vz->name, "%s") == 0 &&\n' % (zone)
+        block_cond  = tab + 'if (strcmp(zone->name, "%s") == 0 &&\n' % (zone)
         block_cond += tab + '    strcmp(field_name, "%s") == 0 ) {\n' % (name)
         usr_blck = block_cond + '\n'
 
-        usr_blck += usr_defs + '\n'
+        usr_blck += usr_defs
 
-        usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < vz->n_elts; e_id++) {\n'
-        usr_blck += 3*tab + 'cs_lnum_t c_id = vz->elt_ids[e_id];\n'
+        usr_blck += 2*tab + 'for (cs_lnum_t e_id = 0; e_id < zone->n_elts; e_id++) {\n'
+        usr_blck += 3*tab + 'cs_lnum_t c_id = zone->elt_ids[e_id];\n'
 
         usr_blck += usr_code
 
@@ -1764,64 +790,27 @@ class mei_to_c_interpreter:
 
         known_symbols = []
         coords = ['x', 'y', 'z']
-        need_coords = False
 
-        # Add to definitions useful arrays or scalars
-        for line_comp in exp_lines_comp:
-            for s in symbols:
-                sn = s[0]
-                if sn in line_comp and sn not in known_symbols:
-                    if sn == 'dt':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t dt = cs_glob_time_step->dt;\n'
-                        known_symbols.append(sn)
-                    elif sn == 't':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const cs_real_t time = cs_glob_time_step->t_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn == 'iter':
-                        usr_defs += ntabs*tab
-                        usr_defs += 'const int iter = cs_glob_time_step->nt_cur;\n'
-                        known_symbols.append(sn)
-                    elif sn in coords:
-                        ic = coords.index(sn)
-                        lxyz = 'const cs_real_t %s = xyz[c_id][%s];\n' % (sn, str(ic))
-                        usr_code += (ntabs+1)*tab + lxyz
-                        known_symbols.append(sn)
-                        need_coords = True
-                    elif sn in self.notebook.keys():
-                        l = 'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");\n' \
-                                % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        # ------------------------
+        # Deal with tokens which require a definition
+        glob_tokens = {}
+        loop_tokens = {}
+        glob_tokens.update(_base_tokens)
 
-                    elif sn in _ref_turb_values:
-                        l = 'const cs_real_t %s = cs_glob_turb_ref_values->%s;\n' % (sn, sn)
-                        usr_defs += ntabs*tab + l
-                        known_symbols.append(sn)
+        # Coordinates
+        for kc in coords:
+            ic = coords.index(kc)
+            loop_tokens[kc] = 'const cs_real_t %s = xyz[c_id][%s];' % (kc, str(ic))
 
-                    elif s not in known_fields:
-                        if len(s[1].split('=')) > 1:
-                            sval = s[1].split('=')[-1]
-                            usr_defs += ntabs*tab + 'const cs_real_t '+sn+' = '+str(sval)+';\n'
-                            known_symbols.append(sn)
+        glob_tokens['xyz'] = \
+        'const cs_real_3_t *xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;'
 
-        if need_coords:
-            usr_defs = ntabs*tab \
-                     + 'const cs_real_3_t xyz = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;' \
-                     + '\n\n' \
-                     + usr_defs
+        # Notebook variables
+        for kn in self.notebook.keys():
+            glob_tokens[kn] = \
+            'const cs_real_t %s = cs_notebook_parameter_value_by_name("%s");' % (kn, kn)
+        # ------------------------
 
-        # Internal names of mathematical functions
-        for key in _cs_math_internal_name.keys():
-            if key in expression:
-                expression = expression.replace(key+'(',
-                                                _cs_math_internal_name[key]+'(')
-
-        for line in exp_lines_comp:
-            if 'pi' in line and 'pi' not in known_symbols:
-                usr_defs += ntabs*tab + 'const cs_real_t pi = cs_math_pi;\n'
-                known_symbols.append('pi')
 
         for s in required:
             known_symbols.append(s);
@@ -1835,12 +824,16 @@ class mei_to_c_interpreter:
         parsed_exp = parse_gui_expression(expression,
                                           required,
                                           known_symbols,
-                                          'ibm')
+                                          'ibm',
+                                          glob_tokens,
+                                          loop_tokens)
         usr_code += parsed_exp[0]
         if parsed_exp[1] != '':
             usr_defs += parsed_exp[1]
 
         usr_blck = tab + 'if (strcmp(object_name, "%s") == 0) {' % (name)
+        if usr_defs != '':
+            usr_blck += usr_defs + '\n'
         usr_blck += usr_code
         usr_blck += tab + '}\n'
 
@@ -1870,10 +863,12 @@ class mei_to_c_interpreter:
     #---------------------------------------------------------------------------
 
     def generate_volume_code(self):
+        # Ground water model enabled ?
+        gwm = False
 
         from code_saturne.model.LocalizationModel import LocalizationModel
         from code_saturne.model.GroundwaterLawModel import GroundwaterLawModel
-        if self.pkg_name == 'code_saturne':
+        if self.module_name == 'code_saturne':
             from code_saturne.model.FluidCharacteristicsModel \
                 import FluidCharacteristicsModel
 
@@ -1916,8 +911,11 @@ class mei_to_c_interpreter:
                                             'capacity+saturation+permeability',
                                             exp, req, sym, [])
 
+            from code_saturne.model.GroundwaterModel import GroundwaterModel
+            # Ground water model enabled ?
+            gwm = not (GroundwaterModel(self.case).getGroundwaterModel() == 'off')
 
-        elif self.pkg_name == 'neptune_cfd':
+        elif self.module_name == 'neptune_cfd':
             from code_saturne.model.ThermodynamicsModel import ThermodynamicsModel
             from code_saturne.model.MainFieldsModel import MainFieldsModel
 
@@ -1978,9 +976,12 @@ class mei_to_c_interpreter:
                         self.init_block('vol', 'all_cells', fk,
                                         exp, req, sym, sca)
 
-            # Porosity
-            vlm = LocalizationModel('VolumicZone', self.case)
-            from code_saturne.model.PorosityModel import PorosityModel
+
+        # Porosity for both solvers
+        vlm = LocalizationModel('VolumicZone', self.case)
+        from code_saturne.model.PorosityModel import PorosityModel
+
+        if not gwm:
             prm = PorosityModel(self.case)
             for zone in vlm.getZones():
                 z_id = zone.getCodeNumber()
@@ -2004,7 +1005,7 @@ class mei_to_c_interpreter:
 
         from code_saturne.model.NotebookModel import NotebookModel
 
-        if self.pkg_name == 'code_saturne':
+        if self.module_name == 'code_saturne':
             from code_saturne.model.LocalizationModel import LocalizationModel
             from code_saturne.model.Boundary import Boundary
             from code_saturne.model.TurbulenceModel import TurbulenceModel
@@ -2013,24 +1014,49 @@ class mei_to_c_interpreter:
             tm = TurbulenceModel(self.case)
 
             for zone in blm.getZones():
-                if zone._nature == "symmetry":
-                    continue
 
                 boundary = Boundary(zone._nature, zone._label, self.case)
+
+                # ALE: imposed mesh velocity
+                c = boundary.getALEChoice()
+                if c == "fixed_velocity":
+                    sym = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
+                    for (name, val) in NotebookModel(self.case).getNotebookList():
+                        sym.append((name, 'value (notebook) = ' + str(val)))
+                    req = ['mesh_velocity[0]', 'mesh_velocity[1]', 'mesh_velocity[2]']
+                    exp = boundary.getALEFormula()
+
+                    name = 'mesh_velocity'
+                    self.init_block('bnd', zone._label, name,
+                                    exp, req, sym, known_fields=[],
+                                    condition=c)
+                elif c == "fixed_displacement":
+                    sym = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
+                    for (name, val) in NotebookModel(self.case).getNotebookList():
+                        sym.append((name, 'value (notebook) = ' + str(val)))
+                    req = ['mesh_displacement[0]', 'mesh_displacement[1]', 'mesh_displacement[2]']
+                    exp = boundary.getALEFormula()
+
+                    name = 'mesh_velocity'
+                    self.init_block('bnd', zone._label, name,
+                                    exp, req, sym, known_fields=[],
+                                    condition=c)
+
+                if zone._nature == "symmetry":
+                    continue
 
                 # Velocity for inlets
                 if 'inlet' in zone._nature and zone._nature != 'free_inlet_outlet':
                     c = boundary.getVelocityChoice()
                     if '_formula' in c:
+                        sym = ['t', 'dt', 'iter', 'surface']
                         if c == 'norm_formula':
                             req = ['u_norm']
-                            sym = ['x', 'y', 'z', 't', 'dt', 'iter']
+                            sym += ['x', 'y', 'z']
                         elif c == 'flow1_formula':
                             req = ['q_m']
-                            sym = ['t', 'dt', 'iter']
                         elif c == 'flow2_formula':
                             req = ['q_v']
-                            sym = ['t', 'dt', 'iter']
 
                         for (name, val) in NotebookModel(self.case).getNotebookList():
                             sym.append((name, 'value (notebook) = ' + str(val)))
@@ -2061,7 +1087,7 @@ class mei_to_c_interpreter:
                     tc = boundary.getTurbulenceChoice()
                     if tc == 'formula':
                         turb_model = tm.getTurbulenceModel()
-                        sym = ['x', 'y', 'z', 't', 'dt', 'iter']
+                        sym = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
 
                         for (name, val) in NotebookModel(self.case).getNotebookList():
                             sym.append((name, 'value (notebook) = ' + str(val)))
@@ -2102,7 +1128,7 @@ class mei_to_c_interpreter:
                 if zone._nature == 'free_inlet_outlet':
                     name = "head_loss"
                     req  = ['K']
-                    sym  = ['x', 'y', 'z', 't', 'dt', 'iter']
+                    sym  = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
                     for (nb_var, val) in NotebookModel(self.case).getNotebookList():
                         sym.append((nb_var, 'value (notebook) = ' + str(val)))
 
@@ -2114,7 +1140,7 @@ class mei_to_c_interpreter:
                 # Hydraulic head for groundwater flow
                 if zone._nature == 'groundwater':
                     c = boundary.getHydraulicHeadChoice()
-                    sym  = ['x', 'y', 'z', 't', 'dt', 'iter']
+                    sym  = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
                     for (name, val) in NotebookModel(self.case).getNotebookList():
                         sym.append((name, 'value (notebook) = ' + str(val)))
 
@@ -2138,7 +1164,7 @@ class mei_to_c_interpreter:
                                         'imposed_p_outlet']:
                   for sca in scalar_list:
                       c = boundary.getScalarChoice(sca)
-                      sym  = ['x', 'y', 'z', 't', 'dt', 'iter']
+                      sym  = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
                       for (name, val) in NotebookModel(self.case).getNotebookList():
                           sym.append((name, 'value (notebook) = ' + str(val)))
 
@@ -2179,7 +1205,7 @@ class mei_to_c_interpreter:
                                 req = ['u_norm']
                             elif c == 'flow1_formula':
                                 req = ['q_m']
-                            sym = ['x', 'y', 'z', 't', 'dt', 'iter']
+                            sym = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
 
                             for (name, val) in NotebookModel(self.case).getNotebookList():
                                 sym.append((name, 'value (notebook) = ' + str(val)))
@@ -2200,7 +1226,7 @@ class mei_to_c_interpreter:
                         if d == 'formula':
                             exp = boundary.getDirection(fId, 'direction_formula')
                             req = ['dir_x', 'dir_y', 'dir_z']
-                            sym = ['x', 'y', 'z', 't', 'dt', 'iter']
+                            sym = ['x', 'y', 'z', 't', 'dt', 'iter', 'surface']
                             for (name, val) in NotebookModel(self.case).getNotebookList():
                                 sym.append((name, 'value (notebook) = ' + str(val)))
 
@@ -2248,7 +1274,7 @@ class mei_to_c_interpreter:
 
     def generate_source_terms_code(self):
 
-        if self.pkg_name == 'code_saturne':
+        if self.module_name == 'code_saturne':
             from code_saturne.model.LocalizationModel import LocalizationModel
             from code_saturne.model.SourceTermsModel import SourceTermsModel
             from code_saturne.model.GroundwaterModel import GroundwaterModel
@@ -2272,7 +1298,7 @@ class mei_to_c_interpreter:
                                             exp, req, sym, [],
                                             source_type="momentum_source_term")
                         else:
-                            exp, req, sym = getRichardsFormulaComponents(z_id)
+                            exp, req, sym = stm.getRichardsFormulaComponents(z_id)
                             self.init_block('src', zone_name, 'richards',
                                             exp, req, sym, [],
                                             source_type="momentum_source_term")
@@ -2332,7 +1358,7 @@ class mei_to_c_interpreter:
 
     def generate_initialize_code(self):
 
-        if self.pkg_name == 'code_saturne':
+        if self.module_name == 'code_saturne':
             from code_saturne.model.LocalizationModel import LocalizationModel
             from code_saturne.model.InitializationModel import InitializationModel
             from code_saturne.model.CompressibleModel import CompressibleModel
@@ -2343,7 +1369,7 @@ class mei_to_c_interpreter:
             vlm = LocalizationModel('VolumicZone', self.case)
 
             for zone in vlm.getZones():
-                if zone.getNature()['initialization'] is 'on':
+                if zone.getNature()['initialization'] == 'on':
                     z_id = str(zone.getCodeNumber())
                     zone_name = zone.getLabel()
 
@@ -2355,7 +1381,7 @@ class mei_to_c_interpreter:
                     # Turbulence
                     tin = im.node_turb.xmlGetNode('initialization', zone_id=z_id)
                     if tin:
-                        if tin['choice'] is 'formula':
+                        if tin['choice'] == 'formula':
                             tmodel = im.node_turb['model']
                             exp, req, sym = im.getTurbFormulaComponents(z_id, tmodel)
                             self.init_block('ini', zone_name, 'turbulence',
@@ -2377,25 +1403,25 @@ class mei_to_c_interpreter:
 
                     if cpm.getCompressibleModel() != 'off':
                         # Pressure
-                        if im.getPressureStatus(z_id) is not 'off':
+                        if im.getPressureStatus(z_id) != 'off':
                             exp, req, sym = im.getPressureFormulaComponents(z_id)
                             self.init_block('ini', zone_name, 'pressure',
                                             exp, req, sym, [])
 
                         # Density
-                        if im.getDensityStatus(z_id) is not 'off':
+                        if im.getDensityStatus(z_id) != 'off':
                             exp, req, sym = im.getDensityFormulaComponents(z_id)
                             self.init_block('ini', zone_name, 'density',
                                             exp, req, sym, [])
 
                         # Temperature
-                        if im.getTemperatureStatus(z_id) is not 'off':
+                        if im.getTemperatureStatus(z_id) != 'off':
                             exp, req, sym = im.getTemperatureFormulaComponents(z_id)
                             self.init_block('ini', zone_name, 'temperature',
                                             exp, req ,sym, [])
 
                         # Energy
-                        if im.getEnergyStatus(z_id) is not 'off':
+                        if im.getEnergyStatus(z_id) != 'off':
                             exp, req, sym = im.getEnergyFormulaComponents(z_id)
                             self.init_block('ini', zone_name, 'energy',
                                             exp, req, sym, [])
@@ -2494,12 +1520,12 @@ class mei_to_c_interpreter:
 
     def generate_immersed_boundaries_code(self):
 
-        if self.pkg_name == 'neptune_cfd':
+        if self.module_name == 'neptune_cfd':
             from code_saturne.model.ImmersedBoundariesModel import ImmersedBoundariesModel
             ibm = ImmersedBoundariesModel(self.case)
 
             if ibm.getOnOff() == 'on' and ibm.getMethod() == 'explicit':
-                for objId in len(ibm.getObjectsNodeList()):
+                for objId in range(len(ibm.getObjectsNodeList())):
                     node = ibm.getObjectsNodeList()[objId]
 
                     object_name = ibm.getObjectName(objId+1)
@@ -2524,7 +1550,13 @@ class mei_to_c_interpreter:
         os.chdir(self.tmp_path)
         out = open('comp.out', 'w')
         err = open('comp.err', 'w')
+
+        solver = "cs_solver" + self.case['package'].config.exeext
+        if self.case.module_name() == 'neptune_cfd':
+            solver = "nc_solver" + self.case['package'].config.exeext
+
         compilation_test = cs_compile.compile_and_link(self.case['package'],
+                                                       solver,
                                                        self.tmp_path,
                                                        opt_cflags='-w',
                                                        stdout=out,
@@ -2606,7 +1638,7 @@ class mei_to_c_interpreter:
 
             except:
                 # Cant save the function. xml file will still be saved
-                return -1
+                return 2
 
         # Return 0 if nothing is written for robustness
         else:
@@ -2628,7 +1660,7 @@ class mei_to_c_interpreter:
         code_to_write = ''
         if len(self.funcs[func_type].keys()) > 0:
             code_to_write = _file_header
-#            if self.pkg_name != "code_saturne":
+#            if self.module_name != "code_saturne":
 #                code_to_write += _file_header2
             code_to_write += _file_header3
             code_to_write += _function_header[func_type]
@@ -2661,12 +1693,31 @@ class mei_to_c_interpreter:
     def save_all_functions(self):
 
         save_status = 0
+
+        is_empty    = 0
+        empty_exps  = []
         for func_type in self.funcs.keys():
             state = self.save_function(func_type)
             if state != 0:
                 save_status = state
 
-        return save_status
+            for ek in self.funcs[func_type].keys():
+                if self.funcs[func_type][ek]['exp'] in [None, ""]:
+                    is_empty = 1
+
+                    empty_exps.append({})
+                    empty_exps[-1]['zone'] = ek.split('::')[0]
+                    empty_exps[-1]['var']  = ek.split('::')[1]
+                    empty_exps[-1]['func'] = _func_short_to_long[func_type] + ' formula'
+
+        if is_empty == 1:
+            state = -1
+
+        ret = {'state':state,
+               'exps':empty_exps,
+               'nexps':len(empty_exps)}
+
+        return ret
 
 #-------------------------------------------------------------------------------
 # End

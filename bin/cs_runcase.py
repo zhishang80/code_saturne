@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -31,12 +31,9 @@ try:
 except Exception:
     import configparser  # Python3
 
-try:
-    from code_saturne.cs_exec_environment import separate_args, assemble_args, \
-        enquote_arg, get_command_single_value, update_command_single_value
-except exception:
-    from cs_exec_environment import separate_args, assemble_args, \
-        enquote_arg, get_command_single_value, update_command_single_value
+from code_saturne.cs_exec_environment import separate_args, assemble_args, \
+    enquote_arg, get_command_single_value, update_command_single_value, \
+    update_command_no_value
 
 #===============================================================================
 # Class used to manage runcase files
@@ -129,7 +126,7 @@ class runcase(object):
             if j > -1:
                 line = line[0:j]
 
-            args = separate_args(line.rstrip())
+            args = separate_args(line.strip())
             if args.count('run') == 1:
                 if args.index('run') == 1: # "<package_name> run"
                     for name in ('code_saturne', 'neptune_cfd'):
@@ -142,6 +139,10 @@ class runcase(object):
 
                         test_name = '\\' + name
                         if args[0].find(test_name) == 0:
+                            self.cmd_name = name
+                            self.run_cmd_line_id = i
+                            return
+                        elif args[0] == name:
                             self.cmd_name = name
                             self.run_cmd_line_id = i
                             return
@@ -178,11 +179,11 @@ class runcase(object):
         """
 
         import os, stat
-        from cs_exec_environment import append_shell_shebang, \
+        from code_saturne.cs_exec_environment import append_shell_shebang, \
             append_script_comment, prepend_path_command
 
         if not package:
-            import cs_package
+            from code_saturne import cs_package
             package = cs_package.package()
 
         self.lines = []
@@ -444,6 +445,37 @@ class runcase(object):
             args = update_command_single_value(args,
                                                ('--id-suffix', '--id-suffix='),
                                                enquote_arg(run_id_suffix))
+
+        self.lines[self.run_cmd_line_id] = assemble_args(args)
+
+    #---------------------------------------------------------------------------
+
+    def get_run_stage(self, stage):
+        """
+        Return True if a given stage is specified in the run command,
+        False otherwise
+        """
+
+        args = separate_args(self.lines[self.run_cmd_line_id])
+
+        s_arg = '--' + stage
+        if s_arg in args:
+            return True
+
+        return False
+
+    #---------------------------------------------------------------------------
+
+    def set_run_stage(self, stage, present=False):
+        """
+        Specify the given stage in the run command
+        """
+
+        line = self.lines[self.run_cmd_line_id]
+
+        args = update_command_no_value(separate_args(line),
+                                       ('--' + stage,),
+                                       present)
 
         self.lines[self.run_cmd_line_id] = assemble_args(args)
 

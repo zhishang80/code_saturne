@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -156,7 +156,7 @@ class OpenTurnsModel(Model):
 
         cfg.add_section('study_parameters')
         case_dir = self.case['case_path']
-        cfg.set('study_parameters', 'code_name', self.case['package'].name)
+        cfg.set('study_parameters', 'code_name', self.case.module_name())
 
         tmp_study_name = os.path.split(self.otstudy_path)[-1]
         cfg.set('study_parameters', 'study_name', tmp_study_name)

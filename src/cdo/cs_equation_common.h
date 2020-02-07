@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -39,6 +39,7 @@
 #include "cs_matrix.h"
 #include "cs_time_step.h"
 #include "cs_timer.h"
+#include "cs_sles.h"
 #include "cs_source_term.h"
 
 /*----------------------------------------------------------------------------*/
@@ -48,6 +49,21 @@ BEGIN_C_DECLS
 /*============================================================================
  * Macro definitions
  *============================================================================*/
+
+/* Strategy of synchronization of values shared across several cells
+ * This applies to vertices, edges and faces
+ *
+ * CS_EQUATION_SYNC_ZERO_VALUE
+ * If zero is a possible value then set this value, otherwise one takes
+ * the mean-value
+ *
+ * CS_EQUATION_SYNC_MEAN_VALUE
+ * Compute the mean-value across values to set
+ *
+ */
+
+#define  CS_EQUATION_SYNC_ZERO_VALUE    1
+#define  CS_EQUATION_SYNC_MEAN_VALUE    2
 
 /*============================================================================
  * Type definitions
@@ -60,20 +76,20 @@ BEGIN_C_DECLS
 
 typedef struct {
 
-  _Bool        init_step;    /*!< true if this is the initialization step */
+  bool         init_step;    /*!< true if this is the initialization step */
 
   /*!
    * @name Flags to know what to build and how to build such terms
    * @{
    */
 
-  cs_flag_t    msh_flag;     /*!< Information related to what to build in a
+  cs_eflag_t   msh_flag;     /*!< Information related to what to build in a
                               *   \ref cs_cell_mesh_t structure for a generic
                               *   cell */
-  cs_flag_t    bd_msh_flag;  /*!< Information related to what to build in a
+  cs_eflag_t   bd_msh_flag;  /*!< Information related to what to build in a
                               *   \ref cs_cell_mesh_t structure for a cell close
                               *   to the boundary */
-  cs_flag_t    st_msh_flag;  /*!< Information related to what to build in a
+  cs_eflag_t   st_msh_flag;  /*!< Information related to what to build in a
                               *   \ref cs_cell_mesh_t structure when only the
                               *   source term has to be built */
   cs_flag_t    sys_flag;     /*!< Information related to the sytem */
@@ -85,6 +101,8 @@ typedef struct {
    */
 
   bool   diff_pty_uniform;      /*!< Is diffusion property uniform ? */
+  bool   curlcurl_pty_uniform;  /*!< Is curl-curl property uniform ? */
+  bool   graddiv_pty_uniform;   /*!< Is grad-div property uniform ? */
   bool   time_pty_uniform;      /*!< Is time property uniform ? */
   bool   reac_pty_uniform[CS_CDO_N_MAX_REACTIONS]; /*!< Is each reaction
                                                     * property uniform ? */
@@ -132,15 +150,9 @@ typedef struct {
    */
 
   cs_timer_counter_t     tcb; /*!< Cumulated elapsed time for building the
-                               *   current system: tcb >= tcd+tca+tcr+tcs+tcs */
-  cs_timer_counter_t     tcd; /*!< Cumulated elapsed time for building
-                               *   diffusion terms */
-  cs_timer_counter_t     tca; /*!< Cumulated elapsed time for building
-                               *   advection terms */
-  cs_timer_counter_t     tcr; /*!< Cumulated elapsed time for building
-                               *   reaction terms */
-  cs_timer_counter_t     tcs; /*!< Cumulated elapsed time for building
-                               *   source terms */
+                               *   current system */
+  cs_timer_counter_t     tcs; /*!< Cumulated elapsed time for solving the
+                               *   current system */
   cs_timer_counter_t     tce; /*!< Cumulated elapsed time for computing
                                *   all extra operations (post, balance,
                                *   fluxes...) */
@@ -185,11 +197,11 @@ typedef struct {
  */
 /*----------------------------------------------------------------------------*/
 
-static inline cs_flag_t
+static inline cs_eflag_t
 cs_equation_cell_mesh_flag(cs_flag_t                      cell_flag,
                            const cs_equation_builder_t   *eqb)
 {
-  cs_flag_t  _flag = eqb->msh_flag | eqb->st_msh_flag;
+  cs_eflag_t  _flag = eqb->msh_flag | eqb->st_msh_flag;
 
   if (cell_flag & CS_FLAG_BOUNDARY_CELL_BY_FACE)
     _flag |= eqb->bd_msh_flag;
@@ -226,11 +238,50 @@ cs_equation_set_diffusion_property(const cs_equation_param_t  *eqp,
     cb->dpty_val = cb->dpty_mat[0][0];
 
   /* Set additional quantities in case of more advanced way of enforcing the
-     Dirichlet BCs */
+     essential BCs */
   if (c_flag & CS_FLAG_BOUNDARY_CELL_BY_FACE) {
     if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_NITSCHE ||
         eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_SYM)
       cs_math_33_eigen((const cs_real_t (*)[3])cb->dpty_mat,
+                       &(cb->eig_ratio),
+                       &(cb->eig_max));
+  }
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Set the curl-curl property inside a cell and its related quantities
+ *
+ * \param[in]      eqp     pointer to a cs_equation_param_t structure
+ * \param[in]      c_id    id of the cell to deal with
+ * \param[in]      t_eval  time at which one performs the evaluation
+ * \param[in]      c_flag  flag related to this cell
+ * \param[in, out] cb      pointer to a cs_cell_builder_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_equation_set_curlcurl_property(const cs_equation_param_t  *eqp,
+                                  const cs_lnum_t             c_id,
+                                  const cs_real_t             t_eval,
+                                  const cs_flag_t             c_flag,
+                                  cs_cell_builder_t          *cb)
+{
+  cs_property_get_cell_tensor(c_id,
+                              t_eval,
+                              eqp->curlcurl_property,
+                              eqp->curlcurl_hodge.inv_pty,
+                              cb->cpty_mat);
+
+  if (cs_property_is_isotropic(eqp->curlcurl_property))
+    cb->cpty_val = cb->cpty_mat[0][0];
+
+  /* Set additional quantities in case of more advanced way of enforcing
+     essential BCs */
+  if (c_flag & CS_FLAG_BOUNDARY_CELL_BY_FACE) {
+    if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_NITSCHE ||
+        eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_SYM)
+      cs_math_33_eigen((const cs_real_t (*)[3])cb->cpty_mat,
                        &(cb->eig_ratio),
                        &(cb->eig_max));
   }
@@ -266,11 +317,51 @@ cs_equation_set_diffusion_property_cw(const cs_equation_param_t   *eqp,
     cb->dpty_val = cb->dpty_mat[0][0];
 
   /* Set additional quantities in case of more advanced way of enforcing the
-     Dirichlet BCs */
+     essential BCs */
   if (c_flag & CS_FLAG_BOUNDARY_CELL_BY_FACE) {
     if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_NITSCHE ||
         eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_SYM)
       cs_math_33_eigen((const cs_real_t (*)[3])cb->dpty_mat,
+                       &(cb->eig_ratio),
+                       &(cb->eig_max));
+  }
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Set the curl-curl property inside a cell and its related quantities.
+ *         Cellwise version using a cs_cell_mesh_t structure
+ *
+ * \param[in]      eqp       pointer to a cs_equation_param_t structure
+ * \param[in]      cm        pointer to a cs_cell_mesh_t structure
+ * \param[in]      t_eval    time at which one performs the evaluation
+ * \param[in]      c_flag    flag related to this cell
+ * \param[in, out] cb        pointer to a cs_cell_builder_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline void
+cs_equation_set_curlcurl_property_cw(const cs_equation_param_t    *eqp,
+                                     const cs_cell_mesh_t         *cm,
+                                     const cs_real_t               t_eval,
+                                     const cs_flag_t               c_flag,
+                                     cs_cell_builder_t            *cb)
+{
+  cs_property_tensor_in_cell(cm,
+                             eqp->curlcurl_property,
+                             t_eval,
+                             eqp->curlcurl_hodge.inv_pty,
+                             cb->cpty_mat);
+
+  if (cs_property_is_isotropic(eqp->curlcurl_property))
+    cb->cpty_val = cb->cpty_mat[0][0];
+
+  /* Set additional quantities in case of more advanced way of enforcing the
+     essential BCs */
+  if (c_flag & CS_FLAG_BOUNDARY_CELL_BY_FACE) {
+    if (eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_NITSCHE ||
+        eqp->default_enforcement == CS_PARAM_BC_ENFORCE_WEAK_SYM)
+      cs_math_33_eigen((const cs_real_t (*)[3])cb->cpty_mat,
                        &(cb->eig_ratio),
                        &(cb->eig_max));
   }
@@ -291,9 +382,10 @@ cs_equation_set_diffusion_property_cw(const cs_equation_param_t   *eqp,
  * \param[in]  connect      pointer to a cs_cdo_connect_t structure
  * \param[in]  quant        pointer to additional mesh quantities struct.
  * \param[in]  time_step    pointer to a time step structure
- * \param[in]  vb_flag      metadata for Vb schemes
- * \param[in]  vcb_flag     metadata for V+C schemes
- * \param[in]  fb_flag      metadata for Fb schemes
+ * \param[in]  eb_flag      metadata for Edge-based schemes
+ * \param[in]  fb_flag      metadata for Face-based schemes
+ * \param[in]  vb_flag      metadata for Vertex-based schemes
+ * \param[in]  vcb_flag     metadata for Vertex+Cell-basde schemes
  * \param[in]  hho_flag     metadata for HHO schemes
  */
 /*----------------------------------------------------------------------------*/
@@ -302,9 +394,10 @@ void
 cs_equation_common_init(const cs_cdo_connect_t       *connect,
                         const cs_cdo_quantities_t    *quant,
                         const cs_time_step_t         *time_step,
+                        cs_flag_t                     eb_flag,
+                        cs_flag_t                     fb_flag,
                         cs_flag_t                     vb_flag,
                         cs_flag_t                     vcb_flag,
-                        cs_flag_t                     fb_flag,
                         cs_flag_t                     hho_flag);
 
 /*----------------------------------------------------------------------------*/
@@ -351,28 +444,120 @@ cs_equation_free_builder(cs_equation_builder_t  **p_builder);
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Update the residual normalization at the cellwise level according
+ *         to the type of renormalization
+ *         Case of scalar-valued system
+ *
+ * \param[in]      type            type of renormalization
+ * \param[in]      vol_c           cell volume
+ * \param[in]      csys            pointer to a cs_cell_sys_t structure
+ * \param[in]      rhs             array related to the right-hand side
+ * \param[in, out] normalization   value of the  residual normalization
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_cw_scal_res_normalization(cs_param_resnorm_type_t    type,
+                                      cs_real_t                  vol_c,
+                                      const cs_cell_sys_t       *csys,
+                                      const cs_real_t            weight[],
+                                      cs_real_t                 *normalization);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Update the residual normalization at the cellwise level according
+ *         to the type of renormalization
+ *         Case of vector-valued system
+ *
+ * \param[in]      type            type of renormalization
+ * \param[in]      vol_c           cell volume
+ * \param[in]      csys            pointer to a cs_cell_sys_t structure
+ * \param[in]      rhs             array related to the right-hand side
+ * \param[in, out] normalization   value of the  residual normalization
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_cw_vect_res_normalization(cs_param_resnorm_type_t    type,
+                                      cs_real_t                  vol_c,
+                                      const cs_cell_sys_t       *csys,
+                                      const cs_real_t            weight[],
+                                      cs_real_t                 *normalization);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Last stage to compute of the renormalization coefficient for the
+ *         the residual norm of the linear system
+ *
+ * \param[in]      type            type of renormalization
+ * \param[in]      rhs_size        size of the rhs array
+ * \param[in]      rhs             array related to the right-hand side
+ * \param[in, out] normalization   value of the  residual normalization
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_res_normalization(cs_param_resnorm_type_t    type,
+                                   cs_lnum_t                  rhs_size,
+                                   const cs_real_t            rhs[],
+                                   cs_real_t                 *normalization);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief Prepare a linear system and synchronize buffers to handle parallelism.
  *        Transfer a mesh-based description of arrays x0 and rhs into an
  *        algebraic description for the linear system in x and b.
  *
- * \param[in]      stride   stride to apply to the range set operations
- * \param[in]      x_size   size of the vector unknows (scatter view)
- * \param[in]      matrix   pointer to a cs_matrix_t structure
- * \param[in]      rset     pointer to a range set structure
- * \param[in, out] x        array of unknows (in: initial guess)
- * \param[in, out] b        right-hand side
+ * \param[in]      stride     stride to apply to the range set operations
+ * \param[in]      x_size     size of the vector unknowns (scatter view)
+ * \param[in]      matrix     pointer to a cs_matrix_t structure
+ * \param[in]      rset       pointer to a range set structure
+ * \param[in]      rhs_redux  do or not a parallel sum reduction on the RHS
+ * \param[in, out] x          array of unknowns (in: initial guess)
+ * \param[in, out] b          right-hand side
  *
  * \returns the number of non-zeros in the matrix
  */
 /*----------------------------------------------------------------------------*/
 
 cs_gnum_t
-cs_equation_prepare_system(int                   stride,
-                           cs_lnum_t             x_size,
-                           const cs_matrix_t    *matrix,
-                           cs_range_set_t       *rset,
-                           cs_real_t            *x,
-                           cs_real_t            *b);
+cs_equation_prepare_system(int                     stride,
+                           cs_lnum_t               x_size,
+                           const cs_matrix_t      *matrix,
+                           const cs_range_set_t   *rset,
+                           bool                    rhs_redux,
+                           cs_real_t              *x,
+                           cs_real_t              *b);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Solve a linear system arising from CDO schemes with scalar-valued
+ *         degrees of freedom
+ *
+ * \param[in]  n_scatter_dofs local number of DoFs (may be != n_gather_elts)
+ * \param[in]  eqp            pointer to a cs_equation_param_t structure
+ * \param[in]  matrix         pointer to a cs_matrix_t structure
+ * \param[in]  rs             pointer to a cs_range_set_t structure
+ * \param[in]  normalization  value used for the residual normalization
+ * \param[in]  sles           pointer to a cs_sles_t structure
+ * \param[in]  rhs_redux      do or not a parallel sum reduction on the RHS
+ * \param[in, out] x          solution of the linear system (in: initial guess)
+ * \param[in, out] b          right-hand side (scatter/gather if needed)
+ *
+ * \return the number of iterations of the linear solver
+ */
+/*----------------------------------------------------------------------------*/
+
+int
+cs_equation_solve_scalar_system(cs_lnum_t                     n_scatter_dofs,
+                                const cs_equation_param_t    *eqp,
+                                const cs_matrix_t            *matrix,
+                                const cs_range_set_t         *rset,
+                                cs_real_t                     normalization,
+                                bool                          rhs_redux,
+                                cs_sles_t                    *sles,
+                                cs_real_t                    *x,
+                                cs_real_t                    *b);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -472,6 +657,25 @@ cs_equation_set_diffusion_property_cw(const cs_equation_param_t     *eqp,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Build the list of degrees of freedom (DoFs) related to an internal
+ *         enforcement. If set to NULL, the array dof_ids (storing the
+ *         indirection) is allocated to n_x.
+ *
+ * \param[in]      n_x        number of entities where DoFs are defined
+ * \param[in]      c2x        cell --> x connectivity
+ * \param[in]      eqp        set of parameters related to an equation
+ * \param[in, out] p_dof_ids  double pointer on DoF ids subject to enforcement
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_build_dof_enforcement(cs_lnum_t                     n_x,
+                                  const cs_adjacency_t         *c2x,
+                                  const cs_equation_param_t    *eqp,
+                                  cs_lnum_t                    *p_dof_ids[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief   Take into account the enforcement of internal DoFs. Apply an
  *          algebraic manipulation
  *
@@ -514,9 +718,9 @@ cs_equation_enforced_internal_dofs(const cs_equation_param_t       *eqp,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_enforced_internal_block_dofs(const cs_equation_param_t       *eqp,
-                                         cs_cell_builder_t               *cb,
-                                         cs_cell_sys_t                   *csys);
+cs_equation_enforced_internal_block_dofs(const cs_equation_param_t     *eqp,
+                                         cs_cell_builder_t             *cb,
+                                         cs_cell_sys_t                 *csys);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -591,6 +795,80 @@ cs_equation_balance_sync(const cs_cdo_connect_t    *connect,
 
 void
 cs_equation_balance_destroy(cs_equation_balance_t   **p_balance);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Synchronize the volumetric definitions to consider at each vertex
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       n_defs      number of definitions
+ * \param[in]       defs        number of times the values has been updated
+ * \param[in, out]  def2v_idx   index array  to define
+ * \param[in, out]  def2v_ids   array of ids to define
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vol_def_at_vertices(const cs_cdo_connect_t  *connect,
+                                     int                      n_defs,
+                                     cs_xdef_t              **defs,
+                                     cs_lnum_t                def2v_idx[],
+                                     cs_lnum_t                def2v_ids[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Synchronize the volumetric definitions to consider at each edge
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       n_defs      number of definitions
+ * \param[in]       defs        number of times the values has been updated
+ * \param[in, out]  def2e_idx   index array  to define
+ * \param[in, out]  def2e_ids   array of ids to define
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vol_def_at_edges(const cs_cdo_connect_t  *connect,
+                                  int                      n_defs,
+                                  cs_xdef_t              **defs,
+                                  cs_lnum_t                def2e_idx[],
+                                  cs_lnum_t                def2e_ids[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Synchronize the volumetric definitions to consider at each face
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       n_defs      number of definitions
+ * \param[in]       defs        number of times the values has been updated
+ * \param[in, out]  def2f_idx   index array  to define
+ * \param[in, out]  def2f_ids   array of ids to define
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vol_def_at_faces(const cs_cdo_connect_t  *connect,
+                                  int                      n_defs,
+                                  cs_xdef_t              **defs,
+                                  cs_lnum_t                def2f_idx[],
+                                  cs_lnum_t                def2f_ids[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the mean-value across ranks at each vertex
+ *
+ * \param[in]       connect     pointer to a cs_cdo_connect_t structure
+ * \param[in]       dim         number of entries for each vertex
+ * \param[in]       counter     number of occurences on this rank
+ * \param[in, out]  values      array to update
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_sync_vertex_mean_values(const cs_cdo_connect_t     *connect,
+                                    int                         dim,
+                                    int                        *counter,
+                                    cs_real_t                  *values);
 
 /*----------------------------------------------------------------------------*/
 

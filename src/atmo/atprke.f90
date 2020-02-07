@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -167,9 +167,7 @@ iivar = itpp
 ! computes the turbulent production/destruction terms:
 ! dry atmo: (1/turb_schmidt*theta)*(dtheta/dz)*gz
 
-call field_gradient_scalar(ivarfl(iivar), 1, imrgra, inc,           &
-                           iccocg,                                  &
-                           grad)
+call field_gradient_scalar(ivarfl(iivar), 1, 0, inc, iccocg, grad)
 
 ! Production and gravity terms
 ! TINSTK=P+G et TINSTE = P + (1-CE3)*G
@@ -194,7 +192,7 @@ if (itytur.eq.2) then
 
     ! Implicit part (no implicit part for epsilon because the source
     ! term is positive)
-    tinstk(iel) = tinstk(iel) + max(-rho*volume(iel)*cmu*ttke*gravke, 0.d0)
+    tinstk(iel) = tinstk(iel) + max(-rho*cell_f_vol(iel)*cmu*ttke*gravke, 0.d0)
 
     ! Explicit part
     smbre(iel) = smbrk(iel) + visct*max(gravke, zero)
@@ -232,7 +230,7 @@ allocate(gravke_qw(ncelet))
 ! Computation of the gradient of the potential temperature
 
 itpp = isca(iscalt)
-iqw = isca(itotwt)
+iqw = isca(iymw)
 
 call field_get_val_prev_s(ivarfl(itpp), cvara_tpp)
 call field_get_val_prev_s(ivarfl(iqw), cvara_qw)
@@ -264,9 +262,7 @@ iivar = itpp
 ! computes the turbulent production/destruction terms:
 ! humid atmo: (1/turb_schmidt*theta_v)*(dtheta_l/dz)*gz
 
-call field_gradient_scalar(ivarfl(iivar), 1, imrgra, inc,           &
-                           iccocg,                                  &
-                           grad)
+call field_gradient_scalar(ivarfl(iivar), 1, 0, inc, iccocg, grad)
 
 ! Production and gravity terms
 ! TINSTK = P + G et TINSTE = P + (1-CE3)*G
@@ -299,9 +295,7 @@ iivar = iqw
 ! computes the turbulent production/destruction terms:
 ! humid atmo: (1/turb_schmidt*theta_v)*(dtheta_l/dz)*gz
 
-call field_gradient_scalar(ivarfl(iivar), 1, imrgra, inc,           &
-                           iccocg,                                  &
-                           grad)
+call field_gradient_scalar(ivarfl(iivar), 1, 0, inc, iccocg, grad)
 
 ! Production and gravity terms
 ! TINSTK = P + G et TINSTE = P + (1-CE3)*G
@@ -338,7 +332,7 @@ do iel = 1, ncel
 
   ! Implicit part (no implicit part for epsilon because the source
   ! term is positive)
-  tinstk(iel) = tinstk(iel) + max(-rho*volume(iel)*cmu*ttke*gravke, 0.d0)
+  tinstk(iel) = tinstk(iel) + max(-rho*cell_f_vol(iel)*cmu*ttke*gravke, 0.d0)
 
   ! Explicit part
   smbre(iel) = smbrk(iel) + visct*max(gravke, zero)

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -59,7 +59,6 @@ use pointe
 use albase
 use parall
 use period
-use ihmpre
 use ppppar
 use ppthch
 use ppincl
@@ -79,7 +78,7 @@ integer          nscal , iterns
 
 integer          ivar  , iel   , ifac  , iscal, f_id0
 integer          nswrgp, imligp, iwarnp
-integer          iccocg, inc
+integer          iccocg, inc, imrgrp
 integer          iconvp, idiffp, ircflp
 integer          ischcp, isstpp
 integer          ifcvsl, iflmas, iflmab
@@ -170,6 +169,7 @@ do iscal = 1, nscal
   blencp = 0.d0
   imasac = 0
   idiffp = 1
+  imrgrp = vcopt%imrgra
   nswrgp = vcopt%nswrgr
   imligp = vcopt%imligr
   ircflp = vcopt%ircflu
@@ -252,7 +252,7 @@ do iscal = 1, nscal
   call bilsca &
   !==========
   ( idtvar , f_id0  , iconvp , idiffp , nswrgp , imligp , ircflp , &
-    ischcp , isstpp , inc    , imrgra , iccocg ,                   &
+    ischcp , isstpp , inc    , imrgrp , iccocg ,                   &
     iwarnp , imucpp , idftnp , imasac ,                            &
     blencp , epsrgp , climgp , extrap , relaxp , thetex ,          &
     cvar_scal       , cvar_scal       ,                            &

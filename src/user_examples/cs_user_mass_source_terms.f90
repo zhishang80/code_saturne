@@ -1,10 +1,10 @@
 !-------------------------------------------------------------------------------
 
-!                      Code_Saturne version 4.0-alpha
-!                      --------------------------
+!VERS
+
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -166,7 +166,7 @@ if (iappel.eq.1.or.iappel.eq.2) then
 !              have a boundary face of color 3 and the cells
 !              with a coordinate X between 2.5 and 5.
 !
-!     In this test in two parts, one mut pay attention not to count
+!     In this test in two parts, one must pay attention not to count
 !      the cells twice (a cell with a boundary face of color 3 can
 !      also have a coordinate X between 2.5 and 5).
 !     One should also pay attention that, on the first call, the

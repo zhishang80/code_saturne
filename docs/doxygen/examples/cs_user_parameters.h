@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -25,7 +25,7 @@
 /*----------------------------------------------------------------------------*/
 
 /*!
-  \page parameters Input of calculation parameters (C functions: cs_user_parameters.c)
+  \page parameters Input of calculation parameters (C functions in cs_user_parameters.c)
 
   \section cs_user_parameters_h_intro Introduction
 
@@ -42,13 +42,56 @@
 
   \section cs_user_parameters_h_cs_user_model  Base model related options
 
-  Definition of user variables or properties should be defined here,
-  if not already done throught the GUI.
+  Definition of user variables or properties as well as choices of physical
+  models should be done here, if not already done through the GUI.
 
-  \section cs_user_parameters_h_cs_user_parameters General options (\ref cs_user_parameters)
+  Choose a turbulent model among the available models
 
-  Most definitions should be done in the \ref cs_user_parameters
-  function, which is the C equivalent of the \ref usipsu Fortran routine.
+  \snippet cs_user_parameters-base.c turbulence_model_choice
+
+  Coupled solver for Rij components (when iturb=30, 31 or 32): 0 to switch off, 1 to switch on
+
+  \snippet cs_user_parameters-base.c Rij_coupled_solver_choice
+
+  To set a thermal model (0: none, 1: temperature, 2: entyhalpy, 3: total energy)
+
+  \snippet cs_user_parameters-base.c thermal_model_choice
+
+  Volume of Fluid model with mass transfer Merkle model to take into account
+  vaporization / condensation
+
+  \snippet cs_user_parameters-base.c enable_cavit
+
+  To activate ALE (Arbitrary Lagrangian Eulerian) method
+  (CS_ALE_NONE: switch off, CS_ALE_LEGACY: legacy solver, CS_ALE_CDO: CDO solver)
+
+  \snippet cs_user_parameters-base.c ALE_activation
+
+  The user can add a scalar to be solved
+
+  \snippet cs_user_parameters-base.c scalars_addition
+
+  After adding a scalar, the user can add the variance of this scalar
+
+  \snippet cs_user_parameters-base.c scalars_variance_addition
+
+  Add a user property defined on a mesh location (cells, interior faces, boundary faces or vertices).
+
+  \snippet cs_user_parameters-base.c user_property_addition
+
+  \section cs_user_parameters_h_cs_user_parameters General options
+
+  Choose a time step option
+
+  \snippet cs_user_parameters-base.c time_stepping_options
+
+  Choose a reference time step
+
+  \snippet cs_user_parameters-base.c ref_time_step
+
+  To set a duration
+
+  \snippet cs_user_parameters-base.c duration
 
   For example, to change the log (run_solver.log) verbosity of all the variables:
 
@@ -95,6 +138,11 @@
   following code can be added:
 
   \snippet cs_user_parameters-base.c param_var_boundary_vals_1
+
+  To add handling (storage) of previous values for a field, the following
+  following code can be added:
+
+  \snippet cs_user_parameters-base.c user_field_n_time_vals
 
   Enforce existence of 'tplus' and 'tstar' fields, so that
   a Nusselt number may be computed using the
@@ -301,7 +349,7 @@
   \subsection cs_user_parameters_h_sles_ex_1 Example: distance to wall
 
   By default, the wall distance (active only with turbulence models which
-  require it) is computed with a preconditionned conjugate gradient.
+  require it) is computed with a preconditioned conjugate gradient.
   The following example shows how to use a multigrid solver for this
   quantity (useful especially if computed repeatedly, such as for ALE).
 
@@ -482,6 +530,12 @@
   so the moment is a vector.
 
   \snippet cs_user_parameters-time_moments.c tmom_u
+
+  In the next example, we define the variance of the vector velocity.
+  All components are used again (component -1 means all components),
+  so the moment is a tensor.
+
+  \snippet cs_user_parameters-time_moments.c tmom_variance_u
 
   \subsection cs_user_parameters_h_example_2 Example 2
 

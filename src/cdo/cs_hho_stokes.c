@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -485,7 +485,7 @@ cs_hho_stokes_init_context(const cs_equation_param_t   *eqp,
     bft_error(__FILE__, __LINE__, 0, " Expected: scalar-valued HHO equation.");
 
   const cs_cdo_connect_t  *connect = cs_shared_connect;
-  const cs_lnum_t  n_faces = connect->n_faces[0];
+  const cs_lnum_t  n_faces = connect->n_faces[CS_ALL_FACES];
   const cs_lnum_t  n_cells = connect->n_cells;
 
   cs_hho_stokes_t  *eqc = NULL;
@@ -578,7 +578,7 @@ cs_hho_stokes_init_context(const cs_equation_param_t   *eqp,
   BFT_FREE(row_block_sizes);
 
   /* Handle boundary conditions */
-  const cs_lnum_t  n_b_faces = connect->n_faces[1];
+  const cs_lnum_t  n_b_faces = connect->n_faces[CS_BND_FACES];
   BFT_MALLOC(eqc->bf2def_ids, n_b_faces, short int);
 
 # pragma omp parallel for if (n_b_faces > CS_THR_MIN)
@@ -662,7 +662,7 @@ cs_hho_stokes_compute_source(const cs_equation_param_t  *eqp,
   /* TODO */
 
   cs_timer_t  t1 = cs_timer_time();
-  cs_timer_counter_add_diff(&(eqb->tcs), &t0, &t1);
+  cs_timer_counter_add_diff(&(eqb->tcb), &t0, &t1);
 }
 
 /*----------------------------------------------------------------------------*/

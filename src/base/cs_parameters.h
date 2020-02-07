@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -183,13 +183,8 @@ typedef struct {
                                       neighborhood
                                  - 3: least square method with reduced extended
                                       neighborhood
-                                 - 4: iterative process initialized by the least
-                                      square method */
-
-  double        anomax;       /* non orthogonality angle of the faces, in radians.
-                                 For larger angle values, cells with one node
-                                 on the wall are kept in the extended support of
-                                 the neighboring cells. */
+                                 - 4: Green-Gauss using least squares face
+                                      values interpolation */
 
   int           iflxmw;       /* method to compute interior mass flux due to ALE
                                  mesh velocity
@@ -199,12 +194,25 @@ typedef struct {
 } cs_space_disc_t;
 
 /*----------------------------------------------------------------------------
+ * Time scheme descriptor
+ *----------------------------------------------------------------------------*/
+
+typedef struct {
+
+  int           isto2t;       /* time scheme activated for the source
+                                 terms of turbulent equations */
+
+  double        thetst;       /* value of \f$theta\$f for turbulence */
+
+} cs_time_scheme_t;
+
+/*----------------------------------------------------------------------------
  * PISO descriptor
  *----------------------------------------------------------------------------*/
 
 typedef struct {
 
-  int           nterup;         /* number of interations on the pressure-velocity
+  int           nterup;         /* number of iterations on the pressure-velocity
                                    coupling on Navier-Stokes */
 
   double        epsup;          /* relative precision for the convergence test of
@@ -231,9 +239,13 @@ typedef struct {
 
 extern const cs_space_disc_t  *cs_glob_space_disc;
 
+/* Pointer to time scheme  options structure */
+
+extern const cs_time_scheme_t  *cs_glob_time_scheme;
+
 /* Pointer to PISO options structure */
 
-extern const cs_piso_t        *cs_glob_piso;
+extern const cs_piso_t  *cs_glob_piso;
 
 /*============================================================================
  * Global variables
@@ -282,7 +294,7 @@ cs_parameters_iscavr(cs_field_t *f)
  *
  * needed to initialize structure in GUI and user C functions.
  *
- * \return   space discretization description structure
+ * \return  space discretization description structure
  */
 /*----------------------------------------------------------------------------*/
 
@@ -291,11 +303,24 @@ cs_get_glob_space_disc(void);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief Provide acces to cs_glob_piso
+ * \brief Provide access to cs_glob_time_scheme
  *
  * needed to initialize structure with GUI and user C functions.
  *
- * \return   piso information structure
+ * \return  time scheme information structure
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_time_scheme_t *
+cs_get_glob_time_scheme(void);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Provide access to cs_glob_piso
+ *
+ * needed to initialize structure with GUI and user C functions.
+ *
+ * \return  piso information structure
  */
 /*----------------------------------------------------------------------------*/
 
@@ -455,7 +480,7 @@ cs_parameters_add_boundary_values(cs_field_t  *f);
  *
  * When a volume temperature variable field already exists, this amounts
  * to calling \ref cs_parameters_add_boundary_values for that field.
- * When such a variblae does not exist but we have an Enthalpy variables,
+ * When such a variable does not exist but we have an Enthalpy variables,
  * an associated temperature boundary field is returned.
  *
  * \return  pointer to boundary values field, or NULL if not applicable

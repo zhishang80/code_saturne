@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -142,8 +142,16 @@ SolverToolsMenu                = 110
 SolverOpenShellAction          = 111
 SolverDisplayCurrentCaseAction = 112
 
-SolverHelpMenu                 = 130
-SolverHelpAboutAction          = 131
+SolverEditSRCFiles             = 121
+SolverCompileSRCFiles          = 122
+SolverViewLogFiles             = 123
+SolverFileTransfer             = 124
+
+SolverLaunch                   = 131
+SolverLaunchOT                 = 132
+
+SolverHelpMenu                 = 140
+SolverHelpAboutAction          = 141
 
 #Help menu
 SolverHelpLicense              = 251
@@ -568,10 +576,7 @@ class CFDSTUDYGUI_ActionsHandler(QObject):
         action = sgPyQt.createAction(-1,\
                                       ObjectTR.tr("SOLVER_SAVEAS_ACTION_TEXT"),\
                                       ObjectTR.tr("SOLVER_SAVEAS_ACTION_TIP"),\
-                                      ObjectTR.tr("SOLVER_SAVEAS_ACTION_SB"),\
-                                      ObjectTR.tr("SOLVER_SAVEAS_ACTION_ICON"),
-                                      Qt.SHIFT+Qt.CTRL+Qt.Key_A)
-        sgPyQt.createTool(action, tool_id)
+                                      ObjectTR.tr("SOLVER_SAVEAS_ACTION_SB"))
         sgPyQt.createMenu(action, self._SolverActionIdMap[SolverFileMenu], 100)
         action.triggered.connect(self.slotSaveAsDataFile)
 
@@ -600,7 +605,7 @@ class CFDSTUDYGUI_ActionsHandler(QObject):
 
         # Undo action
         action = sgPyQt.createAction(-1, "Undo", "Undo", "Undo", \
-                                      ObjectTR.tr("UNDO_CFD_GUI_ACTION_ICON"))
+                                     ObjectTR.tr("UNDO_CFD_GUI_ACTION_ICON"))
         sgPyQt.createTool(action, tool_id)
         action_id = sgPyQt.actionId(action)
         self._ActionMap[action_id] = action
@@ -650,6 +655,97 @@ class CFDSTUDYGUI_ActionsHandler(QObject):
         sgPyQt.createMenu(action, self._SolverActionIdMap[SolverToolsMenu])
         action = sgPyQt.createSeparator()
         sgPyQt.createMenu(action, SolverToolsMenu, 0, -1)
+
+        # Management for User files (SRC, Logs, transfer to clusters)
+        action = sgPyQt.createSeparator()
+        sgPyQt.createMenu(action, menu_id)
+        sgPyQt.createTool(action, tool_id)
+
+        # SRC EDITOR
+        action = sgPyQt.createAction(-1,
+                                     ObjectTR.tr("SOLVER_EDITOR_ACTION_TEXT"),
+                                     ObjectTR.tr("SOLVER_EDITOR_ACTION_TIP"),
+                                     ObjectTR.tr("SOLVER_EDITOR_ACTION_SB"),
+                                     ObjectTR.tr("CFDSTUDY_FILE_EDITOR_OBJ_ICON"))
+        sgPyQt.createTool(action, tool_id)
+        sgPyQt.createMenu(action, self._SolverActionIdMap[SolverToolsMenu], 100)
+        action.triggered.connect(self.slotEditSRCFiles)
+
+        action_id = sgPyQt.actionId(action)
+        self._ActionMap[action_id] = action
+        self._SolverActionIdMap[SolverEditSRCFiles] = action_id
+
+        # SRC COMPILER
+        action = sgPyQt.createAction(-1,
+                                     ObjectTR.tr("SOLVER_COMPILER_ACTION_TEXT"),
+                                     ObjectTR.tr("SOLVER_COMPILER_ACTION_TIP"),
+                                     ObjectTR.tr("SOLVER_COMPILER_ACTION_SB"),
+                                     ObjectTR.tr("CFDSTUDY_COMPILER_OBJ_ICON"))
+        sgPyQt.createTool(action, tool_id)
+        sgPyQt.createMenu(action, self._SolverActionIdMap[SolverToolsMenu])
+        action.triggered.connect(self.slotCheckUsersCompilation)
+
+        action_id = sgPyQt.actionId(action)
+        self._ActionMap[action_id] = action
+        self._SolverActionIdMap[SolverCompileSRCFiles] = action_id
+
+        # LOG VIEWER
+        action = sgPyQt.createAction(-1,
+                                     ObjectTR.tr("SOLVER_LOGVIEWER_ACTION_TEXT"),
+                                     ObjectTR.tr("SOLVER_LOGVIEWER_ACTION_TIP"),
+                                     ObjectTR.tr("SOLVER_LOGVIEWER_ACTION_SB"),
+                                     ObjectTR.tr("CFDSTUDY_FILE_VIEWER_OBJ_ICON"))
+        sgPyQt.createTool(action, tool_id)
+        sgPyQt.createMenu(action, self._SolverActionIdMap[SolverToolsMenu])
+        action.triggered.connect(self.slotViewLogFiles)
+
+        action_id = sgPyQt.actionId(action)
+        self._ActionMap[action_id] = action
+        self._SolverActionIdMap[SolverViewLogFiles] = action_id
+
+        # FILE TRANSFER
+        action = sgPyQt.createAction(-1,
+                                     ObjectTR.tr("SOLVER_FILETRANSFER_ACTION_TEXT"),
+                                     ObjectTR.tr("SOLVER_FILETRANSFER_ACTION_TIP"),
+                                     ObjectTR.tr("SOLVER_FILETRANSFER_ACTION_SB"),
+                                     ObjectTR.tr("CFDSTUDY_FILE_TRANSFER_OBJ_ICON"))
+        sgPyQt.createTool(action, tool_id)
+        sgPyQt.createMenu(action, self._SolverActionIdMap[SolverToolsMenu])
+        action.triggered.connect(self.slotFileTransfer)
+
+        action_id = sgPyQt.actionId(action)
+        self._ActionMap[action_id] = action
+        self._SolverActionIdMap[SolverFileTransfer] = action_id
+
+        # Run computation
+        action = sgPyQt.createAction(-1,
+                                     ObjectTR.tr("SOLVER_LAUNCH_ACTION_TEXT"),
+                                     ObjectTR.tr("SOLVER_LAUNCH_ACTION_TIP"),
+                                     ObjectTR.tr("SOLVER_LAUNCH_ACTION_SB"),
+                                     ObjectTR.tr("CFDSTUDY_SOLVER_LAUNCH_ICON"))
+        sgPyQt.createTool(action, tool_id)
+        sgPyQt.createMenu(action, self._SolverActionIdMap[SolverToolsMenu])
+        action.triggered.connect(self.slotLaunchSolver)
+
+        action_id = sgPyQt.actionId(action)
+        self._ActionMap[action_id] = action
+        self._SolverActionIdMap[SolverLaunch] = action_id
+
+        # OpenTURNS study
+        action = sgPyQt.createAction(-1,
+                                     ObjectTR.tr("SOLVER_LAUNCH_OT_ACTION_TEXT"),
+                                     ObjectTR.tr("SOLVER_LAUNCH_OT_ACTION_TIP"),
+                                     ObjectTR.tr("SOLVER_LAUNCH_OT_ACTION_SB"),
+                                     ObjectTR.tr("CFDSTUDY_SOLVER_LAUNCH_OT_ICON"))
+        sgPyQt.createTool(action, tool_id)
+        sgPyQt.createMenu(action, self._SolverActionIdMap[SolverToolsMenu])
+        action.triggered.connect(self.slotLaunchOT)
+
+        action_id = sgPyQt.actionId(action)
+        self._ActionMap[action_id] = action
+        self._SolverActionIdMap[SolverLaunchOT] = action_id
+
+
         #for auto hide last separator in tools menu
         self._HelpActionIdMap[0] = action_id
 
@@ -819,7 +915,7 @@ class CFDSTUDYGUI_ActionsHandler(QObject):
                 self.solverAction(a).setEnabled(isActivatedView)
 
         try:
-            from nc_package import package
+            from neptune_cfd.nc_package import package
         except:
             self.solverAction(NCSolverHelpUserGuide).setEnabled(False)
             self.solverAction(NCSolverHelpTutorial).setEnabled(False)
@@ -2128,6 +2224,49 @@ class CFDSTUDYGUI_ActionsHandler(QObject):
         """
         self._SolverGUI.onDisplayCase()
 
+
+    def slotEditSRCFiles(self):
+        """
+        Manage and edit user SRC files of the currently open CASE.
+        """
+        self._SolverGUI.onEditSRCFiles()
+
+
+    def slotViewLogFiles(self):
+        """
+        View log files of the currently open CASE.
+        """
+        self._SolverGUI.onViewLogFiles()
+
+
+    def slotCheckUsersCompilation(self):
+        """
+        Test compilation of user SRC files.
+        """
+        self._SolverGUI.onCheckSRCFiles()
+
+
+    def slotFileTransfer(self):
+        """
+        Open a File transfer widget to allow transfer between localhost and a
+        distant host.
+        Widget is in C++ and compiled with SALOME, hence the Popen call.
+        """
+        popen = subprocess.Popen("remotefilebrowser", stdout=subprocess.PIPE)
+        popen.wait()
+
+    def slotLaunchSolver(self):
+        """
+        Manage and edit user SRC files of the currently open CASE.
+        """
+        self._SolverGUI.onLaunchSolver()
+
+
+    def slotLaunchOT(self):
+        """
+        Transfer the CFD model to OpenTURNS
+        """
+        self._SolverGUI.onLaunchOT()
 
     def slotHelpAbout(self):
         """

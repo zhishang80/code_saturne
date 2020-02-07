@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -263,13 +263,13 @@ const cs_data_joule_effect_t  *cs_glob_transformer     = NULL;
 /*! (DOXYGEN_SHOULD_SKIP_THIS) \endcond */
 
 /*!
- * vaccum magnetic permeability constant (H/m). (= 1.2566e-6)
+ * vacuum magnetic permeability constant (H/m). (= 1.2566e-6)
  *
  */
 const cs_real_t cs_elec_permvi = 1.2566e-6;
 
 /*!
- * vaccum permittivity constant (F/m). (= 8.854e-12)
+ * vacuum permittivity constant (F/m). (= 8.854e-12)
  *
  */
 const cs_real_t cs_elec_epszer = 8.854e-12;
@@ -545,7 +545,7 @@ CS_PROCF (elreca, ELRECA) (cs_real_t *dt)
  *============================================================================*/
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_elec_option
+ * Provide access to cs_elec_option
  *----------------------------------------------------------------------------*/
 
 cs_elec_option_t *
@@ -555,7 +555,7 @@ cs_get_glob_elec_option(void)
 }
 
 /*----------------------------------------------------------------------------
- * Provide acces to cs_glob_transformer
+ * Provide access to cs_glob_transformer
  *----------------------------------------------------------------------------*/
 
 cs_data_joule_effect_t *
@@ -738,11 +738,9 @@ cs_electrical_model_specific_initialization(cs_real_t  *visls0,
     }
   }
 
-  if (cs_gui_file_is_loaded()) {
-    CS_PROCF(uicpi1,UICPI1) (&(_elec_option.srrom), diftl0);
-    cs_gui_elec_model();
-    _elec_option.pot_diff = 1000.;//FIXME
-  }
+  CS_PROCF(uicpi1,UICPI1) (&(_elec_option.srrom), diftl0);
+  cs_gui_elec_model();
+  _elec_option.pot_diff = 1000.;//FIXME
 
   _cs_electrical_model_verify();
 
@@ -1123,7 +1121,7 @@ cs_elec_physical_properties(cs_domain_t  *domain)
     cs_real_t *cpro_absco = NULL;
 
     if (cs_glob_elec_option->ixkabe == 1) {
-      if (cs_glob_field_pointers[CS_ENUMF_(rad_cak)].a != NULL)
+      if (CS_FI_(rad_cak, 0) != NULL)
         cpro_absco = CS_FI_(rad_cak, 0)->val;
     }
 

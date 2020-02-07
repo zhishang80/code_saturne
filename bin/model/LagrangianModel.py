@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -81,7 +81,6 @@ class LagrangianModel(Model):
         default['carrier_field_stationary']            = "off"
         default['deposition_submodel']                 = "off"
         default['particles_models']                    = "off"
-        default['thermal']                             = "off"
         default['evaporation']                         = "off"
         default['break_up']                            = "off"
         default['coal_fouling']                        = "off"
@@ -97,7 +96,7 @@ class LagrangianModel(Model):
         default['turbulent_dispersion']                = "on"
         default['fluid_particles_turbulent_diffusion'] = "off"
         default['complete_model_iteration']            = 0
-        default['complete_model_direction']            = 1
+        default['complete_model_direction']            = 4
 
         return default
 
@@ -682,7 +681,7 @@ class LagrangianModel(Model):
         Set value for complete model direction.
         """
         self.isInt(value)
-        self.isInList(value, (1,2,3))
+        self.isInList(value, (1,2,3,4))
         node_direction = self.node_lagr.xmlInitChildNode('complete_model_direction', 'choice')
         node_direction['choice'] = value
 

@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -214,12 +214,12 @@ cs_gui_mobile_mesh_get_boundaries(cs_domain_t     *domain);
  * \brief Return the fixed velocity for a boundary
  *
  * \param[in]  label boundary condition label
- * \param[out] vel   imposed mesh velocity
+ *
+ * \return a pointer to an array of cs_real_t values
  *----------------------------------------------------------------------------*/
 
-void
-cs_gui_mobile_mesh_get_fixed_velocity(const char*    label,
-                                      cs_real_t     *vel);
+cs_real_t *
+cs_gui_mobile_mesh_get_fixed_velocity(const char*    label);
 
 /*----------------------------------------------------------------------------*/
 

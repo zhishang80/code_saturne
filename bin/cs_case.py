@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -35,9 +35,9 @@ import platform
 import sys
 import stat
 
-import cs_exec_environment
+from code_saturne import cs_exec_environment
 
-from cs_case_domain import *
+from code_saturne.cs_case_domain import *
 
 homard_prefix = None
 
@@ -165,8 +165,6 @@ class case:
                  coupling_parameters = None,
                  domains = None,
                  syr_domains = None,
-                 ast_domain = None,
-                 fsi_coupler = None,
                  py_domains = None):
 
         # Package specific information
@@ -205,15 +203,6 @@ class case:
         else:
             self.syr_domains = [syr_domains]
 
-        if ast_domain == None:
-            self.ast_domains = []
-        elif type(ast_domain) == list:
-            self.ast_domains = ast_domain
-        else:
-            self.ast_domains = [ast_domain]
-
-        self.fsi_coupler = fsi_coupler
-
         if py_domains == None:
             self.py_domains = []
         elif type(py_domains) == tuple:
@@ -222,14 +211,6 @@ class case:
             self.py_domains = py_domains
         else:
             self.py_domains = [py_domains]
-
-        # Mark fluid domains as coupled with Code_Aster if coupling is present.
-        # This should be improved by migrating tests to the executable,
-        # to better handle cases were only some domains are coupled.
-        # For now, we assume that the first CFD domain is the coupled one.
-
-        if fsi_coupler:
-            self.domains[0].fsi_aster = True
 
         # Check names in case of multiple domains (coupled by MPI)
 
@@ -270,9 +251,21 @@ class case:
         if staging_dir:
             staging_dir = check_exec_dir_stamp(staging_dir)
 
+        n_nc_solver = 0
+
         for d in ( self.domains + self.syr_domains \
-                 + self.ast_domains + self.py_domains ):
+                 + self.py_domains ):
             d.set_case_dir(self.case_dir, staging_dir)
+            try:
+                solver_name = os.path.basename(d.solver_path)
+                if solver_name == 'nc_solver':
+                    n_nc_solver += 1
+            except Exception:
+                pass
+
+        self.module_name = 'code_saturne'
+        if n_nc_solver == len(self.domains):
+            self.module_name = 'neptune_cfd'
 
         # Working directory
 
@@ -283,14 +276,14 @@ class case:
 
         n_exec_solver = 0
         for d in ( self.domains + self.syr_domains \
-                 + self.ast_domains + self.py_domains ):
+                 + self.py_domains):
             if d.exec_solver:
                 n_exec_solver += 1
 
         if n_exec_solver == 0:
             self.exec_solver = False
         elif n_exec_solver <   len(self.domains) + len(self.syr_domains) \
-                             + len(self.ast_domains) + len(self.py_domains):
+                             + len(self.py_domains):
             err_str = 'In case of multiple domains (i.e. code coupling), ' \
                 + 'all or no domains must execute their solver.\n'
             raise RunCaseError(err_str)
@@ -305,6 +298,7 @@ class case:
 
         # Error reporting
         self.error = ''
+        self.error_long = ''
 
     #---------------------------------------------------------------------------
 
@@ -316,17 +310,23 @@ class case:
 
         # Print process info
 
-        name = self.package.code_name
+        name = self.module_name
 
-        if len(self.domains) == 1:
-            if self.domains[0].n_procs > 1:
-                msg = ' Parallel ' + name + ' on ' \
-                    + str(self.domains[0].n_procs) + ' processes.\n'
+        for d in self.domains:
+            solver_name = os.path.basename(d.solver_path)
+            if solver_name == 'cs_solver':
+                name = 'code_saturne'
+            elif solver_name == 'nc_solver':
+                name = 'neptune_cfd'
+
+            if len(self.domains) == 1:
+                if d.n_procs > 1:
+                    msg = ' Parallel ' + name + ' on ' \
+                          + str(d.n_procs) + ' processes.\n'
+                else:
+                    msg = ' Single processor ' + name + ' simulation.\n'
+                sys.stdout.write(msg)
             else:
-                msg = ' Single processor ' + name + ' simulation.\n'
-            sys.stdout.write(msg)
-        else:
-            for d in self.domains:
                 msg = ' ' + name + ' domain ' + d.name + ' on ' \
                     + str(d.n_procs) + ' process(es).\n'
                 sys.stdout.write(msg)
@@ -341,19 +341,6 @@ class case:
         else:
             for d in self.syr_domains:
                 msg = ' SYRTHES domain ' + d.name + ' on ' \
-                    + str(d.n_procs) + ' processes.\n'
-                sys.stdout.write(msg)
-
-        if len(self.ast_domains) == 1:
-            if self.ast_domains[0].n_procs > 1:
-                msg = ' Parallel Code_Aster on ' \
-                    + str(self.ast_domains[0].n_procs) + ' processes.\n'
-            else:
-                msg = ' Single processor Code_Aster simulation.\n'
-            sys.stdout.write(msg)
-        else:
-            for d in self.ast_domains:
-                msg = ' Code_Aster domain ' + d.name + ' on ' \
                     + str(d.n_procs) + ' processes.\n'
                 sys.stdout.write(msg)
 
@@ -386,15 +373,6 @@ class case:
         np_list = []
 
         for d in (self.domains + self.syr_domains + self.py_domains):
-            np_list.append(d.get_n_procs())
-
-        # Code_Aster is handled in a specific manner: processes are counted
-        # against the total, but the coupler is not, and processes will not by
-        # run by the same mpiexec instance (TODO: check/improve how this
-        # interacts with resource managers, so that some nodes are not
-        # oversubscribed while others are unused).
-
-        for d in self.ast_domains:
             np_list.append(d.get_n_procs())
 
         n_procs_tot = 0
@@ -529,7 +507,7 @@ class case:
         else:
             r = os.path.join(self.case_dir, 'RESU')
             if len(self.domains) + len(self.syr_domains) \
-             + len(self.ast_domains) + len(self.py_domains) > 1:
+             + len(self.py_domains) > 1:
                 r += '_COUPLING'
             self.exec_dir = os.path.join(r, self.run_id)
 
@@ -559,8 +537,7 @@ class case:
 
         # Set execution directory
 
-        for d in ( self.domains + self.syr_domains + self.ast_domains \
-                 + self.py_domains):
+        for d in (self.domains + self.syr_domains + self.py_domains):
             d.set_exec_dir(self.exec_dir)
 
     #---------------------------------------------------------------------------
@@ -571,7 +548,7 @@ class case:
 
         # Coupled case
         if len(self.domains) + len(self.syr_domains) \
-         + len(self.ast_domains) + len(self.py_domains) > 1:
+         + len(self.py_domains) > 1:
             r += '_COUPLING'
 
         if os.path.isdir(r):
@@ -601,8 +578,7 @@ class case:
         else:
             os.mkdir(self.result_dir)
 
-        for d in ( self.domains + self.syr_domains + self.ast_domains \
-                 + self.py_domains):
+        for d in (self.domains + self.syr_domains + self.py_domains):
             d.set_result_dir(self.run_id, self.result_dir)
 
     #---------------------------------------------------------------------------
@@ -674,8 +650,7 @@ class case:
             s.write('    ' + k + '=' + os.environ[k] + '\n')
         s.write(hline)
 
-        for d in ( self.domains + self.syr_domains + self.ast_domains \
-                 + self.py_domains):
+        for d in (self.domains + self.syr_domains + self.py_domains):
             d.summary_info(s)
             s.write(hline)
 
@@ -750,141 +725,6 @@ class case:
         Determine name of solver script file.
         """
         return os.path.join(self.exec_dir, self.package.runsolver)
-
-    #---------------------------------------------------------------------------
-
-    def generate_fsi_scheme(self):
-        """
-        "Creating YACS coupling scheme.
-        """
-
-        sys.stdout.write('Creating YACS coupling scheme.\n')
-
-        cfd_d = self.domains[0]
-        ast_d = self.ast_domains[0]
-
-        ast_dir_name = os.path.basename(ast_d.exec_dir)
-        ast_mesh_name = os.path.join(ast_dir_name, ast_d.mesh)
-        ast_comm = os.path.join(ast_dir_name, ast_d.comm)
-
-        c = self.fsi_coupler
-
-        pkgdatadir = self.package.get_dir('pkgdatadir')
-        s_path = os.path.join(pkgdatadir, 'salome', 'fsi_yacs_scheme.xml')
-        s = open(s_path, 'r')
-        template = s.read()
-        s.close()
-
-        import re
-
-        e_re = re.compile('@AST_WORKINGDIR@')
-        template = re.sub(e_re, ast_d.exec_dir, template)
-
-        e_re = re.compile('@COCAS_WORKINGDIR@')
-        template = re.sub(e_re, self.exec_dir, template)
-
-        e_re = re.compile('@CFD_WORKINGDIR@')
-        template = re.sub(e_re, cfd_d.exec_dir, template)
-
-        e_re = re.compile('@AST_MAIL@')
-        template = re.sub(e_re, ast_mesh_name, template)
-
-        e_re = re.compile('@NBPDTM@')
-        template = re.sub(e_re, str(c['max_time_steps']), template)
-
-        e_re = re.compile('@NBSSIT@')
-        template = re.sub(e_re, str(c['n_sub_iterations']), template)
-
-        e_re = re.compile('@DTREF@')
-        template = re.sub(e_re, str(c['time_step']), template)
-
-        e_re = re.compile('@TTINIT@')
-        template = re.sub(e_re, str(c['start_time']), template)
-
-        e_re = re.compile('@EPSILO@')
-        template = re.sub(e_re, str(c['epsilon']), template)
-
-        e_re = re.compile('@COMM_FNAME@')
-        template = re.sub(e_re, ast_comm, template)
-
-        s_path = os.path.join(self.exec_dir, 'fsi_yacs_scheme.xml')
-        s = open(s_path, 'w')
-        s.write(template)
-        s.close()
-
-        # Now generate application
-
-        if self.package.config.have_salome == "no":
-            raise RunCaseError("SALOME is not available in this installation.\n")
-
-        template = """\
-%(salomeenv)s;
-PYTHONPATH=%(pythondir)s/salome:%(pkgpythondir)s${PYTHONPATH:+:$PYTHONPATH};
-export PYTHONPATH;
-${KERNEL_ROOT_DIR}/bin/salome/appli_gen.py --prefix=%(applidir)s --config=%(configdir)s
-"""
-
-        cmd = template % {'salomeenv': self.package.config.salome_env,
-                          'pythondir': self.package.get_dir('pythondir'),
-                          'pkgpythondir': self.package.get_dir('pkgpythondir'),
-                          'applidir': os.path.join(self.exec_dir, 'appli'),
-                          'configdir': os.path.join(self.package.get_dir('sysconfdir'),
-                                                    'salome',
-                                                    'fsi_appli_config.xml')}
-
-        retcode = cs_exec_environment.run_command(cmd,
-                                                  stdout=None,
-                                                  stderr=None)
-
-
-    #---------------------------------------------------------------------------
-
-    def generate_yacs_wrappers(self):
-        """
-        Generate wrappers for YACS.
-        """
-
-        apps = [('FSI_SATURNE.exe', os.path.join(self.exec_dir, 'cfd_by_yacs'))]
-
-        i = 0
-        for d in self.ast_domains:
-            if len(self.ast_domains) == 1:
-                apps.append(('FSI_ASTER.exe',
-                             os.path.join(d.exec_dir, 'aster_by_yacs')))
-            else:
-                i = i+1
-                apps.append(('FSI_ASTER' + str(i) + '.exe',
-                             os.path.join(d.exec_dir, 'aster_by_yacs')))
-
-        bin_dir = os.path.join(self.exec_dir, 'bin')
-        if not os.path.isdir(bin_dir):
-            os.mkdir(bin_dir)
-
-        for a in apps:
-
-            s_path = os.path.join(bin_dir, a[0])
-            s = open(s_path, 'w')
-
-            cs_exec_environment.write_shell_shebang(s)
-
-            s_cmds = \
-"""
-# Get SALOME variables from launcher
-
-export SALOME_CONTAINER=$1
-export SALOME_CONTAINERNAME=$2
-export SALOME_INSTANCE=$3
-
-"""
-            s.write(s_cmds)
-
-            s.write(a[1] + '\n')
-
-            s.close
-
-            oldmode = (os.stat(s_path)).st_mode
-            newmode = oldmode | (stat.S_IXUSR)
-            os.chmod(s_path, newmode)
 
     #---------------------------------------------------------------------------
 
@@ -966,7 +806,7 @@ export SALOME_INSTANCE=$3
 
         rank_id = 0
 
-        for d in (self.syr_domains + self.domains + self.py_domains):
+        for d in (self.syr_domains + self.domains):
             s_args = d.solver_command()
             if s_args[1][0:2] == './':
                 s_path = os.path.join(s_args[0], s_args[1])
@@ -976,6 +816,19 @@ export SALOME_INSTANCE=$3
             cmd = '%d-%d\t' % (rank_id, rank_id + d.n_procs - 1) \
                    + s_path + s_args[2] \
                    + ' -wdir ' + os.path.basename(s_args[0]) + '\n'
+            e.write(cmd)
+            rank_id += d.n_procs
+
+        for d in self.py_domains:
+            s_args = d.solver_command()
+            _pypath, _pyscript = a_args[1].split(" ")
+            _rundir = os.path.basename(s_args[0])
+
+            cmd  = '%d-%d\t' % (rank_id, rank_id + d.n_procs - 1)
+            cmd += '%s %s/%s\t' % (_pypath, _rundir, _pyscript)
+            cmd += s_args[2]
+            cmd += ' -wdir %s' % _rundir
+
             e.write(cmd)
             rank_id += d.n_procs
 
@@ -1196,66 +1049,6 @@ export SALOME_INSTANCE=$3
 
     #---------------------------------------------------------------------------
 
-    def fsi_script_body(self, s):
-        """
-        Generate script body for Code_Aster FSI coupling.
-        """
-
-        template = """\
-%(salomeenv)s;
-export PATH=%(exec_dir)s/bin:$PATH
-appli=%(exec_dir)s/appli
-unset PYTHONHOME
-port_log=`pwd`/.salome_port.log
-$appli/salome start -t --ns-port-log=$port_log
-$appli/salome shell -- driver -e fsi_yacs_scheme.xml
-$appli/salome kill `cat $port_log`
-
-"""
-        s.write(template % {'salomeenv': self.package.config.salome_env,
-                            'exec_dir': self.exec_dir})
-
-    #---------------------------------------------------------------------------
-
-    def generate_fsi_scripts(self, n_procs, mpi_env):
-        """
-        # Generate scripts for Code_Aster domains and YACS wrappers
-        # Script per Code_Aster domain generated
-        """
-
-        # Generate simple solver command script
-
-        s_path = os.path.join(self.exec_dir, 'cfd_by_yacs')
-        s = open(s_path, 'w')
-
-        cs_exec_environment.write_shell_shebang(s)
-
-        self.solver_script_body(n_procs-1, mpi_env, s)
-
-        cs_exec_environment.write_export_env(s, 'CS_RET',
-                                             cs_exec_environment.get_script_return_code())
-
-        if sys.platform.startswith('win'):
-            s.write('\nexit %CS_RET%\n')
-        else:
-            s.write('\nexit $CS_RET\n')
-        s.close()
-
-        # Generate additional scripts
-
-        for d in self.ast_domains:
-            d.generate_script()
-
-        self.generate_yacs_wrappers()
-
-        oldmode = (os.stat(s_path)).st_mode
-        newmode = oldmode | (stat.S_IXUSR)
-        os.chmod(s_path, newmode)
-
-        return s_path
-
-    #---------------------------------------------------------------------------
-
     def generate_solver_script(self, exec_env):
         """
         Generate localexec file.
@@ -1305,15 +1098,17 @@ $appli/salome kill `cat $port_log`
                                                    'LD_LIBRARY_PATH',
                                                    mpi_libdir)
 
-        # Add path for SALOME in case of coupling with YACS
-
-        if self.ast_domains:
-            salome_libdir = os.path.join(self.package_compute.get_dir("libdir"),
-                                         'salome')
-            cs_exec_environment.write_prepend_path(s,
-                                                   'LD_LIBRARY_PATH',
-                                                   salome_libdir)
-
+        # HANDLE CATHARE COUPLING
+        if self.domains:
+            for d in self.domains:
+                if hasattr(d, "cathare_case_file"):
+                    config = configparser.ConfigParser()
+                    config.read(self.package.get_configfiles())
+                    icoco_libdir = os.path.join(config.get('install', 'cathare'),
+                                                'ICoCo/lib')
+                    cs_exec_environment.write_prepend_path(s,
+                                                           "LD_LIBRARY_PATH",
+                                                           icoco_libdir)
         # Handle environment modules if used
 
         if self.package_compute.config.env_modules != "no":
@@ -1398,13 +1193,7 @@ $appli/salome kill `cat $port_log`
 
         # Generate script body
 
-        if self.ast_domains:
-            self.generate_fsi_scheme()
-            self.fsi_script_body(s)
-            self.generate_fsi_scripts(n_procs, mpi_env)
-
-        else:
-            self.solver_script_body(n_procs, mpi_env, s)
+        self.solver_script_body(n_procs, mpi_env, s)
 
         # Obtain return value (or sum thereof)
 
@@ -1586,6 +1375,8 @@ $appli/salome kill `cat $port_log`
                 d.compile_and_link()
                 if len(d.error) > 0:
                     self.error = d.error
+                    if len(d.error_long) > 0:
+                        self.error_long = d.error_long
 
         if len(self.error) > 0:
             self.update_scripts_tmp('preparing', 'failed', self.error)
@@ -1600,8 +1391,7 @@ $appli/salome kill `cat $port_log`
                          ' ****************************\n\n')
         sys.stdout.flush()
 
-        for d in ( self.domains + self.syr_domains + self.ast_domains \
-                 + self.py_domains):
+        for d in (self.domains + self.syr_domains + self.py_domains):
             d.prepare_data()
             if len(d.error) > 0:
                 self.error = d.error
@@ -1627,6 +1417,8 @@ $appli/salome kill `cat $port_log`
 
         if len(self.error) > 0:
             err_str = ' Error in ' + self.error + ' stage.\n\n'
+            if len(self.error_long) > 0:
+                err_str += self.error_long + '\n\n'
             sys.stderr.write(err_str)
             return 1
         else:
@@ -1645,10 +1437,9 @@ $appli/salome kill `cat $port_log`
         os.chdir(self.exec_dir)
 
         for d in self.domains:
-            if os.path.isfile(os.path.join(d.exec_dir,
-                                           d.package_compute.solver)):
-               d.solver_path = os.path.join('.',
-                                            d.package_compute.solver)
+            solver = os.path.basename(d.solver_path)
+            if os.path.isfile(os.path.join(d.exec_dir, solver)):
+                d.solver_path = os.path.join('.', solver)
 
         for d in self.syr_domains:
             d.solver_path = os.path.join('.', 'syrthes')
@@ -1810,7 +1601,7 @@ $appli/salome kill `cat $port_log`
 
         # Update error codes
 
-        name = self.package.code_name
+        name = self.module_name
 
         if retcode != 0:
             self.error = 'solver'
@@ -2001,7 +1792,7 @@ $appli/salome kill `cat $port_log`
 
         msg = \
             '\n' \
-            + '                      ' + self.package.code_name + '\n' \
+            + '                      ' + self.module_name + '\n' \
             + '                      ************\n' \
             + '\n' \
             + ' Version:   ' + self.package.version + '\n' \
@@ -2064,6 +1855,8 @@ $appli/salome kill `cat $port_log`
             else:
                 error_stage = self.error
             err_str = ' Error in ' + error_stage + ' stage.\n\n'
+            if len(self.error_long) > 0:
+                err_str += self.error_long + '\n\n'
             sys.stderr.write(err_str)
             return 1
         else:
@@ -2085,7 +1878,7 @@ $appli/salome kill `cat $port_log`
         r = os.path.join(self.case_dir, 'RESU')
 
         if len(self.domains) + len(self.syr_domains) \
-         + len(self.ast_domains) + len(self.py_domains) > 1:
+         + len(self.py_domains) > 1:
             r += '_COUPLING'
         elif len(self.domains) == 1 and not (run_id_prefix or run_id_suffix):
             try:

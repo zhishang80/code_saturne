@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -89,12 +89,10 @@ static  cs_flag_t  cs_basis_func_hho_cell_flag = 0;
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Compute the x^exp where exp is a positive integer
+ * \brief  Swap two short int
  *
- * \param[in]     x        base
- * \param[in]     exp      exponent
- *
- * \return the result
+ * \param[in, out]     a      first
+ * \param[in, out]     b      second
  */
 /*----------------------------------------------------------------------------*/
 
@@ -316,6 +314,7 @@ _add_contrib(const int           n_gpts,
       } /* wphi_i not zero */
 
     }
+
   }
 }
 
@@ -339,7 +338,7 @@ _symmetrize_and_clean(const int           n_rows,
     const cs_real_t  coef = 1/val_i[i];
     for (short int j = i + 1; j < n_rows; j++) {
       if (fabs(val_i[j]*coef) > _clean_threshold)
-        values[n_rows*j + i] = val_i[j];
+        values[n_rows*j+i] = val_i[j];
       else
         values[n_rows*j+i] = values[i*n_rows + j] = 0.;
     }
@@ -405,9 +404,9 @@ _iner_cell_basis_setup(void                    *pbf,
                        cs_cell_builder_t       *cb)
 {
   cs_basis_func_t  *bf = (cs_basis_func_t *)pbf;
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PV | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_HFQ |
-                      CS_FLAG_COMP_FE | CS_FLAG_COMP_FEQ));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PV | CS_FLAG_COMP_PFQ | CS_FLAG_COMP_HFQ |
+                       CS_FLAG_COMP_FE | CS_FLAG_COMP_FEQ));
 
   /* Advanced parameters for controlling the algorithm */
   const int  n_algo_iters = 20;
@@ -520,7 +519,7 @@ _mono_face_basis_setup(void                    *pbf,
                        cs_cell_builder_t       *cb)
 {
   cs_basis_func_t  *bf = (cs_basis_func_t *)pbf;
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PV | CS_FLAG_COMP_PFQ |
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PV | CS_FLAG_COMP_PFQ |
                        CS_FLAG_COMP_PEQ | CS_FLAG_COMP_DIAM));
 
   for (int k = 0; k < 3; k++)
@@ -593,8 +592,8 @@ _iner_face_basis_setup(void                    *pbf,
                        cs_cell_builder_t       *cb)
 {
   cs_basis_func_t  *bf = (cs_basis_func_t *)pbf;
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PV | CS_FLAG_COMP_PFQ |
-                      CS_FLAG_COMP_FE | CS_FLAG_COMP_FEQ));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PV | CS_FLAG_COMP_PFQ |
+                       CS_FLAG_COMP_FE | CS_FLAG_COMP_FEQ));
 
   /* Initialization using the monomial basis */
   _mono_face_basis_setup(bf, cm, f, center, cb);
@@ -904,9 +903,9 @@ _ck1_compute_projector(void                    *pbf,
 {
   CS_UNUSED(id);
   /* Sanity checks */
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PFQ| CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FEQ |
-                      CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PFQ| CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FEQ |
+                       CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
 
   const int n_rows = CK1_SIZE;
   const int n_gpts = 4;
@@ -980,7 +979,7 @@ _ck1_compute_projector(void                    *pbf,
 
           for (short int e = 0; e < n_ef; e++) { /* Loop on face edges */
 
-            // Edge-related variables
+            /* Edge-related variables */
             const short int e0  = f2e_ids[e];
             const short int v0 = cm->e2v_ids[2*e0];
             const short int v1 = cm->e2v_ids[2*e0+1];
@@ -1077,9 +1076,9 @@ _ck2_compute_projector(void                    *pbf,
 {
   CS_UNUSED(id);
   /* Sanity checks */
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PFQ| CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FEQ |
-                      CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PFQ| CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FEQ |
+                       CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
 
   const int n_rows = CK2_SIZE;
   const int n_gpts = 15;
@@ -1273,9 +1272,9 @@ _cka_compute_projector(void                    *pbf,
 {
   CS_UNUSED(id);
   /* Sanity checks */
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PFQ| CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FEQ |
-                      CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PFQ| CS_FLAG_COMP_HFQ | CS_FLAG_COMP_FEQ |
+                       CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
 
   cs_basis_func_t  *bf = (cs_basis_func_t *)pbf;
 
@@ -1835,8 +1834,8 @@ _fk1_compute_projector(void                    *pbf,
                        const short int          f)
 {
   /* Sanity checks */
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PFQ| CS_FLAG_COMP_FEQ |
-                      CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FEQ |
+                       CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
 
   /* First row (or first column since projector is symmetric) is easy.
      So, 1st row is computed differently */
@@ -1981,8 +1980,8 @@ _fk2_compute_projector(void                    *pbf,
                        const short int          f)
 {
   /* Sanity checks */
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PFQ| CS_FLAG_COMP_FEQ |
-                      CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FEQ |
+                       CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
 
   /* First row (or first column since projector is symmetric) is easy.
      So, 1st row is computed differently */
@@ -2199,8 +2198,8 @@ _fka_compute_projector(void                    *pbf,
                        const short int          f)
 {
   /* Sanity checks */
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PFQ| CS_FLAG_COMP_FEQ |
-                      CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PFQ | CS_FLAG_COMP_FEQ |
+                       CS_FLAG_COMP_EV | CS_FLAG_COMP_FE));
 
   cs_basis_func_t  *bf = (cs_basis_func_t *)pbf;
 

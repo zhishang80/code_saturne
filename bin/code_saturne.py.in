@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -54,20 +54,29 @@ if relocatable == 'yes':
                            'lib', 'python' + sys.version[:3], 'site-packages')
     cspath = os.path.join(sitedir, 'code_saturne')
 
-# Trick so that one doesn't have to set the PYTHONPATH variable
-if os.path.isdir(cspath) and not cspath in sys.path:
-    sys.path.insert(0, cspath)
-
-from cs_script import master_script
-
 #-------------------------------------------------------------------------------
 # Main
 #-------------------------------------------------------------------------------
 
 if __name__ == '__main__':
 
+    sitedir = os.path.split(cspath)[0]
+
+    if os.path.isdir(sitedir) and not sitedir in sys.path:
+        sys.path.insert(0, sitedir)
+
+    if sys.version > '3.3':
+        import importlib
+        importlib.invalidate_caches()
+
+    try:
+        from code_saturne.cs_script import master_script
+    except Exception:
+        print(sys.path)
+        sys.exit(0)
+
     # Retrieve package information (name, version, installation dirs, ...)
-    from cs_package import package
+    from code_saturne.cs_package import package
     pkg = package()
 
     # Create an instance of the main script

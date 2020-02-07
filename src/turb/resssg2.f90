@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -133,7 +133,7 @@ integer          ii    , jj    , kk    , iiun  , iii   , jjj
 integer          iflmas, iflmab
 integer          nswrgp, imligp, iwarnp
 integer          iconvp, idiffp, ndircp
-integer          nswrsp, ircflp, ischcp, isstpp
+integer          imrgrp, nswrsp, ircflp, ischcp, isstpp
 integer          st_prv_id
 integer          iprev , inc, iccocg, ll
 integer          idftnp, iswdyp
@@ -316,12 +316,16 @@ endif
 !===============================================================================
 ! 2. User source terms
 !===============================================================================
+
 call cs_user_turbulence_source_terms2 &
  ( nvar   , nscal  , ncepdp , ncesmp ,                            &
    ivarfl(ivar)    ,                                              &
    icepdc , icetsm , itypsm ,                                     &
    ckupdc , smacel ,                                              &
    smbr   , rovsdt )
+
+! C version
+call user_source_terms(ivarfl(ivar), smbr, rovsdt)
 
 do isou = 1, dimrij
   ! If we extrapolate the source terms
@@ -427,9 +431,7 @@ if (iturb.eq.32) then
   inc    = 1
   iccocg = 1
 
-  call field_gradient_scalar(ivarfl(ial), iprev, imrgra, inc,     &
-                             iccocg,                              &
-                             grad)
+  call field_gradient_scalar(ivarfl(ial), iprev, 0, inc, iccocg, grad)
 
 endif
 
@@ -1026,6 +1028,7 @@ endif
 iconvp = vcopt%iconv
 idiffp = vcopt%idiff
 ndircp = vcopt%ndircl
+imrgrp = vcopt%imrgra
 nswrsp = vcopt%nswrsm
 nswrgp = vcopt%nswrgr
 imligp = vcopt%imligr
@@ -1052,7 +1055,7 @@ call field_get_coefbf_v(ivarfl(ivar), cofbfp)
 
 call coditts &
  ( idtvar , ivarfl(ivar)    , iconvp , idiffp , ndircp ,          &
-   imrgra , nswrsp , nswrgp , imligp , ircflp ,                   &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp ,                   &
    ischcp , isstpp , idftnp , iswdyp ,                            &
    iwarnp ,                                                       &
    blencp , epsilp , epsrsp , epsrgp , climgp ,                   &

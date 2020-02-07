@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -73,6 +73,29 @@ typedef void
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Generic function pointer for defining a quantity at known locations
+ *         (cells, faces, edges or vertices) with a function.  elt_ids is
+ *         optional. If not NULL, the function works on a sub-list of
+ *         elements. Moreover, it enables to fill retval with an indirection if
+ *         compact is set to false
+ *
+ * \param[in]      n_elts   number of elements to consider
+ * \param[in]      elt_ids  list of elements ids
+ * \param[in]      compact  true:no indirection, false:indirection for retval
+ * \param[in]      input    pointer to a structure cast on-the-fly (may be NULL)
+ * \param[in, out] retval   result of the function
+ */
+/*----------------------------------------------------------------------------*/
+
+typedef void
+(cs_dof_func_t) (cs_lnum_t            n_elts,
+                 const cs_lnum_t     *elt_ids,
+                 bool                 compact,
+                 void                *input,
+                 cs_real_t           *retval);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief  Function which defines the evolution of a quantity according to the
  *         number of iteration already done, the current time and any structure
  *         given as a parameter
@@ -101,25 +124,28 @@ typedef void
  * Cell-centered Finite Volume Two-Point Flux
  *
  * \var CS_SPACE_SCHEME_CDOVB
- * CDO scheme with vertex-based positionning
+ * CDO scheme with vertex-based positioning
  *
  * \var CS_SPACE_SCHEME_CDOVCB
- * CDO scheme with vertex+cell-based positionning
+ * CDO scheme with vertex+cell-based positioning
+ *
+ * \var CS_SPACE_SCHEME_CDOEB
+ * CDO scheme with edge-based positioning
  *
  * \var CS_SPACE_SCHEME_CDOFB
- * CDO scheme with face-based positionning
+ * CDO scheme with face-based positioning
  *
  * \var CS_SPACE_SCHEME_HHO_P0
  * Hybrid High Order (HHO) schemes
- * HHO scheme with face-based positionning (lowest order)
+ * HHO scheme with face-based positioning (lowest order)
  *
  * \var CS_SPACE_SCHEME_HHO_P1
  * Hybrid High Order (HHO) schemes
- * HHO scheme with face-based positionning (k=1 up to order 3)
+ * HHO scheme with face-based positioning (k=1 up to order 3)
  *
  * \var CS_SPACE_SCHEME_HHO_P2
  * Hybrid High Order (HHO) schemes
- * HHO scheme with face-based positionning (k=2 up to order 4)
+ * HHO scheme with face-based positioning (k=2 up to order 4)
  */
 
 typedef enum {
@@ -127,6 +153,7 @@ typedef enum {
   CS_SPACE_SCHEME_LEGACY,
   CS_SPACE_SCHEME_CDOVB,
   CS_SPACE_SCHEME_CDOVCB,
+  CS_SPACE_SCHEME_CDOEB,
   CS_SPACE_SCHEME_CDOFB,
   CS_SPACE_SCHEME_HHO_P0,
   CS_SPACE_SCHEME_HHO_P1,
@@ -207,12 +234,16 @@ typedef enum {
  * non-conservative formation (i.e advection field times
  * the gradient)
  *
+ * \var CS_PARAM_ADVECTION_FORM_SKEWSYM
+ * skew-symmetric form
+ *
  */
 
 typedef enum {
 
   CS_PARAM_ADVECTION_FORM_CONSERV,
   CS_PARAM_ADVECTION_FORM_NONCONS,
+  CS_PARAM_ADVECTION_FORM_SKEWSYM,
 
   CS_PARAM_N_ADVECTION_FORMULATIONS
 
@@ -227,6 +258,11 @@ typedef enum {
  * \var CS_PARAM_ADVECTION_SCHEME_CIP
  * Continuous Interior Penalty discretization. Only available for
  * \ref CS_SPACE_SCHEME_CDOVCB
+ *
+ * \var CS_PARAM_ADVECTION_SCHEME_CIP_CW
+ * Continuous Interior Penalty discretization. Only available for
+ * \ref CS_SPACE_SCHEME_CDOVCB
+ * Variant with a cellwise constant approximation of the advection field
  *
  * \var CS_PARAM_ADVECTION_SCHEME_MIX_CENTERED_UPWIND
  * Centered discretization with a portion between [0,1] of upwinding.
@@ -251,6 +287,7 @@ typedef enum {
 
   CS_PARAM_ADVECTION_SCHEME_CENTERED,
   CS_PARAM_ADVECTION_SCHEME_CIP,
+  CS_PARAM_ADVECTION_SCHEME_CIP_CW,
   CS_PARAM_ADVECTION_SCHEME_MIX_CENTERED_UPWIND,
   CS_PARAM_ADVECTION_SCHEME_SAMARSKII,
   CS_PARAM_ADVECTION_SCHEME_SG,
@@ -288,9 +325,14 @@ typedef enum {
  * Robin conditions.
  *
  * \var CS_PARAM_BC_SLIDING
- * Sliding conditions. Homogeneous Dirichlet for the normal componenent and
+ * Sliding conditions. Homogeneous Dirichlet for the normal component and
  * homogeneous Neumann for the tangential components. Only available for
  * vector-valued equations.
+ *
+ * \var CS_PARAM_BC_CIRCULATION
+ * Set the tangential part of a vector-valued field. This is the part lying on
+ * the boundary of a part of the computatinal domain. Nothing is prescribed for
+ * the normal part of the vector-valued field.
  */
 
 typedef enum {
@@ -301,6 +343,7 @@ typedef enum {
   CS_PARAM_BC_NEUMANN,
   CS_PARAM_BC_ROBIN,
   CS_PARAM_BC_SLIDING,
+  CS_PARAM_BC_CIRCULATION,
   CS_PARAM_N_BC_TYPES
 
 } cs_param_bc_type_t;
@@ -357,7 +400,10 @@ typedef enum {
  * Iterative solvers available in Code_Saturne
  *
  * \var CS_PARAM_SLES_CLASS_PETSC
- * Solvers available in Code_Saturne
+ * Solvers available in PETSc
+ *
+ * \var CS_PARAM_SLES_CLASS_HYPRE
+ * Solvers available in HYPRE through the PETSc library
  *
  * \var CS_PARAM_SLES_N_CLASSES
  */
@@ -366,6 +412,7 @@ typedef enum {
 
   CS_PARAM_SLES_CLASS_CS,
   CS_PARAM_SLES_CLASS_PETSC,
+  CS_PARAM_SLES_CLASS_HYPRE,
   CS_PARAM_SLES_N_CLASSES
 
 } cs_param_sles_class_t;
@@ -373,64 +420,191 @@ typedef enum {
 /*!
  * \enum cs_param_amg_type_t
  * Type of AMG (Algebraic MultiGrid) algorithm to use (either as a
- * preconditionnerwith or a solver).
+ * preconditioner with or a solver).
  */
 
 typedef enum {
 
-  CS_PARAM_AMG_NONE,      /*!< No specified algorithm */
-  CS_PARAM_AMG_BOOMER,    /*!< Boomer algorithm from Hypre library */
-  CS_PARAM_AMG_GAMG  ,    /*!< GAMG algorithm from PETSc */
-  CS_PARAM_AMG_HOUSE_V,   /*!< In-house algorithm with V-cycle */
-  CS_PARAM_AMG_HOUSE_K,   /*!< In-house algorithm with K-cycle */
+  CS_PARAM_AMG_NONE,            /*!< No specified algorithm */
+  CS_PARAM_AMG_HYPRE_BOOMER,    /*!< Boomer algorithm from Hypre library */
+  CS_PARAM_AMG_PETSC_GAMG  ,    /*!< GAMG algorithm from PETSc */
+  CS_PARAM_AMG_PETSC_PCMG  ,    /*!< preconditioned MG algorithm from PETSc */
+  CS_PARAM_AMG_HOUSE_V,         /*!< In-house algorithm with V-cycle */
+  CS_PARAM_AMG_HOUSE_K,         /*!< In-house algorithm with K-cycle */
   CS_PARAM_N_AMG_TYPES
 
 } cs_param_amg_type_t;
 
 /*!
  * \enum cs_param_precond_type_t
- * Type of preconditionner to use with the iterative solver. Some
- * preconditionners as \ref CS_PARAM_PRECOND_ILU0, \ref CS_PARAM_PRECOND_ICC0,
- * \ref CS_PARAM_PRECOND_AS and \ref CS_PARAM_PRECOND_AMG_BLOCK are available
- * only with the PETSc interface.
+ * Type of preconditioner to use with the iterative solver.
+ * Some of the mentionned preconditioners are available only if the PETSc
+ * library is linked with code_saturne
+ *
+ * \var CS_PARAM_PRECOND_NONE
+ * No preconditioner
+ *
+ * \var CS_PARAM_PRECOND_BJACOB_ILU0
+ * Block Jacobi with an ILU zero fill-in in each block
+ *
+ * \var CS_PARAM_PRECOND_BJACOB_SGS
+ * Block Jacobi with a symmetric Gauss-Seidel in each block (rely on
+ * Eisenstat's trick with PETsc)
+ *
+ * \var CS_PARAM_PRECOND_AMG
+ * Algebraic multigrid preconditioner (additional options may be set using
+ * \ref \cs_param_amg_type_t)
+ *
+ * \var CS_PARAM_PRECOND_AMG_BLOCK
+ * Algebraic multigrid preconditioner by block (useful in case of vector
+ * valued variables)
+ *
+ * \var CS_PARAM_PRECOND_AS
+ * Additive Schwarz preconditioner
+ *
+ * \var CS_PARAM_PRECOND_DIAG
+ * Diagonal (also Jacobi) preconditioner. The cheapest one but not the most
+ * efficient one.
+ *
+ * \var CS_PARAM_PRECOND_GKB_CG
+ * Golub-Kahan Bidiagonalization solver used as a preconditioner. Only
+ * useful if one has to solve a saddle-point system (such systems arise
+ * when solving Stokes or Navier-Stokes in a fully couple manner).
+ * Variant with CG as inner solver.
+ *
+ *
+ * \var CS_PARAM_PRECOND_GKB_GMRES
+ * Golub-Kahan Bidiagonalization solver used as a preconditioner. Only
+ * useful if one has to solve a saddle-point system (such systems arise
+ * when solving Stokes or Navier-Stokes in a fully couple manner).
+ * Variant with GMRES as inner solver.
+ *
+ * \var CS_PARAM_PRECOND_ILU0
+ * Incomplute LU factorization (fill-in coefficient set to 0)
+ *
+ * \var CS_PARAM_PRECOND_ICC0
+ * Incomplute Cholesky factorization (fill-in coefficient set to 0). This is
+ * variant of the ILU0 preconditioner dedicated to symmetric positive definite
+ * system
+ *
+ * \var CS_PARAM_PRECOND_POLY1
+ * Neumann polynomial preconditioning. Polynoms of order 1.
+ *
+ * \var CS_PARAM_PRECOND_POLY2
+ * Neumann polynomial preconditioning. Polynoms of order 2.
+ *
+ * \var CS_PARAM_PRECOND_SSOR
+ * Symmetric Successive OverRelaxations (can be seen as a symmetric
+ * Gauss-Seidel preconditioner)
  */
 
 typedef enum {
 
-  CS_PARAM_PRECOND_NONE,    /*!< No preconditioning */
-  CS_PARAM_PRECOND_DIAG,    /*!< Diagonal (or Jacobi) preconditioning */
-  CS_PARAM_PRECOND_BJACOB,  /*!< Block Jacobi */
-  CS_PARAM_PRECOND_POLY1,   /*!< Neumann polynomial preconditioning (Order 1) */
-  CS_PARAM_PRECOND_POLY2,   /*!< Neumann polynomial preconditioning (Order 2) */
-  CS_PARAM_PRECOND_SSOR,    /*!< Symmetric Successive OverRelaxations */
-  CS_PARAM_PRECOND_ILU0,    /*!< Incomplete LU factorization */
-  CS_PARAM_PRECOND_ICC0,    /*!< Incomplete Cholesky factorization */
-  CS_PARAM_PRECOND_AMG,     /*!< Algebraic MultiGrid */
-  CS_PARAM_PRECOND_AMG_BLOCK,  /*!< Algebraic MultiGrid by block */
-  CS_PARAM_PRECOND_AS,         /*!< Additive Schwarz method */
+  CS_PARAM_PRECOND_NONE,
+
+  CS_PARAM_PRECOND_BJACOB_ILU0,
+  CS_PARAM_PRECOND_BJACOB_SGS,
+  CS_PARAM_PRECOND_AMG,
+  CS_PARAM_PRECOND_AMG_BLOCK,
+  CS_PARAM_PRECOND_AS,          /*!< Only with PETSc */
+  CS_PARAM_PRECOND_DIAG,
+  CS_PARAM_PRECOND_GKB_CG,
+  CS_PARAM_PRECOND_GKB_GMRES,
+  CS_PARAM_PRECOND_ILU0,        /*!< Only with PETSc */
+  CS_PARAM_PRECOND_ICC0,        /*!< Only with PETSc*/
+  CS_PARAM_PRECOND_POLY1,
+  CS_PARAM_PRECOND_POLY2,
+  CS_PARAM_PRECOND_SSOR,
+
   CS_PARAM_N_PRECOND_TYPES
 
 } cs_param_precond_type_t;
 
 /*!
  * \enum cs_param_itsol_type_t
- * Type of iterative solver to use to inverse the linear system.
- * \ref CS_PARAM_ITSOL_CR3 is available only inside the Code_Saturne framework.
+ *  Type of solver to use to solve a linear system.
+ *  Some of the mentionned solver are available only if the PETSc library is
+ *  linked with code_saturne.
+ *
+ * \var CS_PARAM_ITSOL_NONE
+ *  No iterative solver (equivalent to a "preonly" choice in PETSc)
+ *
+ * \var CS_PARAM_ITSOL_AMG
+ *  Algebraic multigrid solver (additional options may be set using
+ *  \ref \cs_param_amg_type_t)
+ *
+ * \var CS_PARAM_ITSOL_BICG
+ *  Bi-Conjuguate gradient (useful for non-symmetric systems)
+ *
+ * \var CS_PARAM_ITSOL_BICGSTAB2
+ *  Stabilized Bi-Conjuguate gradient (useful for non-symmetric systems)
+ *
+ * \var CS_PARAM_ITSOL_CG
+ *  Conjuguate Gradient (solver of choice for symmetric positive definite
+ *  systems)
+ *
+ * \var CS_PARAM_ITSOL_CR3
+ * 3-layer conjugate residual (can handle non-symmetric systems)
+ *
+ * \var CS_PARAM_ITSOL_FCG
+ * Flexible Conjuguate Gradient (variant of the CG when the preconditioner
+ * may change from one iteration to another. For instance when using an AMG
+ * as preconditioner)
+ *
+ * \var CS_PARAM_ITSOL_FGMRES
+ * Flexible Generalized Minimal RESidual
+ *
+ * \var CS_PARAM_ITSOL_GAUSS_SEIDEL
+ * Gauss-Seidel
+ *
+ * \var CS_PARAM_ITSOL_GKB_CG
+ * Golub-Kahan Bidiagonalization algorithm. Useful for solving saddle-point
+ * systems. The inner solver is a (flexible) CG solver.
+ *
+ * \var CS_PARAM_ITSOL_GKB_GMRES
+ * Golub-Kahan Bidiagonalization algorithm. Useful for solving saddle-point
+ * systems. The inner solver is a (flexible) GMRES solver.
+ *
+ * \var CS_PARAM_ITSOL_GMRES
+ * Generalized Minimal RESidual
+ *
+ * \var CS_PARAM_ITSOL_JACOBI
+ * Jacobi (diagonal relaxation)
+ *
+ * \var CS_PARAM_ITSOL_MINRES
+ * Mininal residual algorithm
+ *
+ * \var CS_PARAM_ITSOL_MUMPS
+ * MUMPS direct solver (LU factorization)
+ *
+ * \var CS_PARAM_ITSOL_MUMPS_LDLT
+ * MUMPS direct solver (LDLT factorization also known as Cholesky factorization)
+ *
+ * \var CS_PARAM_ITSOL_SYM_GAUSS_SEIDEL
+ * Symmetric Gauss-Seidel
+ *
  */
 
 typedef enum {
 
-  CS_PARAM_ITSOL_AMG,              /*!< Algebraic MultiGrid */
-  CS_PARAM_ITSOL_BICG,             /*!< Bi-Conjuguate gradient */
-  CS_PARAM_ITSOL_BICGSTAB2,        /*!< Stabilized Bi-Conjuguate gradient */
-  CS_PARAM_ITSOL_CG,               /*!< Conjuguate Gradient */
-  CS_PARAM_ITSOL_CR3,              /*!< 3-layer conjugate residual*/
-  CS_PARAM_ITSOL_FCG,              /*!< Flexible Conjuguate Gradient */
-  CS_PARAM_ITSOL_GAUSS_SEIDEL,     /*!< Gauss-Seidel */
-  CS_PARAM_ITSOL_GMRES,            /*!< Generalized Minimal RESidual */
-  CS_PARAM_ITSOL_JACOBI,           /*!< Jacobi */
-  CS_PARAM_ITSOL_MINRES,           /*!< Mininal Residual */
-  CS_PARAM_ITSOL_SYM_GAUSS_SEIDEL, /*!< Symetric Gauss-Seidel */
+  CS_PARAM_ITSOL_NONE,
+
+  CS_PARAM_ITSOL_AMG,
+  CS_PARAM_ITSOL_BICG,
+  CS_PARAM_ITSOL_BICGSTAB2,
+  CS_PARAM_ITSOL_CG,
+  CS_PARAM_ITSOL_CR3,
+  CS_PARAM_ITSOL_FCG,
+  CS_PARAM_ITSOL_FGMRES,           /*!< Only with PETsc */
+  CS_PARAM_ITSOL_GAUSS_SEIDEL,
+  CS_PARAM_ITSOL_GKB_CG,
+  CS_PARAM_ITSOL_GKB_GMRES,
+  CS_PARAM_ITSOL_GMRES,            /*!< Only with PETsc */
+  CS_PARAM_ITSOL_JACOBI,
+  CS_PARAM_ITSOL_MINRES,           /*!< Only with PETsc */
+  CS_PARAM_ITSOL_MUMPS,            /*!< Only with PETsc */
+  CS_PARAM_ITSOL_MUMPS_LDLT,       /*!< Only with PETsc */
+  CS_PARAM_ITSOL_SYM_GAUSS_SEIDEL,
   CS_PARAM_N_ITSOL_TYPES
 
 } cs_param_itsol_type_t;
@@ -444,11 +618,13 @@ typedef enum {
 typedef enum {
 
   CS_PARAM_RESNORM_NONE,           /*!< No renormalization  */
-  CS_PARAM_RESNORM_VOLTOT,         /*!< Renormalization based on the volume of
-                                        the computational domain */
+  CS_PARAM_RESNORM_NORM2_RHS,      /*!< Renormalization based on the Euclidean
+                                        norm of the right-hand side */
   CS_PARAM_RESNORM_WEIGHTED_RHS,   /*!< Renormalization based on a weighted
-                                        L2-norm of the right-hand side */
-  CS_PARAM_RESNORM_MAT_DIAG,
+                                        Euclidean norm of the right-hand side */
+  CS_PARAM_RESNORM_FILTERED_RHS,   /*!< Renormalization based on an Euclidean
+                                        norm of a selection of the right-hand
+                                        side (penalized terms are filtered) */
   CS_PARAM_N_RESNORM_TYPES
 
 } cs_param_resnorm_type_t;
@@ -461,8 +637,10 @@ typedef enum {
 
 typedef struct {
 
-  _Bool                    setup_done;   /*!< SLES setup step has been done */
+  bool                     setup_done;   /*!< SLES setup step has been done */
   int                      verbosity;    /*!< SLES verbosity */
+  int                      field_id;     /*!< Field id related to a SLES
+                                           By default, this is set to -1 */
 
   cs_param_sles_class_t    solver_class; /*!< class of SLES to consider  */
   cs_param_precond_type_t  precond;      /*!< type of preconditioner */
@@ -486,6 +664,20 @@ typedef struct {
 /*============================================================================
  * Public function prototypes
  *============================================================================*/
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Return true if the space scheme has degrees of freedom on faces,
+ *          otherwise false
+ *
+ * \param[in] scheme      type of space scheme
+ *
+ * \return true or false
+ */
+/*----------------------------------------------------------------------------*/
+
+bool
+cs_param_space_scheme_is_face_based(cs_param_space_scheme_t    scheme);
 
 /*----------------------------------------------------------------------------*/
 /*!

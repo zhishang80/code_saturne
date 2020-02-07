@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -63,19 +63,14 @@ integer          ivart, iel
 double precision xvart, rhum, rscp, pp, zent
 double precision lrhum, lrscp
 double precision qsl, deltaq
-double precision qliq, qwt, tliq, dum
+double precision yw_liq, qwt, tliq, dum
 
-double precision, dimension(:), pointer :: brom, crom
+double precision, dimension(:), pointer :: crom
 double precision, dimension(:), pointer :: cvar_vart, cvar_totwt
 double precision, dimension(:), pointer :: cpro_tempc, cpro_liqwt
+double precision, dimension(:), pointer :: cpro_beta
 
 logical activate
-
-! External function
-
-double precision qsatliq
-external qsatliq
-! call as: qsatliq(temperature,pressure)
 
 !===============================================================================
 ! 0. INITIALISATIONS A CONSERVER
@@ -87,7 +82,9 @@ activate = .false.
 
 ivart = -1
 
-! --- Initialisation memoire
+if (idilat.eq.0) then
+  call field_get_val_s_by_name("thermal_expansion", cpro_beta)
+endif
 
 ! This routine computes the density and the thermodynamic temperature.
 ! The computations require the pressure profile which is here taken from
@@ -113,14 +110,15 @@ else
   call csexit (1)
 endif
 
-! --- Masse volumique
-
+! Density
 call field_get_val_s(icrom, crom)
-call field_get_val_s(ibrom, brom)
 
 call field_get_val_s(itempc,cpro_tempc)
 call field_get_val_s(ivarfl(ivart), cvar_vart)
-if (ippmod(iatmos).ge.2) call field_get_val_s(ivarfl(isca(itotwt)), cvar_totwt)
+if (ippmod(iatmos).ge.2) then
+  call field_get_val_s(ivarfl(isca(iymw)), cvar_totwt)
+  call field_get_val_s(iliqwt,cpro_liqwt)
+endif
 
 ! From potential temperature, compute:
 ! - Temperature in Celsius
@@ -132,22 +130,14 @@ if (ippmod(iatmos).ge.2) call field_get_val_s(ivarfl(isca(itotwt)), cvar_totwt)
 rhum = rair
 rscp = rair/cp0
 
-lrhum = rair
 lrscp = rair/cp0
 
 do iel = 1, ncel
 
-  xvart = cvar_vart(iel) !  The thermal scalar is potential temperature
-
-  if (ippmod(iatmos).ge.2) then  ! humid atmosphere
-    lrhum = rair*(1.d0 + (rvsra - 1.d0)*cvar_totwt(iel))
-    lrscp = (rair/cp0)*(1.d0 + (rvsra - cpvcpa)*                    &
-            cvar_totwt(iel))
-  endif
-
   zent = xyzcen(3,iel)
 
-  if (imeteo.eq.0) then
+  ! Reference pressure
+  if (imeteo.eq.0) then !FIXME useless...
     call atmstd(zent,pp,dum,dum)
   else
     ! Pressure profile from meteo file:
@@ -157,31 +147,47 @@ do iel = 1, ncel
          ztmet , tmmet , phmet , zent, ttcabs, pp )
   endif
 
-  ! Temperature in Celsius in cell centers:
-  ! ---------------------------------------
+  ! Potential temperature
+  ! or liquid potential temperature for humid atmosphere
+  xvart = cvar_vart(iel)
+
+  ! (liquid) temperature
   ! law: T = theta * (p/ps) ** (Rair/Cp0)
+  tliq = xvart*(pp/ps)**rscp
 
-  cpro_tempc(iel) = xvart*(pp/ps)**lrscp
-  cpro_tempc(iel) = cpro_tempc(iel) - tkelvi
+  ! Dry atmosphere, total water fraction
+  qwt = 0.d0
 
-  !   Density in cell centers:
-  !   ------------------------
-  !   law:    RHO       =   P / ( Rair * T(K) )
+  ! Humid atmosphere
+  if (ippmod(iatmos).ge.2) then
+    qwt = cvar_totwt(iel)
+  endif
 
-  crom(iel) = pp/(lrhum*xvart)*(ps/pp)**lrscp
+  ! Density in cell centers:
+  ! ------------------------
+  ! law: rho = P / ( R_mixture * T_mixture(K) )
+
+  if (idilat.eq.0) then
+    crom(iel) = ro0
+    ! "delta rho = - beta rho0 delta theta" gives
+    ! "beta = 1 / theta"
+    cpro_beta(iel) = 1.d0 / xvart
+  else
+
+    call cs_rho_humidair(qwt, tliq, pp, yw_liq, cpro_tempc(iel), crom(iel))
+  endif
+
+  ! Humid atmosphere
+  if (ippmod(iatmos).ge.2) then
+    cpro_liqwt(iel) = yw_liq
+  endif
 
 enddo
 
-if (ippmod(iatmos).ge.2) then ! humid atmosphere physics
-
-  call field_get_val_s(iliqwt,cpro_liqwt)
-
-  if (moddis.eq.1)then ! all or nothing condensation scheme
-    call all_or_nothing()
-  elseif (moddis.ge.2)then ! gaussian subgrid condensation scheme
-    call gaussian()
-  endif
-endif ! (ippmod(iatmos).ge.2)
+! Gaussian subgrid condensation scheme for humid atmosphere physics
+if (ippmod(iatmos).ge.2.and. moddis.ge.2) then
+  call gaussian()
+endif
 
 ! User re-definition:
 call usatph ()
@@ -214,78 +220,11 @@ call usatph ()
 '@                                                            ',/)
 
 !----
-! FIN
+! End
 !----
 
 return
 contains
-
-! *******************************************************************
-!> \brief Internal function -
-!>      for all cells : initialise physical variables of the atmospheric module
-!-------------------------------------------------------------------------------
-subroutine all_or_nothing()
-
-lrhum = rhum
-
-do iel = 1, ncel
-
-  zent = xyzcen(3,iel)
-
-  if (imeteo.eq.0) then
-    call atmstd(zent,pp,dum,dum)
-  else
-    ! Pressure profile from meteo file:
-    call intprf &
-         !   ===========
-       ( nbmett, nbmetm,                                            &
-         ztmet , tmmet , phmet , zent, ttcabs, pp )
-  endif
-
-  xvart = cvar_vart(iel) ! thermal scalar: liquid potential temperature
-  tliq = xvart*(pp/ps)**rscp ! liquid temperature
-  qwt  = cvar_totwt(iel) !total water content
-  qsl = qsatliq(tliq, pp) ! saturated vapor content
-  deltaq = qwt - qsl
-
-  if (activate) then
-    write(nfecra,*)"atphyv::all_or_nothing::xvart = ",xvart
-    write(nfecra,*)"atphyv::all_or_nothing::tliq = ",tliq
-    write(nfecra,*)"atphyv::all_or_nothing::qwt = ",qwt
-    write(nfecra,*)"atphyv::all_or_nothing::qsl = ",qsl
-    write(nfecra,*)"atphyv::all_or_nothing::qwt,qsl,deltaq = ",qwt,qsl,deltaq
-    write(nfecra,*)"atphyv::all_or_nothing::zc = ",xyzcen(3,iel)
-    write(nfecra,*)"atphyv::all_or_nothing::pp = ",pp
-    write(nfecra,*)"atphyv::all_or_nothing::p0 = ",ps
-    write(nfecra,*)"atphyv::all_or_nothing::zent = ",zent
-  endif
-
-  if (deltaq.le.0.d0) then ! unsaturated air parcel
-    lrhum = rair*(1.d0 + (rvsra - 1.d0)*qwt)
-    !Celcius temperature of the air parcel
-    cpro_tempc(iel) = tliq - tkelvi
-    !density of the air parcel
-    crom(iel) = pp/(lrhum*tliq)
-    !liquid water content
-    cpro_liqwt(iel) = 0.d0
-    nebdia(iel) = 0.d0
-    nn(iel) = 0.d0
-  else ! saturated (ie. with liquid water) air parcel
-    qliq = deltaq/ &
-         (1.d0 + qsl*clatev**2/(rair*rvsra*cp0*tliq**2))
-    lrhum = rair*(1.d0 - qliq + (rvsra - 1.d0)*(qwt - qliq))
-    ! liquid water content
-    cpro_liqwt(iel) = qliq
-    ! Celcius temperature of the air parcel
-    cpro_tempc(iel) = tliq + (clatev/cp0)*qliq - tkelvi
-    ! density
-    crom(iel) = pp/(lrhum*(tliq + (clatev/cp0)*qliq))
-    nebdia(iel) = 1.d0
-    nn(iel) = 0.d0
-  endif
-
-enddo ! iel = 1, ncel
-end subroutine all_or_nothing
 
 ! *******************************************************************
 !> \brief Internal function -
@@ -295,6 +234,8 @@ end subroutine all_or_nothing
 subroutine gaussian()
 double precision, dimension(:,:), allocatable :: dtlsd
 double precision, dimension(:,:), allocatable :: dqsd
+integer    iccocg
+integer    inc
 
 double precision a_const
 double precision a_coeff
@@ -310,11 +251,15 @@ double precision, dimension(:), pointer :: cvar_k, cvar_ep
 allocate(dtlsd(3,ncelet))
 allocate(dqsd(3,ncelet))
 
-! computation of grad(thetal)
-call grad_thetal(dtlsd)
+iccocg = 1
+inc = 1
+
+! computation of grad(theta_l)
+call field_gradient_scalar(ivarfl(isca(iscalt)), 1, 0, inc, iccocg, dtlsd)
 
 ! computation of grad(qw)
-call grad_qw(dqsd)
+call field_gradient_scalar(ivarfl(isca(iymw)), 1, 0, inc, iccocg, dqsd)
+
 
 call field_get_val_s(ivarfl(ik), cvar_k)
 call field_get_val_s(ivarfl(iep), cvar_ep)
@@ -348,10 +293,10 @@ do iel = 1, ncel
   xvart = cvar_vart(iel) ! thermal scalar: liquid potential temperature
   tliq = xvart*(pp/ps)**rscp ! liquid temperature
   qwt  = cvar_totwt(iel) ! total water content
-  qsl = qsatliq(tliq, pp) ! saturated vapor content
+  qsl = cs_air_yw_sat(tliq-tkelvi, pp) ! saturated vapor content
   deltaq = qwt - qsl
   alpha = (clatev*qsl/(rvap*tliq**2))*(pp/ps)**rscp
-  sig_flu = sqrt(var_q + alpha**2*var_tl - 2.d0*alpha*cov_tlq)
+  sig_flu = sqrt(var_q + alpha**2*var_tl - 2.d0*alpha*cov_tlq) !FIXME a^2 +b^2 -2ab = (a-b)^2, a = a_coeff dqsd; b = alpha dtlsd
 
   if (sig_flu.lt.1.d-30) sig_flu = 1.d-30
   q1 = deltaq/sig_flu
@@ -360,46 +305,41 @@ do iel = 1, ncel
 
   nebdia(iel) = 0.5d0*(1.d0 + ferf(q1/sqrt(2.d0)))
 
-  qliq = (sig_flu                                                               &
+  !FIXME MF : put in input of the global function...
+  yw_liq = (sig_flu                                                               &
         /(1.d0 + qsl*clatev**2/(rvap*cp0*tliq**2)))                             &
         *(nebdia(iel)*q1 + exp(-q1**2/2.d0)/sqrt(2.d0*pi))
-  qliq = max(qliq,1d-15)
+  yw_liq = max(yw_liq, 1d-15)
   nn(iel) = nebdia(iel) - (nebdia(iel)*q1                                       &
           + exp(-q1**2/2.d0)/sqrt(2.d0*pi))*exp(-q1**2/2.d0)/sqrt(2.d0*pi)
 
-  if(qwt.lt.qliq)then
-    ! go back to all or nothing
+  ! go back to all or nothing
+  if(qwt.lt.yw_liq)then
+
+    nn(iel) = 0.d0
+
+    ! deltaq set to 0 if unsaturted air parcel
     if (deltaq.le.0.d0) then ! unsaturated air parcel
-      lrhum = rair*(1.d0 + (rvsra-1.d0)*qwt)
-      !Celcius temperature of the air parcel
-      cpro_tempc(iel) = tliq - tkelvi
-      !density of the air parcel
-      crom(iel) = pp/(lrhum*tliq)
-      !liquid water content
-      cpro_liqwt(iel) = 0.d0
+      deltaq = 0.d0
       nebdia(iel) = 0.d0
-      nn(iel) = 0.d0
     else ! saturated (ie. with liquid water) air parcel
-      qliq = deltaq / (1.d0 + qsl*clatev**2/(rair*rvsra*cp0*tliq**2))
-      lrhum = rair*(1.d0 - qliq + (rvsra - 1.d0)*(qwt - qliq))
-      ! liquid water content
-      cpro_liqwt(iel) = qliq
-      ! Celcius temperature of the air parcel
-      cpro_tempc(iel) = tliq+(clatev/cp0)*qliq - tkelvi
-      ! density
-      crom(iel) = pp/(lrhum*(tliq + (clatev/cp0)*qliq))
       nebdia(iel) = 1.d0
-      nn(iel) = 0.d0
     endif
-  else ! coherent subgrid diagnostic
-    lrhum = rair*(1.d0 - qliq + (rvsra - 1.d0)*(qwt - qliq))
-    ! liquid water content
-    cpro_liqwt(iel) = qliq
-    !Celcius temperature of the air parcel
-    cpro_tempc(iel) = tliq + (clatev/cp0)*qliq - tkelvi
-    !density
-    crom(iel) = pp/(lrhum*(tliq + (clatev/cp0)*qliq))
-  endif ! qwt.lt.qliq
+
+    ! TODO input ?
+    ! 0 if unsaturated air parcel
+    yw_liq = deltaq / (1.d0 + qsl*clatev**2/(rvap*cp0*tliq**2))
+  endif ! qwt.lt.yw_liq
+
+  cpro_liqwt(iel) = yw_liq
+  ! Celcius temperature of the air parcel
+  cpro_tempc(iel) = tliq + (clatev/cp0)*yw_liq - tkelvi
+
+  !FIXME back to the previous formulation
+  call cs_rho_humidair(qwt, tliq, pp,   &
+                       cpro_liqwt(iel), &
+                       cpro_tempc(iel), &
+                       crom(iel))
 
 enddo
 
@@ -409,67 +349,4 @@ deallocate(dqsd)
 
 end subroutine gaussian
 
-! *******************************************************************
-!> \brief Internal function -
-!> Computation of the gradient of the potential temperature
-!-------------------------------------------------------------------------------
-! Arguments
-!______________________________________________________________________________.
-!  mode           name          role                                           !
-!______________________________________________________________________________!
-!> \param[out]   dtlsd          gradient of potential temperature
-!-------------------------------------------------------------------------------
-subroutine grad_thetal(dtlsd)
-double precision dtlsd(3,ncelet)
-
-integer    iccocg
-integer    iivar
-integer    inc
-integer    itpp
-
-itpp = isca(iscalt)
-
-! options for gradient calculation
-
-iccocg = 1
-inc = 1
-
-iivar = itpp
-
-call field_gradient_scalar(ivarfl(iivar), 1, imrgra, inc,           &
-                           iccocg,                                  &
-                           dtlsd)
-
-end subroutine grad_thetal
-
-! *******************************************************************
-! *
-! *******************************************************************
-!> \brief Internal function -
-!> Compute the gradient of the total humiduty
-!-------------------------------------------------------------------------------
-! Arguments
-!______________________________________________________________________________.
-!  mode           name          role                                           !
-!______________________________________________________________________________!
-!> \param[out]      dqsd        gradient of total humidity
-!-------------------------------------------------------------------------------
-subroutine grad_qw(dqsd)
-double precision dqsd(3,ncelet)
-
-integer    iccocg
-integer    iivar
-integer    inc
-integer    iqw
-
-iccocg = 1
-inc = 1
-iqw = isca(itotwt)
-iivar = iqw
-
-call field_gradient_scalar(ivarfl(iivar), 1, imrgra, inc,           &
-                           iccocg,                                  &
-                           dqsd)
-
-end subroutine grad_qw
 end subroutine atphyv

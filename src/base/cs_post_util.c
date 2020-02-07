@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -189,7 +189,7 @@ cs_cell_segment_intersect_select(void        *input,
            face_id < i_group_index[(t_id*n_i_groups + g_id)*2 + 1];
            face_id++) {
 
-        int n_crossings[2] = {0, 0};
+        int n_inout[2] = {0, 0};
 
         cs_lnum_t vtx_start = m->i_face_vtx_idx[face_id];
         cs_lnum_t vtx_end = m->i_face_vtx_idx[face_id+1];
@@ -205,7 +205,7 @@ cs_cell_segment_intersect_select(void        *input,
                                                   face_center,
                                                   sx0,
                                                   sx1,
-                                                  n_crossings,
+                                                  n_inout,
                                                   NULL);
 
         if (t >= 0 && t <= 1) {
@@ -234,7 +234,7 @@ cs_cell_segment_intersect_select(void        *input,
            face_id < b_group_index[(t_id*n_b_groups + g_id)*2 + 1];
            face_id++) {
 
-        int n_crossings[2] = {0, 0};
+        int n_inout[2] = {0, 0};
 
         cs_lnum_t vtx_start = m->b_face_vtx_idx[face_id];
         cs_lnum_t vtx_end = m->b_face_vtx_idx[face_id+1];
@@ -250,7 +250,7 @@ cs_cell_segment_intersect_select(void        *input,
                                                   face_center,
                                                   sx0,
                                                   sx1,
-                                                  n_crossings,
+                                                  n_inout,
                                                   NULL);
 
         if (t >= 0 && t <= 1) {
@@ -279,6 +279,317 @@ cs_cell_segment_intersect_select(void        *input,
 
   *n_cells = _n_cells;
   *cell_ids = _cell_ids;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Select cells cut by a line composed of segments
+ *
+ * This selection function may be used as an elements selection function
+ * for postprocessing.
+ *
+ * In this case, the input points to a real array containing the segment's
+ * start and end coordinates.
+ *
+ * Note: the input pointer must point to valid data when this selection
+ * function is called, so either:
+ * - that value or structure should not be temporary (i.e. local);
+ * - post-processing output must be ensured using cs_post_write_meshes()
+ *   with a fixed-mesh writer before the data pointed to goes out of scope;
+ *
+ * The caller is responsible for freeing the returned cell_ids array.
+ * When passed to postprocessing mesh or probe set definition functions,
+ * this is handled automatically.
+ *
+ * \param[in]   input     pointer to segments starts and ends:
+ *                        [x0, y0, z0, x1, y1, z1]
+ * \param[in]   n_points  number of vertices in the polyline
+ * \param[out]  n_cells   number of selected cells
+ * \param[out]  cell_ids  array of selected cell ids (0 to n-1 numbering)
+ * \param[out]  seg_c_len array of length of the segment in the selected cells
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cell_polyline_intersect_select(void        *input,
+                                  cs_lnum_t   n_points,
+                                  cs_lnum_t   *n_cells,
+                                  cs_lnum_t  **cell_ids,
+                                  cs_real_t  **seg_c_len)
+{
+  cs_real_t *sx = (cs_real_t *)input;
+
+  const cs_mesh_t *m = cs_glob_mesh;
+  const cs_mesh_quantities_t  *fvq = cs_glob_mesh_quantities;
+
+  cs_lnum_t _n_cells = m->n_cells;
+  cs_lnum_t *_cell_ids = NULL;
+  cs_lnum_t *_in = NULL;
+  cs_lnum_t *_out = NULL;
+  cs_real_t *_seg_c_len = NULL;
+
+  const int n_i_groups = m->i_face_numbering->n_groups;
+  const int n_i_threads = m->i_face_numbering->n_threads;
+  const int n_b_groups = m->b_face_numbering->n_groups;
+  const int n_b_threads = m->b_face_numbering->n_threads;
+  const cs_lnum_t *restrict i_group_index = m->i_face_numbering->group_index;
+  const cs_lnum_t *restrict b_group_index = m->b_face_numbering->group_index;
+
+  BFT_MALLOC(_cell_ids, _n_cells, cs_lnum_t); /* Allocate selection list */
+  BFT_MALLOC(_seg_c_len, _n_cells, cs_real_t); /* Allocate selection list length */
+  BFT_MALLOC(_in, _n_cells, cs_lnum_t);
+  BFT_MALLOC(_out, _n_cells, cs_lnum_t);
+
+  /* Mark for each cell */
+  /*--------------------*/
+
+  for (cs_lnum_t cell_id = 0; cell_id < _n_cells; cell_id++) {
+    _cell_ids[cell_id] = -1;
+    _seg_c_len[cell_id] = 0.;
+  }
+
+  const cs_real_3_t *vtx_coord= (const cs_real_3_t *)m->vtx_coord;
+
+  /* Loop over the vertices of the polyline */
+  for (cs_lnum_t s_id = 0; s_id < n_points - 1; s_id++) {
+
+    const cs_real_t *sx0 = &(sx[3*s_id]);
+    const cs_real_t *sx1 = &(sx[3*(s_id+1)]);
+
+    cs_real_t length =  cs_math_3_distance(sx0, sx1);
+
+    /* Count the number of ingoing and outgoing intersection
+     * to check if the segment is inside the cell */
+    for (cs_lnum_t cell_id = 0; cell_id < _n_cells; cell_id++) {
+      _in[cell_id] = 0;
+      _out[cell_id] = 0;
+    }
+
+    /* Contribution from interior faces;
+       note the to mark cells, we could use a simple loop,
+       as thread races would not lead to a incorrect result, but
+       even if is slightly slower, we prefer to have a clean
+       behavior under thread debuggers. */
+
+    for (int g_id = 0; g_id < n_i_groups; g_id++) {
+
+#   pragma omp parallel for
+      for (int t_id = 0; t_id < n_i_threads; t_id++) {
+
+        for (cs_lnum_t face_id = i_group_index[(t_id*n_i_groups + g_id)*2];
+            face_id < i_group_index[(t_id*n_i_groups + g_id)*2 + 1];
+            face_id++) {
+
+          cs_lnum_t vtx_start = m->i_face_vtx_idx[face_id];
+          cs_lnum_t vtx_end = m->i_face_vtx_idx[face_id+1];
+          cs_lnum_t n_vertices = vtx_end - vtx_start;
+          const cs_lnum_t *vertex_ids = m->i_face_vtx_lst + vtx_start;
+
+          const cs_real_t *face_center = fvq->i_face_cog + (3*face_id);
+
+          cs_lnum_t c_id0 = m->i_face_cells[face_id][0];
+          cs_lnum_t c_id1 = m->i_face_cells[face_id][1];
+
+          /* The line (OD) goes in (n_inout[0]++)
+           * or goes out (n_inout[1]++) the cell */
+          int n_inout[2] = {0, 0};
+
+          double t = cs_geom_segment_intersect_face(0,
+                                                    n_vertices,
+                                                    vertex_ids,
+                                                    vtx_coord,
+                                                    face_center,
+                                                    sx0,
+                                                    sx1,
+                                                    n_inout,
+                                                    NULL);
+
+          /* Segment is inside if n_inout[0] > 0
+           * and n_inout[1] > 0 for two faces */
+          if (c_id0 < _n_cells) {
+            /* Intersection of (OD) with the face
+             * may be on [OD)
+             * It may leave c_id0 */
+            if (t >= 0.)
+              _out[c_id0] += n_inout[1];
+
+            /* Intersection of (OD) with the face
+             * may be on (OD]
+             * It may enter c_id0 */
+            if (t < 0)
+              _in[c_id0] += n_inout[0];
+          }
+          if (c_id1 < _n_cells) {
+            /* Intersection of (OD) with the face
+             * may be on [OD)
+             * It may enter c_id1 */
+            if (t >= 0.)
+              _out[c_id1] += n_inout[0];
+
+            /* Intersection of (OD) with the face
+             * may be on (OD]
+             * It may leave c_id0 */
+            if (t < 0.)
+              _in[c_id1] += n_inout[1];
+          }
+
+          /* Segment crosses the face */
+          if (t >= 0 && t <= 1) {
+            /* length upwind the face*/
+            cs_real_t length_up =  t * length;
+            /* length downwind the face*/
+            cs_real_t length_down =  (1.-t) * length;
+            if (c_id0 < _n_cells) {
+
+              /* Mark cell by segment id (the cell may already be marked by another
+               * segment */
+              _cell_ids[c_id0] = s_id;
+
+              /* OD enters cell i from cell j */
+              if (n_inout[0] > 0)
+                _seg_c_len[c_id0] -= length_up;
+
+              /* OD leaves cell i to cell j */
+              if (n_inout[1] > 0)
+                _seg_c_len[c_id0] -= length_down;
+
+            }
+            if (c_id1 < _n_cells) {
+
+              /* Mark cell by segment id (the cell may already be marked by another
+               * segment */
+              _cell_ids[c_id1] = s_id;
+
+              /* OD enters cell i from cell j
+               * so leaves cell j */
+              if (n_inout[0] > 0)
+                _seg_c_len[c_id1] -= length_down;
+
+              /* OD leaves cell i to cell j
+               * so enters cell j */
+              if (n_inout[1] > 0)
+                _seg_c_len[c_id1] -= length_up;
+
+            }
+          }
+        }
+
+      }
+
+    }
+
+
+    /* Contribution from boundary faces*/
+
+    for (int g_id = 0; g_id < n_b_groups; g_id++) {
+
+#   pragma omp parallel for
+      for (int t_id = 0; t_id < n_b_threads; t_id++) {
+
+        for (cs_lnum_t face_id = b_group_index[(t_id*n_b_groups + g_id)*2];
+            face_id < b_group_index[(t_id*n_b_groups + g_id)*2 + 1];
+            face_id++) {
+
+          cs_lnum_t vtx_start = m->b_face_vtx_idx[face_id];
+          cs_lnum_t vtx_end = m->b_face_vtx_idx[face_id+1];
+          cs_lnum_t n_vertices = vtx_end - vtx_start;
+          const cs_lnum_t *vertex_ids = m->b_face_vtx_lst + vtx_start;
+
+          const cs_real_t *face_center = fvq->b_face_cog + (3*face_id);
+          cs_lnum_t  c_id = m->b_face_cells[face_id];
+
+          int n_inout[2] = {0, 0};
+
+          double t = cs_geom_segment_intersect_face(0,
+                                                    n_vertices,
+                                                    vertex_ids,
+                                                    vtx_coord,
+                                                    face_center,
+                                                    sx0,
+                                                    sx1,
+                                                    n_inout,
+                                                    NULL);
+
+          /* Segment is inside if n_inout[0] > 0
+           * and n_inout[1] > 0 for two faces */
+          if (c_id < _n_cells) {
+            /* Intersection of (OD) with the face
+             * may be on [OD)
+             * It may leave c_id */
+            if (t >= 0.)
+              _out[c_id] += n_inout[1];
+
+            /* Intersection of (OD) with the face
+             * may be on (OD]
+             * It may enter c_id */
+            if (t < 0)
+              _in[c_id] += n_inout[0];
+          }
+
+          /* Segment crosses the face */
+          if (t >= 0 && t <= 1) {
+
+            /* length upwind the face*/
+            cs_real_t length_up =  t * length;
+            /* length downwind the face*/
+            cs_real_t length_down =  (1.-t) * length;
+
+            /* Mark cell by segment id (the cell may already be marked by another
+             * segment */
+            _cell_ids[c_id] = s_id;
+
+            /* OD enters cell i */
+            if (n_inout[0] > 0)
+              _seg_c_len[c_id] -= length_up;
+
+            /* OD leaves cell i */
+            if (n_inout[1] > 0)
+              _seg_c_len[c_id] -= length_down;
+
+          }
+
+        }
+      }
+
+    }
+
+    /* Finalize the lenght computation to deal with cases where the segment
+     * is inside the cell */
+    for (cs_lnum_t cell_id = 0; cell_id < m->n_cells; cell_id++) {
+      /* There is one intersection on the left of [OD)
+       * and one on the right of [OD) which means that
+       * O is inside the cell */
+      if ((_in[cell_id] > 0 && _out[cell_id] > 0)
+          || (_cell_ids[cell_id] == s_id)) {
+        _cell_ids[cell_id] = s_id;
+        _seg_c_len[cell_id] += length;
+      }
+    }
+
+  } /* End loop over the segments */
+
+  BFT_FREE(_in);
+  BFT_FREE(_out);
+
+  /* Now check marked cells and renumber */
+  _n_cells = 0;
+  for (cs_lnum_t cell_id = 0; cell_id < m->n_cells; cell_id++) {
+    if (_cell_ids[cell_id] >= 0) {
+      _cell_ids[_n_cells] = cell_id;
+      _seg_c_len[_n_cells] = _seg_c_len[cell_id];
+      _n_cells++;
+    }
+  }
+
+  BFT_REALLOC(_cell_ids, _n_cells, cs_lnum_t); /* Adjust size (good practice,
+                                                  but not required) */
+  BFT_REALLOC(_seg_c_len, _n_cells, cs_real_t);
+
+  /* Set return values */
+
+  *n_cells = _n_cells;
+  *cell_ids = _cell_ids;
+  *seg_c_len = _seg_c_len;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -647,11 +958,11 @@ cs_post_b_pressure(cs_lnum_t         n_b_faces,
 
   bool use_previous_t = false;
   int inc = 1;
-  int _recompute_cocg = 1;
+  int recompute_cocg = 1;
   cs_field_gradient_potential(CS_F_(p),
                               use_previous_t,
                               inc,
-                              _recompute_cocg,
+                              recompute_cocg,
                               hyd_p_flag,
                               f_ext,
                               gradp);
@@ -665,6 +976,40 @@ cs_post_b_pressure(cs_lnum_t         n_b_faces,
                                             diipb[face_id]);
     pres[iloc] =   CS_F_(p)->bc_coeffs->a[face_id]
                  + CS_F_(p)->bc_coeffs->b[face_id]*pip;
+
+
+  }
+  BFT_FREE(gradp);
+
+  const cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
+
+  if (   turb_model->itytur == 2
+      && turb_model->itytur == 6
+      && turb_model->itytur == 5) {
+    cs_real_3_t *gradk;
+    BFT_MALLOC(gradk, m->n_cells_with_ghosts, cs_real_3_t);
+
+    use_previous_t = false;
+    inc = 1;
+    recompute_cocg = 1;
+    cs_field_gradient_scalar(CS_F_(k),
+                             use_previous_t,
+                             inc,
+                             recompute_cocg,
+                             gradk);
+
+    for (cs_lnum_t iloc = 0 ; iloc < n_b_faces; iloc++) {
+      cs_lnum_t face_id = b_face_ids[iloc];
+      cs_lnum_t cell_id = m->b_face_cells[face_id];
+
+      cs_real_t kip =   CS_F_(k)->val[cell_id]
+        + cs_math_3_dot_product(gradk[cell_id],
+                                diipb[face_id]);
+      pres[iloc] -= 2./3.*CS_F_(rho_b)->val[face_id]
+                         *(  CS_F_(k)->bc_coeffs->a[face_id]
+                           + CS_F_(k)->bc_coeffs->b[face_id]*kip);
+    }
+    BFT_FREE(gradk);
   }
 }
 
@@ -690,9 +1035,8 @@ cs_post_evm_reynolds_stresses(cs_field_interpolate_t  interpolation_type,
                               const cs_real_3_t      *coords,
                               cs_real_6_t            *rst)
 {
-  const cs_turb_model_t *turb_model = cs_glob_turb_model;
+  const cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
   const cs_lnum_t n_cells_ext = cs_glob_mesh->n_cells_with_ghosts;
-  cs_real_3_t *cell_cen = (cs_real_3_t *)cs_glob_mesh_quantities->cell_cen;
 
   if (   turb_model->itytur != 2
       && turb_model->itytur != 6
@@ -743,6 +1087,108 @@ cs_post_evm_reynolds_stresses(cs_field_interpolate_t  interpolation_type,
 
   BFT_FREE(gradv);
   BFT_FREE(xk);
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute the invariant of the anisotropy tensor
+ *
+ * \param[in]  n_cells            number of points
+ * \param[in]  cell_ids           cell location of points
+ *                                (indexed from 0 to n-1)
+ * \param[in]  coords             point coordinates
+ * \param[out] inv                Anisotropy tensor invariant
+ *                                [xsi, eta]
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_post_anisotropy_invariant(cs_lnum_t               n_cells,
+                             const cs_lnum_t         cell_ids[],
+                             const cs_real_t         coords[][3],
+                             cs_real_2_t             inv[])
+{
+  const cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
+  const cs_turb_rans_model_t *turb_rans_mdl = cs_glob_turb_rans_model;
+
+  if (   turb_model->itytur != 2
+      && turb_model->itytur != 3
+      && turb_model->itytur != 6
+      && turb_model->itytur != 5)
+    bft_error(__FILE__, __LINE__, 0,
+              _("This post-processing utility function is only available for "
+                "RANS Models."));
+
+  cs_real_6_t *rij = NULL;
+  BFT_MALLOC(rij, n_cells, cs_real_6_t);
+  cs_field_interpolate_t interpolation_type = CS_FIELD_INTERPOLATE_MEAN;
+
+  /* Compute the Reynolds Stresses if we are using EVM */
+  if (   turb_model->itytur != 2
+      && turb_model->itytur != 6
+      && turb_model->itytur != 5) {
+    cs_post_evm_reynolds_stresses(interpolation_type,
+                                  n_cells,
+                                  cell_ids,
+                                  coords, /* coords */
+                                  rij);
+  } else {
+    if (turb_rans_mdl->irijco == 0) {
+      for (cs_lnum_t i = 0; i < n_cells; i++) {
+        cs_lnum_t c_id = cell_ids[i];
+        rij[i][0] = CS_F_(r11)->val[c_id];
+        rij[i][1] = CS_F_(r22)->val[c_id];
+        rij[i][2] = CS_F_(r33)->val[c_id];
+        rij[i][3] = CS_F_(r12)->val[c_id];
+        rij[i][4] = CS_F_(r23)->val[c_id];
+        rij[i][5] = CS_F_(r13)->val[c_id];
+      }
+    } else {
+       cs_real_6_t *cvar_rij = (cs_real_6_t *)CS_F_(rij)->val;
+       for (cs_lnum_t i = 0; i < n_cells; i++) {
+         cs_lnum_t c_id = cell_ids[i];
+         for (cs_lnum_t j = 0; j < 6; j++)
+           rij[i][j] = cvar_rij[c_id][j];
+        }
+
+    }
+  }
+
+  /* Compute Invariants */
+
+  const cs_real_t d1s3 = 1./3.;
+  for (cs_lnum_t iloc = 0; iloc < n_cells; iloc++) {
+    cs_lnum_t iel = cell_ids[iloc];
+
+    cs_real_t xk = 0.5*(rij[iel][0]+rij[iel][1]+rij[iel][2]);
+    cs_real_t bij[3][3];
+    cs_real_t xeta, xksi ;
+
+    bij[0][0] = rij[iel][0]/(2.0*xk) - d1s3;
+    bij[1][1] = rij[iel][1]/(2.0*xk) - d1s3;
+    bij[2][2] = rij[iel][2]/(2.0*xk) - d1s3;
+    bij[0][1] = rij[iel][3]/(2.0*xk) ;
+    bij[1][2] = rij[iel][4]/(2.0*xk) ;
+    bij[0][2] = rij[iel][5]/(2.0*xk) ;
+    bij[1][0] = bij[0][1] ;
+    bij[2][1] = bij[1][2] ;
+    bij[2][0] = bij[0][2] ;
+
+    xeta = 0. ;
+    xksi = 0. ;
+    for (cs_lnum_t i = 0; i < 3; i++) {
+      for (cs_lnum_t j = 0; j < 3; j++) {
+        xeta += bij[i][j]*bij[j][i] ;
+        for (cs_lnum_t k = 0; k < 3; k++)
+          xksi += bij[i][j]*bij[j][k]*bij[k][i];
+      }
+    }
+
+    inv[iloc][0] =  sqrt(-xeta/6.0);
+    inv[iloc][1] =  cbrt(xksi/6.0);
+  }
+
+  BFT_FREE(rij);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -840,6 +1286,98 @@ cs_post_boundary_flux(const char       *scalar_name,
       b_face_flux[f_id] /= b_face_surf[f_id];
     }
   }
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Compute values at a selection of boundary faces of a given field
+ *        located on cells.
+ *
+ * Field BCs are taken into account and boundary cell values are reconstructed
+ * using the cell gradient.
+ *
+ * \param[in]   f              field pointer
+ * \param[in]   n_loc_b_faces  number of selected boundary faces
+ * \param[in]   b_face_ids     ids of selected boundary faces
+ * \param[out]  b_val          values on boundary faces
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_post_field_cell_to_b_face_values(cs_field_t       *f,
+                                    cs_lnum_t         n_loc_b_faces,
+                                    const cs_lnum_t   b_face_ids[],
+                                    cs_real_t        *b_val)
+{
+  if (f->location_id != CS_MESH_LOCATION_CELLS)
+    bft_error(__FILE__, __LINE__, 0,
+              _("Postprocessing face boundary values for field %s :\n"
+                " not implemented for fields on location %s."),
+              f->name, cs_mesh_location_type_name[f->location_id]);
+
+  const cs_mesh_t  *m = cs_glob_mesh;
+  cs_mesh_quantities_t  *fvq = cs_glob_mesh_quantities;
+
+  const cs_lnum_t *restrict b_face_cells
+    = (const cs_lnum_t *restrict)m->b_face_cells;
+
+  const cs_real_3_t *restrict diipb
+    = (const cs_real_3_t *restrict)fvq->diipb;
+
+  const cs_lnum_t dim = f->dim;
+  const cs_lnum_t n_cells_ext = cs_glob_mesh->n_cells_with_ghosts;
+  cs_real_t *grad;
+  BFT_MALLOC(grad, 3*dim*n_cells_ext, cs_real_t);
+
+  if (dim == 1)
+    cs_field_gradient_scalar(f,
+                             true, /* use_previous_t */
+                             1,    /* not an increment */
+                             true, /* recompute_cocg */
+                             (cs_real_3_t *)grad);
+  else if (dim == 3)
+    cs_field_gradient_vector(f,
+                             true, /* use_previous_t */
+                             1,    /* not an increment */
+                             (cs_real_33_t *)grad);
+  else
+    bft_error(__FILE__, __LINE__, 0,
+              _("Postprocessing face boundary values for field %s"
+                " of dimension %d:\n not implemented."),
+              f->name, f->dim);
+
+  int coupled = 0;
+  if (f->type & CS_FIELD_VARIABLE) {
+    int coupled_key_id = cs_field_key_id_try("coupled");
+    if (coupled_key_id > -1)
+      coupled = cs_field_get_key_int(f, coupled_key_id);
+  }
+
+  for (cs_lnum_t ii = 0; ii < n_loc_b_faces; ii++) {
+    cs_lnum_t face_id = b_face_ids[ii];
+    cs_lnum_t cell_id = b_face_cells[face_id];
+
+    cs_real_3_t val_ip;
+    for (int j = 0; j < dim; j++) {
+      cs_lnum_t k = (cell_id*dim + j)*3;
+      val_ip[j] =   f->val[cell_id*dim + j]
+                  + diipb[face_id][0] * grad[k]
+                  + diipb[face_id][1] * grad[k+1]
+                  + diipb[face_id][2] * grad[k+2];
+    }
+
+    for (int j = 0; j < dim; j++) {
+      b_val[ii*dim + j] = f->bc_coeffs->a[dim*face_id + j];
+
+      if (coupled)
+        for (int k = 0; k < dim; k++)
+          b_val[ii*dim + j] += f->bc_coeffs->b[dim*dim*face_id+j*dim+k]*val_ip[k];
+      else
+        b_val[ii*dim + j] += f->bc_coeffs->b[dim*face_id + j]*val_ip[j];
+    }
+  }
+
+  BFT_FREE(grad);
 }
 
 /*----------------------------------------------------------------------------*/

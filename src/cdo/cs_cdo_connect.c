@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -40,6 +40,8 @@
  *----------------------------------------------------------------------------*/
 
 #include "bft_mem.h"
+
+#include "fvm_io_num.h"
 
 #include "cs_flag.h"
 #include "cs_log.h"
@@ -221,7 +223,7 @@ _build_e2v_connect(const cs_adjacency_t  *v2v)
 
   /* Arrays ids and sgn are allocated during the creation of the structure */
   cs_adjacency_t  *e2v = cs_adjacency_create(CS_ADJACENCY_SIGNED,
-                                             2, // stride
+                                             2, /* stride */
                                              n_edges);
 
   /* Fill arrays */
@@ -268,25 +270,7 @@ _build_v2v_through_cell(const cs_cdo_connect_t     *connect)
   /* Update index (v2v has a diagonal entry. We remove it since we have in
      mind an matrix structure stored using the MSR format (with diagonal terms
      counted outside the index) */
-  cs_lnum_t  shift = 0;
-  cs_lnum_t  prev_start = v2v->idx[0];
-  cs_lnum_t  prev_end = v2v->idx[1];
-
-  for (cs_lnum_t i = 0; i < n_vertices; i++) {
-
-    for (cs_lnum_t j = prev_start; j < prev_end; j++)
-      if (v2v->ids[j] != i)
-        v2v->ids[shift++] = v2v->ids[j];
-
-    if (i != n_vertices - 1) { /* Update prev_start and prev_end */
-      prev_start = v2v->idx[i+1];
-      prev_end = v2v->idx[i+2];
-    }
-    v2v->idx[i+1] = shift;
-
-  } /* Loop on vertices */
-
-  BFT_REALLOC(v2v->ids, v2v->idx[n_vertices], cs_lnum_t);
+  cs_adjacency_remove_self_entries(v2v);
 
   /* Free temporary buffers */
   cs_adjacency_destroy(&v2c);
@@ -309,7 +293,7 @@ _build_f2f_through_cell(const cs_cdo_connect_t     *connect)
 {
   cs_adjacency_t  *f2f = NULL;
 
-  const cs_lnum_t  n_faces = connect->n_faces[0];
+  const cs_lnum_t  n_faces = connect->n_faces[CS_ALL_FACES];
 
   /* Build a face -> face connectivity */
   f2f = cs_adjacency_compose(n_faces, connect->f2c, connect->c2f);
@@ -317,27 +301,41 @@ _build_f2f_through_cell(const cs_cdo_connect_t     *connect)
 
   /* Update index (f2f has a diagonal entry. We remove it since we have in
      mind an index structure for a matrix stored using the MSR format */
-  cs_lnum_t  shift = 0;
-  cs_lnum_t  prev_start = f2f->idx[0];
-  cs_lnum_t  prev_end = f2f->idx[1];
-
-  for (cs_lnum_t i = 0; i < n_faces; i++) {
-
-    for (cs_lnum_t j = prev_start; j < prev_end; j++)
-      if (f2f->ids[j] != i)
-        f2f->ids[shift++] = f2f->ids[j];
-
-    if (i != n_faces - 1) { /* Update prev_start and prev_end */
-      prev_start = f2f->idx[i+1];
-      prev_end = f2f->idx[i+2];
-    }
-    f2f->idx[i+1] = shift;
-
-  } /* Loop on faces */
-
-  BFT_REALLOC(f2f->ids, f2f->idx[n_faces], cs_lnum_t);
+  cs_adjacency_remove_self_entries(f2f);
 
   return f2f;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Build a connectivity edge -> edges through cells
+ *
+ * \param[in]  connect       pointer to a cs_cdo_connect_t structure
+ *
+ * \return a pointer to a new allocated cs_adjacency_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+static cs_adjacency_t *
+_build_e2e_through_cell(const cs_cdo_connect_t     *connect)
+{
+  const cs_lnum_t  n_edges = connect->n_edges;
+
+  /* Build a edge -> edge connectivity */
+  cs_adjacency_t  *e2c = cs_adjacency_transpose(n_edges, connect->c2e);
+  assert(e2c != NULL);
+  cs_adjacency_t  *e2e = cs_adjacency_compose(n_edges, e2c, connect->c2e);
+
+  cs_adjacency_sort(e2e);
+
+  /* Update index (e2e has a diagonal entry. We remove it since we have in
+     mind an index structure for a matrix stored using the MSR format */
+  cs_adjacency_remove_self_entries(e2e);
+
+  /* Free temporary buffers */
+  cs_adjacency_destroy(&e2c);
+
+  return e2e;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -428,7 +426,7 @@ _compute_max_ent(const cs_mesh_t      *m,
 
       const cs_lnum_t  v_id = c2v_ids[v];
       if (v_count[v_id] > n_max_v2ec) n_max_v2ec = v_count[v_id];
-      v_count[v_id] = 0; // reset
+      v_count[v_id] = 0; /* reset */
 
     }
 
@@ -481,12 +479,12 @@ _compute_max_ent(const cs_mesh_t      *m,
   BFT_FREE(v_count);
 
   /* Store computed values */
-  connect->n_max_vbyc = n_max_vc;   // Max number of vertices for a cell
-  connect->n_max_ebyc = n_max_ec;   // Max number of edges for a cell
-  connect->n_max_fbyc = n_max_fc;   // Max number of faces for a cell
+  connect->n_max_vbyc = n_max_vc;   /* Max number of vertices for a cell */
+  connect->n_max_ebyc = n_max_ec;   /* Max number of edges for a cell */
+  connect->n_max_fbyc = n_max_fc;   /* Max number of faces for a cell */
   connect->n_max_v2ec = n_max_v2ec;
   connect->n_max_v2fc = n_max_v2fc;
-  connect->n_max_vbyf = n_max_vf;   // Max number of vertices in a face
+  connect->n_max_vbyf = n_max_vf;   /* Max number of vertices in a face */
 }
 
 /*----------------------------------------------------------------------------*/
@@ -504,7 +502,7 @@ static fvm_element_t
 _get_cell_type(cs_lnum_t                 c_id,
                const cs_cdo_connect_t   *connect)
 {
-  fvm_element_t  ret_type = FVM_CELL_POLY; // Default value
+  fvm_element_t  ret_type = FVM_CELL_POLY; /* Default value */
 
   int  n_vc = connect->c2v->idx[c_id+1] - connect->c2v->idx[c_id];
   int  n_ec = connect->c2e->idx[c_id+1] - connect->c2e->idx[c_id];
@@ -519,7 +517,7 @@ _get_cell_type(cs_lnum_t                 c_id,
     ret_type = FVM_CELL_PYRAM;
 
   /* Prism ? */
-  else if (n_vc == 6 && n_ec == 9 && n_fc == 5) { // Potentially a prism
+  else if (n_vc == 6 && n_ec == 9 && n_fc == 5) { /* Could be a prism */
 
     int  count[2] = {0, 0};
 
@@ -529,9 +527,9 @@ _get_cell_type(cs_lnum_t                 c_id,
 
       cs_lnum_t  f_id = connect->c2f->ids[i];
 
-      if (connect->f2e->idx[f_id+1] - connect->f2e->idx[f_id] == 4) // Quad
+      if (connect->f2e->idx[f_id+1] - connect->f2e->idx[f_id] == 4) /* Quad */
         count[1] += 1;
-      if (connect->f2e->idx[f_id+1] - connect->f2e->idx[f_id] == 3) // Tria
+      if (connect->f2e->idx[f_id+1] - connect->f2e->idx[f_id] == 3) /* Tria */
         count[0] += 1;
 
       if (count[0] == 2 && count[1] == 3)
@@ -541,9 +539,9 @@ _get_cell_type(cs_lnum_t                 c_id,
   }
 
   /* Hexahedron ? */
-  else if (n_vc == 8 && n_ec == 12 && n_fc == 6) { // Potentially a hexahedron
+  else if (n_vc == 8 && n_ec == 12 && n_fc == 6) { /* Could be a hexahedron */
 
-    _Bool  is_hexa = true;
+    bool  is_hexa = true;
 
     /* Loop on cell faces */
     for (cs_lnum_t i = connect->c2f->idx[c_id]; i < connect->c2f->idx[c_id+1];
@@ -568,76 +566,223 @@ _get_cell_type(cs_lnum_t                 c_id,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Associate to each cell a type and a flag.
+ * \brief  Associate a flag to each cell.
  *
- * \param[in, out]  connect   pointer to a cs_cdo_connect_t structure
+ * \param[in, out]  connect           pointer to a cs_cdo_connect_t structure
+ * \param[in]       eb_scheme_flag    metadata for Edge-based schemes
+ * \param[in]       vb_scheme_flag    metadata for Vertex-based schemes
+ * \param[in]       vcb_scheme_flag   metadata for Vertex+Cell-based schemes
  */
 /*----------------------------------------------------------------------------*/
 
 static void
-_build_cell_type_and_flag(cs_cdo_connect_t   *connect)
+_build_cell_flag(cs_cdo_connect_t   *connect,
+                 cs_flag_t           eb_scheme_flag,
+                 cs_flag_t           vb_scheme_flag,
+                 cs_flag_t           vcb_scheme_flag)
 {
-  const cs_lnum_t  n_vertices = connect->n_vertices;
-  const cs_lnum_t  n_i_faces = connect->n_faces[2];
-  const cs_lnum_t  n_b_faces = connect->n_faces[1];
+  const cs_lnum_t  n_i_faces = connect->n_faces[CS_INT_FACES];
+  const cs_lnum_t  n_b_faces = connect->n_faces[CS_BND_FACES];
   const cs_lnum_t  n_cells = connect->n_cells;
 
   BFT_MALLOC(connect->cell_flag, n_cells, cs_flag_t);
-  BFT_MALLOC(connect->cell_type, n_cells, fvm_element_t);
-
-  cs_flag_t  *is_border_vtx = NULL;
-  BFT_MALLOC(is_border_vtx, n_vertices, cs_flag_t);
-
-# pragma omp parallel if (n_cells > CS_THR_MIN)
-  {
-#   pragma omp for nowait
-    for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
-      connect->cell_flag[c_id] = 0;
-      connect->cell_type[c_id] = _get_cell_type(c_id, connect);
-    }
-
-#   pragma omp for nowait
-    for (cs_lnum_t v = 0; v < n_vertices; v++)
-      is_border_vtx[v] = 0;
-
-  } /* End of OpenMP block */
+  memset(connect->cell_flag, 0, n_cells*sizeof(cs_flag_t));
 
   /* Loop on border faces and flag boundary cells */
   const cs_lnum_t  *c_ids = connect->f2c->ids + connect->f2c->idx[n_i_faces];
   for (cs_lnum_t f_id = 0; f_id < n_b_faces; f_id++)
     connect->cell_flag[c_ids[f_id]] = CS_FLAG_BOUNDARY_CELL_BY_FACE;
 
-  const cs_adjacency_t  *bf2v = connect->bf2v;
-  for (cs_lnum_t bf_id = 0; bf_id < n_b_faces; bf_id++) {
-    for (cs_lnum_t j = bf2v->idx[bf_id]; j < bf2v->idx[bf_id+1]; j++) {
-      assert(bf2v->ids[j] < n_vertices);
-      is_border_vtx[bf2v->ids[j]] = 1;
-    }
-  } /* Loop on border faces */
 
-  /* Synchronization needed in parallel computations */
+  if (vb_scheme_flag > 0 || vcb_scheme_flag > 0) {
+
+    const cs_lnum_t  n_vertices = connect->n_vertices;
+
+    cs_flag_t  *is_border_vtx = NULL;
+    BFT_MALLOC(is_border_vtx, n_vertices, cs_flag_t);
+    memset(is_border_vtx, 0, n_vertices*sizeof(cs_flag_t));
+
+    const cs_adjacency_t  *bf2v = connect->bf2v;
+    for (cs_lnum_t bf_id = 0; bf_id < n_b_faces; bf_id++) {
+      for (cs_lnum_t j = bf2v->idx[bf_id]; j < bf2v->idx[bf_id+1]; j++) {
+        assert(bf2v->ids[j] < n_vertices);
+        is_border_vtx[bf2v->ids[j]] = 1;
+      }
+    } /* Loop on border faces */
+
+    /* Synchronization needed in parallel computations */
+    if (cs_glob_n_ranks > 1)
+      cs_interface_set_max(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL],
+                           n_vertices,
+                           1,             /* stride */
+                           false,         /* interlace (not useful here) */
+                           CS_FLAG_TYPE,  /* unsigned short int */
+                           is_border_vtx);
+
+    const cs_adjacency_t  *c2v = connect->c2v;
+    for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+      for (cs_lnum_t j = c2v->idx[c_id]; j < c2v->idx[c_id+1]; j++) {
+        if (is_border_vtx[c2v->ids[j]] > 0)
+          connect->cell_flag[c_id] |= CS_FLAG_BOUNDARY_CELL_BY_VERTEX;
+      }
+    } /* Loop on cells */
+
+    BFT_FREE(is_border_vtx);
+
+  } /* At least one equation with DoFs at vertices */
+
+
+  if (eb_scheme_flag > 0) {
+
+    const cs_lnum_t  n_edges = connect->n_edges;
+
+    cs_flag_t  *is_border_edge = NULL;
+    BFT_MALLOC(is_border_edge, n_edges, cs_flag_t);
+    memset(is_border_edge, 0, n_edges*sizeof(cs_flag_t));
+
+    const cs_adjacency_t  *f2e = connect->f2e;
+    for (cs_lnum_t bf_id = n_i_faces; bf_id < n_i_faces + n_b_faces; bf_id++) {
+      for (cs_lnum_t j = f2e->idx[bf_id]; j < f2e->idx[bf_id+1]; j++) {
+        is_border_edge[f2e->ids[j]] = 1;
+      }
+    } /* Loop on border faces */
+
+    /* Synchronization needed in parallel computations */
+    if (cs_glob_n_ranks > 1)
+      cs_interface_set_max(connect->interfaces[CS_CDO_CONNECT_EDGE_SCAL],
+                           n_edges,
+                           1,             /* stride */
+                           false,         /* interlace (not useful here) */
+                           CS_FLAG_TYPE,  /* unsigned short int */
+                           is_border_edge);
+
+    const cs_adjacency_t  *c2e = connect->c2e;
+    for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
+      for (cs_lnum_t j = c2e->idx[c_id]; j < c2e->idx[c_id+1]; j++) {
+        if (is_border_edge[c2e->ids[j]] > 0)
+          connect->cell_flag[c_id] |= CS_FLAG_BOUNDARY_CELL_BY_EDGE;
+      }
+    } /* Loop on cells */
+
+    BFT_FREE(is_border_edge);
+
+  } /* edge interfaces */
+
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Allocate and define a \ref cs_range_set_t structure and a
+ *        \ref cs_interface_set_t structure for schemes with DoFs at edges
+ *        otherwise set the number of global edges
+ *
+ * \param[in]       mesh            pointer to a cs_mesh_t structure
+ * \param[in]       connect         pointer to a cs_cdo_connect_t structure
+ * \param[in]       eb_scheme_flag  metadata for edge-based schemes
+ * \param[in, out]  p_ifs           pointer of pointer to a cs_interface_set_t
+ * \param[in, out]  p_rs            pointer of pointer to a cs_range_set_t
+ */
+/*----------------------------------------------------------------------------*/
+
+static void
+_assign_edge_ifs_rs(const cs_mesh_t       *mesh,
+                    cs_cdo_connect_t      *connect,
+                    cs_flag_t              eb_scheme_flag,
+                    cs_interface_set_t   **p_ifs,
+                    cs_range_set_t       **p_rs)
+{
+  const cs_lnum_t  n_edges = connect->n_edges;
+  cs_gnum_t  n_g_edges = n_edges;
+  cs_gnum_t  *edge_gnum = NULL;
+
+  BFT_MALLOC(edge_gnum, n_edges, cs_gnum_t);
+
   if (cs_glob_n_ranks > 1) {
 
-    assert(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL] != NULL);
+    const cs_adjacency_t  *e2v = connect->e2v;
 
-    cs_interface_set_max(connect->interfaces[CS_CDO_CONNECT_VTX_SCAL],
-                         n_vertices,
-                         1,             /* stride */
-                         false,         /* interlace (not useful here) */
-                         CS_FLAG_TYPE,  /* unsigned short int */
-                         is_border_vtx);
+    /* Build global edge numbering and edges interface */
+    cs_gnum_t *e2v_gnum = NULL;
+    BFT_MALLOC(e2v_gnum, n_edges*2, cs_gnum_t);
+
+#   pragma omp parallel for if (n_edges > CS_THR_MIN)
+    for (cs_lnum_t e_id = 0; e_id < n_edges; e_id++) {
+
+      cs_gnum_t  *v_gids = e2v_gnum + 2*e_id;
+      const cs_lnum_t  *_v_ids = e2v->ids + 2*e_id;
+      const cs_gnum_t  v0_gid = mesh->global_vtx_num[_v_ids[0]];
+      const cs_gnum_t  v1_gid = mesh->global_vtx_num[_v_ids[1]];
+
+      if (v0_gid < v1_gid)
+        v_gids[0] = v0_gid, v_gids[1] = v1_gid;
+      else
+        v_gids[0] = v1_gid, v_gids[1] = v0_gid;
+
+    } /* Loop on edges */
+
+    cs_lnum_t  *order = NULL;
+    BFT_MALLOC(order, n_edges, cs_lnum_t);
+    cs_order_gnum_allocated_s(NULL, e2v_gnum, 2, order, n_edges);
+
+    cs_gnum_t  *order_couples = NULL;
+    BFT_MALLOC(order_couples, 2*n_edges, cs_gnum_t);
+#   pragma omp parallel for if (n_edges > CS_THR_MIN)
+    for (cs_lnum_t e = 0; e < n_edges; e++) {
+      const cs_lnum_t  o_id = 2*order[e];
+      order_couples[2*e] = e2v_gnum[o_id];
+      order_couples[2*e+1] = e2v_gnum[o_id+1];
+    }
+
+    fvm_io_num_t *edge_io_num
+      = fvm_io_num_create_from_adj_s(NULL, order_couples, n_edges, 2);
+
+    BFT_FREE(order);
+    BFT_FREE(order_couples);
+    BFT_FREE(e2v_gnum);
+
+    const cs_gnum_t *_g_num =  fvm_io_num_get_global_num(edge_io_num);
+    memcpy(edge_gnum, _g_num, n_edges*sizeof(cs_gnum_t));
+
+    connect->n_g_edges = fvm_io_num_get_global_count(edge_io_num);
+    edge_io_num = fvm_io_num_destroy(edge_io_num);
+
+  }
+  else {
+
+#   pragma omp parallel for if (n_edges > CS_THR_MIN)
+    for (cs_gnum_t i = 0; i < n_g_edges; i++) edge_gnum[i] = i + 1;
+
+  } /* Sequential or parallel run */
+
+  cs_interface_set_t  *ifs = NULL;
+  cs_range_set_t  *rs = NULL;
+
+  if (eb_scheme_flag > 0) {
+
+  /* Do not consider periodicity up to now. Should split the face interface
+     into interior and border faces to do this, since only boundary faces
+     can be associated to a periodicity */
+    ifs = cs_interface_set_create(n_edges,
+                                  NULL,
+                                  edge_gnum,
+                                  mesh->periodicity,
+                                  0,
+                                  NULL, NULL, NULL);
+
+    rs = cs_range_set_create(ifs,   /* interface set */
+                             NULL,  /* halo */
+                             n_edges,
+                             false, /* TODO: Ask Yvan */
+                             0);    /* g_id_base */
 
   }
 
-  const cs_adjacency_t  *c2v = connect->c2v;
-  for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++) {
-    for (cs_lnum_t j = c2v->idx[c_id]; j < c2v->idx[c_id+1]; j++) {
-      if (is_border_vtx[c2v->ids[j]] > 0)
-        connect->cell_flag[c_id] |= CS_FLAG_BOUNDARY_CELL_BY_VERTEX;
-    }
-  } /* Loop on cells */
+  /* Free memory */
+  BFT_FREE(edge_gnum);
 
-  BFT_FREE(is_border_vtx);
+  /* Return pointers */
+  *p_ifs = ifs;
+  *p_rs = rs;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -813,17 +958,72 @@ _assign_vtx_ifs_rs(const cs_mesh_t       *mesh,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief Create and define a new cs_interface_set_t structure on faces
+ *
+ * \param[in]  mesh          pointer to a cs_mesh_t structure
+ *
+ * \return a pointer to a new allocated cs_interface_set_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_interface_set_t *
+cs_cdo_connect_define_face_interface(const cs_mesh_t       *mesh)
+{
+  cs_interface_set_t  *ifs = NULL;
+
+  const cs_lnum_t  n_elts = mesh->n_i_faces + mesh->n_b_faces;
+
+  cs_gnum_t *face_gnum = NULL;
+  BFT_MALLOC(face_gnum, n_elts, cs_gnum_t);
+
+  if (cs_glob_n_ranks > 1) {
+
+    memcpy(face_gnum, mesh->global_i_face_num,
+           mesh->n_i_faces*sizeof(cs_gnum_t));
+
+    cs_gnum_t  *_fg = face_gnum + mesh->n_i_faces;
+#   pragma omp parallel for if (mesh->n_b_faces > CS_THR_MIN)
+    for (cs_lnum_t i = 0; i < mesh->n_b_faces; i++)
+      _fg[i] = mesh->n_g_i_faces + mesh->global_b_face_num[i];
+
+  }
+  else {
+
+#   pragma omp parallel for if (n_elts > CS_THR_MIN)
+    for (cs_gnum_t i = 0; i < (cs_gnum_t)(n_elts); i++)
+      face_gnum[i] = i + 1;
+
+  } /* Sequential or parallel run */
+
+  /* Do not consider periodicity up to now. Should split the face interface
+     into interior and border faces to do this, since only boundary faces
+     can be associated to a periodicity */
+  ifs = cs_interface_set_create(n_elts,
+                                NULL,
+                                face_gnum,
+                                mesh->periodicity, 0, NULL, NULL, NULL);
+
+  /* Free memory */
+  BFT_FREE(face_gnum);
+
+  /* Return pointers */
+  return  ifs;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief Allocate and define a new cs_cdo_connect_t structure
  *        Range sets and interface sets are allocated and defined according to
  *        the value of the different scheme flags.
  *        cs_range_set_t structure related to vertices is shared the cs_mesh_t
  *        structure (the global one)
  *
- * \param[in, out]  mesh             pointer to a cs_mesh_t structure
- * \param[in]       vb_scheme_flag   metadata for Vb schemes
- * \param[in]       vcb_scheme_flag  metadata for V+C schemes
- * \param[in]       fb_scheme_flag   metadata for Fb schemes
- * \param[in]       hho_scheme_flag  metadata for HHO schemes
+ * \param[in, out]  mesh              pointer to a cs_mesh_t structure
+ * \param[in]       eb_scheme_flag    metadata for Edge-based schemes
+ * \param[in]       fb_scheme_flag    metadata for Face-based schemes
+ * \param[in]       vb_scheme_flag    metadata for Vertex-based schemes
+ * \param[in]       vcb_scheme_flag   metadata for Vertex+Cell-based schemes
+ * \param[in]       hho_scheme_flag   metadata for HHO schemes
  *
  * \return  a pointer to a cs_cdo_connect_t structure
  */
@@ -831,9 +1031,10 @@ _assign_vtx_ifs_rs(const cs_mesh_t       *mesh,
 
 cs_cdo_connect_t *
 cs_cdo_connect_init(cs_mesh_t      *mesh,
+                    cs_flag_t       eb_scheme_flag,
+                    cs_flag_t       fb_scheme_flag,
                     cs_flag_t       vb_scheme_flag,
                     cs_flag_t       vcb_scheme_flag,
-                    cs_flag_t       fb_scheme_flag,
                     cs_flag_t       hho_scheme_flag)
 {
   cs_timer_t t0 = cs_timer_time();
@@ -877,9 +1078,10 @@ cs_cdo_connect_init(cs_mesh_t      *mesh,
 
   connect->n_vertices = n_vertices;
   connect->n_edges = n_edges;
-  connect->n_faces[0] = n_faces;
-  connect->n_faces[1] = mesh->n_b_faces;
-  connect->n_faces[2] = mesh->n_i_faces;
+  connect->n_g_edges = n_edges;
+  connect->n_faces[CS_ALL_FACES] = n_faces;
+  connect->n_faces[CS_BND_FACES] = mesh->n_b_faces;
+  connect->n_faces[CS_INT_FACES] = mesh->n_i_faces;
   connect->n_cells = n_cells;
 
   /* Build additional connectivity cell --> edges and cell --> vertices
@@ -905,6 +1107,11 @@ cs_cdo_connect_init(cs_mesh_t      *mesh,
     connect->f2f = _build_f2f_through_cell(connect);
   else
     connect->f2f = NULL;
+
+  if (eb_scheme_flag > 0)
+    connect->e2e = _build_e2e_through_cell(connect);
+  else
+    connect->e2e = NULL;
 
   /* Members to handle assembly process and parallel sync. */
   for (int i = 0; i < CS_CDO_CONNECT_N_CASES; i++) {
@@ -977,8 +1184,19 @@ cs_cdo_connect_init(cs_mesh_t      *mesh,
                         connect->interfaces + CS_CDO_CONNECT_FACE_VHP2,
                         connect->range_sets + CS_CDO_CONNECT_FACE_VHP2);
 
-  /* Build the cell flag and associate a cell type to each cell */
-  _build_cell_type_and_flag(connect);
+  /* CDO vertex- or vertex+cell-based schemes for scalar-valued variables */
+  _assign_edge_ifs_rs(mesh, connect, eb_scheme_flag,
+                      connect->interfaces + CS_CDO_CONNECT_EDGE_SCAL,
+                      connect->range_sets + CS_CDO_CONNECT_EDGE_SCAL);
+
+  /* Build the cell type for each cell */
+  BFT_MALLOC(connect->cell_type, n_cells, fvm_element_t);
+# pragma omp parallel if (n_cells > CS_THR_MIN)
+  for (cs_lnum_t c_id = 0; c_id < n_cells; c_id++)
+    connect->cell_type[c_id] = _get_cell_type(c_id, connect);
+
+  /* Build the cell flag for each cell */
+  _build_cell_flag(connect, eb_scheme_flag, vb_scheme_flag, vcb_scheme_flag);
 
   /* Monitoring */
   cs_timer_t  t1 = cs_timer_time();
@@ -1018,6 +1236,7 @@ cs_cdo_connect_free(cs_cdo_connect_t   *connect)
 
   cs_adjacency_destroy(&(connect->v2v));
   cs_adjacency_destroy(&(connect->f2f));
+  cs_adjacency_destroy(&(connect->e2e));
 
   BFT_FREE(connect->cell_type);
   BFT_FREE(connect->cell_flag);
@@ -1029,6 +1248,7 @@ cs_cdo_connect_free(cs_cdo_connect_t   *connect)
   cs_range_set_destroy(connect->range_sets + CS_CDO_CONNECT_FACE_SP2);
   cs_range_set_destroy(connect->range_sets + CS_CDO_CONNECT_FACE_VHP1);
   cs_range_set_destroy(connect->range_sets + CS_CDO_CONNECT_FACE_VHP2);
+  cs_range_set_destroy(connect->range_sets + CS_CDO_CONNECT_EDGE_SCAL);
 
   cs_interface_set_destroy(connect->interfaces + CS_CDO_CONNECT_VTX_VECT);
   cs_interface_set_destroy(connect->interfaces + CS_CDO_CONNECT_FACE_SP0);
@@ -1036,6 +1256,7 @@ cs_cdo_connect_free(cs_cdo_connect_t   *connect)
   cs_interface_set_destroy(connect->interfaces + CS_CDO_CONNECT_FACE_SP2);
   cs_interface_set_destroy(connect->interfaces + CS_CDO_CONNECT_FACE_VHP1);
   cs_interface_set_destroy(connect->interfaces + CS_CDO_CONNECT_FACE_VHP2);
+  cs_interface_set_destroy(connect->interfaces + CS_CDO_CONNECT_EDGE_SCAL);
 
   BFT_FREE(connect);
 
@@ -1044,59 +1265,67 @@ cs_cdo_connect_free(cs_cdo_connect_t   *connect)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Summary of connectivity information
+ * \brief Compute the discrete curl operator across each primal faces.
+ *        From an edge-based array (seen as circulations) compute a face-based
+ *        array (seen as fluxes)
  *
- * \param[in]  connect     pointer to cs_cdo_connect_t structure
+ * \param[in]      connect      pointer to a cs_cdo_connect_t struct.
+ * \param[in]      edge_values  array of values at edges
+ * \param[in, out] curl_values  array storing the curl across faces (allocated
+ *                              if necessary)
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_cdo_connect_summary(const cs_cdo_connect_t  *connect)
+cs_cdo_connect_discrete_curl(const cs_cdo_connect_t    *connect,
+                             const cs_real_t           *edge_values,
+                             cs_real_t                **p_curl_values)
 {
-  cs_lnum_t  n_max_entbyc[5] = {connect->n_max_fbyc,
-                                connect->n_max_ebyc,
-                                connect->n_max_vbyc,
-                                connect->v_max_cell_range,
-                                connect->e_max_cell_range};
+  if (connect == NULL || edge_values == NULL)
+    return;
+  const cs_lnum_t  n_faces = connect->n_faces[CS_ALL_FACES];
 
-  if (cs_glob_n_ranks > 1)
-    cs_parall_max(5, CS_LNUM_TYPE, n_max_entbyc);
+  cs_real_t  *curl_values = *p_curl_values;
+  if (curl_values == NULL)
+    BFT_MALLOC(curl_values, n_faces, cs_real_t);
 
-  /* Output */
-  cs_log_printf(CS_LOG_DEFAULT, "\n Connectivity information:\n");
-  cs_log_printf(CS_LOG_DEFAULT,
-                " --dim-- max. number of faces by cell:    %4d\n",
-                n_max_entbyc[0]);
-  cs_log_printf(CS_LOG_DEFAULT,
-                " --dim-- max. number of edges by cell:    %4d\n",
-                n_max_entbyc[1]);
-  cs_log_printf(CS_LOG_DEFAULT,
-                " --dim-- max. number of vertices by cell: %4d\n",
-                n_max_entbyc[2]);
-  cs_log_printf(CS_LOG_DEFAULT,
-                " --dim-- max. vertex range for a cell:      %d\n",
-                n_max_entbyc[3]);
-  cs_log_printf(CS_LOG_DEFAULT,
-                " --dim-- max. edge range for a cell:        %d\n",
-                n_max_entbyc[4]);
+  const cs_adjacency_t  *f2e = connect->f2e;
+  assert(f2e != NULL && f2e->sgn != NULL); /* Sanity checks */
 
-  /* Information about special case where vertices are lying on the boundary
-     but not a face (for instance a tetrahedron) */
-  cs_lnum_t  count = 0;
-  for (cs_lnum_t c = 0; c < connect->n_cells; c++) {
-    if ((connect->cell_flag[c] & CS_FLAG_BOUNDARY_CELL_BY_VERTEX) &&
-        !(connect->cell_flag[c] & CS_FLAG_BOUNDARY_CELL_BY_FACE))
-      count++;
-  }
+# pragma omp parallel for if (n_faces > CS_THR_MIN)
+  for (cs_lnum_t f = 0; f < n_faces; f++) {
 
-  cs_gnum_t  counter = count;
-  if (cs_glob_n_ranks > 1)
-    cs_parall_counter(&counter, 1);
+    const cs_lnum_t  start = f2e->idx[f], end = f2e->idx[f+1];
+    const cs_lnum_t  *ids = f2e->ids + start;
+    const short int  *sgn = f2e->sgn + start;
 
-  cs_log_printf(CS_LOG_DEFAULT,
-                " --dim-- number of boundary cells through a vertex only"
-                " %lu\n\n", counter);
+    curl_values[f] = 0;
+    for (int e = 0; e < end-start; e++)
+      curl_values[f] += sgn[e]*edge_values[ids[e]];
 
+  } /* Loop on faces */
+
+  /* Return pointer */
+  *p_curl_values = curl_values;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Summary of connectivity information
+ *
+ * \param[in]  connect           pointer to cs_cdo_connect_t structure
+ * \param[in]  eb_scheme_flag    metadata for Edge-based schemes
+ * \param[in]  vb_scheme_flag    metadata for Vertex-based schemes
+ * \param[in]  vcb_scheme_flag   metadata for Vertex+Cell-based schemes
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_cdo_connect_summary(const cs_cdo_connect_t  *connect,
+                       cs_flag_t                eb_scheme_flag,
+                       cs_flag_t                vb_scheme_flag,
+                       cs_flag_t                vcb_scheme_flag)
+{
   /* Information about the element types */
   cs_gnum_t  n_type_cells[FVM_N_ELEMENT_TYPES];
   for (int i = 0; i < FVM_N_ELEMENT_TYPES; i++)
@@ -1108,6 +1337,7 @@ cs_cdo_connect_summary(const cs_cdo_connect_t  *connect)
   if (cs_glob_n_ranks > 1)
     cs_parall_sum(FVM_N_ELEMENT_TYPES, CS_GNUM_TYPE, n_type_cells);
 
+  cs_log_printf(CS_LOG_DEFAULT, "\n Connectivity information:\n");
   cs_log_printf(CS_LOG_DEFAULT,
                 " --dim-- number of tetrahedra: %8lu\n",
                 n_type_cells[FVM_CELL_TETRA]);
@@ -1123,6 +1353,75 @@ cs_cdo_connect_summary(const cs_cdo_connect_t  *connect)
   cs_log_printf(CS_LOG_DEFAULT,
                 " --dim-- number of polyhedra:  %8lu\n\n",
                 n_type_cells[FVM_CELL_POLY]);
+
+
+  cs_lnum_t  n_max_entbyc[5] = {connect->n_max_fbyc,
+                                connect->n_max_ebyc,
+                                connect->n_max_vbyc,
+                                connect->v_max_cell_range,
+                                connect->e_max_cell_range};
+
+  if (cs_glob_n_ranks > 1)
+    cs_parall_max(5, CS_LNUM_TYPE, n_max_entbyc);
+
+  /* Output */
+  cs_log_printf(CS_LOG_DEFAULT,
+                " --dim-- max. number of faces by cell:    %4d\n",
+                n_max_entbyc[0]);
+  cs_log_printf(CS_LOG_DEFAULT,
+                " --dim-- max. number of edges by cell:    %4d\n",
+                n_max_entbyc[1]);
+  cs_log_printf(CS_LOG_DEFAULT,
+                " --dim-- max. number of vertices by cell: %4d\n",
+                n_max_entbyc[2]);
+  cs_log_printf(CS_LOG_DEFAULT,
+                "\n --dim-- max. vertex range for a cell:      %d\n",
+                n_max_entbyc[3]);
+  cs_log_printf(CS_LOG_DEFAULT,
+                " --dim-- max. edge range for a cell:        %d\n",
+                n_max_entbyc[4]);
+
+  /* Information about special case where vertices are lying on the boundary
+     but not a face (for instance a tetrahedron) */
+  if (vb_scheme_flag > 0 || vcb_scheme_flag > 0) {
+
+    cs_lnum_t  v_count = 0;
+    for (cs_lnum_t c = 0; c < connect->n_cells; c++) {
+      if ((connect->cell_flag[c] & CS_FLAG_BOUNDARY_CELL_BY_VERTEX) &&
+          !(connect->cell_flag[c] & CS_FLAG_BOUNDARY_CELL_BY_FACE))
+        v_count++;
+    }
+
+    cs_gnum_t  v_counter = v_count;
+    if (cs_glob_n_ranks > 1)
+      cs_parall_counter(&v_counter, 1);
+
+    cs_log_printf(CS_LOG_DEFAULT,
+                  " --dim-- number of boundary cells through a vertex only"
+                  " %lu\n\n", v_counter);
+
+  } /* At least one equation with a scheme with DoFs at vertices */
+
+  if (eb_scheme_flag > 0) {
+
+    /* Information about special case where edges are lying on the boundary
+       but not a face (for instance a tetrahedron) */
+    cs_lnum_t  e_count = 0;
+    for (cs_lnum_t c = 0; c < connect->n_cells; c++) {
+      if ((connect->cell_flag[c] & CS_FLAG_BOUNDARY_CELL_BY_EDGE) &&
+          !(connect->cell_flag[c] & CS_FLAG_BOUNDARY_CELL_BY_FACE))
+        e_count++;
+    }
+
+    cs_gnum_t  e_counter = e_count;
+    if (cs_glob_n_ranks > 1)
+      cs_parall_counter(&e_counter, 1);
+
+    cs_log_printf(CS_LOG_DEFAULT,
+                  " --dim-- number of boundary cells through an edge only"
+                  " %lu\n\n", e_counter);
+
+  } /* At least one equation with a scheme with DoFs at edges */
 
 #if CS_CDO_CONNECT_DBG > 0 && defined(DEBUG) && !defined(NDEBUG)
   cs_cdo_connect_dump(connect);

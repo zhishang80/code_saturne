@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -99,6 +99,7 @@
 #include "cs_lagr_post.h"
 #include "cs_lagr_sde.h"
 #include "cs_lagr_sde_model.h"
+#include "cs_lagr_orientation.h"
 #include "cs_lagr_prototypes.h"
 #include "cs_lagr_agglo.h"
 #include "cs_lagr_fragmentation.h"
@@ -176,11 +177,13 @@ static cs_lagr_model_t  _lagr_model
      .roughness = 0,
      .resuspension = 0,
      .clogging = 0,
+     .shape = 0,
      .consolidation = 0,
      .precipitation = 0,
      .fouling = 0,
      .n_stat_classes = 0,
-     .n_particle_aggregates = 0,
+     .agglomeration = 0,
+     .fragmentation = 0,
      .n_user_variables = 0};
 
 /* particle counter structure and associated pointer */
@@ -233,9 +236,14 @@ static cs_lagr_clogging_model_t _cs_glob_lagr_clogging_model = {0, 0, 0, 0};
 cs_lagr_clogging_model_t *cs_glob_lagr_clogging_model
   = &_cs_glob_lagr_clogging_model;
 
+/* lagr non-spherical model structure and associated pointer */
+static cs_lagr_shape_model_t _cs_glob_lagr_shape_model = {0};
+cs_lagr_shape_model_t *cs_glob_lagr_shape_model
+  = &_cs_glob_lagr_shape_model;
+
 /* lagr agglomeration model structure and associated pointer */
 static cs_lagr_agglomeration_model_t _cs_glob_lagr_agglomeration_model
-  = {0, 0, NULL};
+  = { 0, 0., 0., 0., 0. };
 cs_lagr_agglomeration_model_t *cs_glob_lagr_agglomeration_model
   = &_cs_glob_lagr_agglomeration_model;
 
@@ -245,7 +253,7 @@ static cs_lagr_fragmentation_model_t _cs_glob_lagr_fragmentation_model
 cs_lagr_fragmentation_model_t *cs_glob_lagr_fragmentation_model
   = &_cs_glob_lagr_fragmentation_model;
 
-/* lagr clogging model structure and associated pointer */
+/* lagr consolidation model structure and associated pointer */
 static cs_lagr_consolidation_model_t _cs_glob_lagr_consolidation_model
   = {0, 0, 0, 0};
 cs_lagr_consolidation_model_t *cs_glob_lagr_consolidation_model
@@ -426,6 +434,16 @@ cs_f_lagr_clogging_model_pointers(cs_real_t **jamlim,
                                   cs_real_t **csthpp);
 
 void
+cs_f_lagr_shape_model_pointers(cs_real_t **param_chmb);
+
+void
+cs_f_lagr_agglomeration_model_pointers( cs_lnum_t **n_max_classes,
+                                        cs_real_t **min_stat_weight,
+                                        cs_real_t **max_stat_weight,
+                                        cs_real_t **scalar_kernel,
+                                        cs_real_t **base_diameter );
+
+void
 cs_f_lagr_consolidation_model_pointers(cs_lnum_t **iconsol,
                                        cs_real_t **rate_consol,
                                        cs_real_t **slope_consol,
@@ -535,6 +553,27 @@ cs_f_lagr_clogging_model_pointers(cs_real_t **jamlim,
 }
 
 void
+cs_f_lagr_shape_model_pointers(cs_real_t **param_chmb)
+{
+  *param_chmb = &cs_glob_lagr_shape_model->param_chmb;
+}
+
+void
+cs_f_lagr_agglomeration_model_pointers(cs_lnum_t **n_max_classes,
+                                       cs_real_t **min_stat_weight,
+                                       cs_real_t **max_stat_weight,
+                                       cs_real_t **scalar_kernel,
+                                       cs_real_t **base_diameter )
+{
+  *n_max_classes    = &cs_glob_lagr_agglomeration_model->n_max_classes;
+  *min_stat_weight = &cs_glob_lagr_agglomeration_model->min_stat_weight;
+  *max_stat_weight = &cs_glob_lagr_agglomeration_model->max_stat_weight;
+  *scalar_kernel   = &cs_glob_lagr_agglomeration_model->scalar_kernel;
+  *base_diameter   = &cs_glob_lagr_agglomeration_model->base_diameter;
+}
+
+
+void
 cs_f_lagr_consolidation_model_pointers(cs_lnum_t **iconsol,
                                        cs_real_t **rate_consol,
                                        cs_real_t **slope_consol,
@@ -590,8 +629,14 @@ cs_f_lagr_specific_physics(int        *iirayo,
                            int        *ncharm,
                            cs_real_t  *diftl0)
 {
-  _lagr_extra_module.iturb  = cs_glob_turb_model->iturb;
-  _lagr_extra_module.itytur = cs_glob_turb_model->itytur;
+  cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
+
+  if (turb_model == NULL)
+    bft_error(__FILE__, __LINE__, 0,
+              "%s: Turbulence modelling is not set.", __func__);
+
+  _lagr_extra_module.iturb  = turb_model->iturb;
+  _lagr_extra_module.itytur = turb_model->itytur;
   _lagr_extra_module.ncharb = *ncharb;
   _lagr_extra_module.ncharm = *ncharm;
   _lagr_extra_module.icp    = cs_glob_fluid_properties->icp;
@@ -681,28 +726,29 @@ _lagr_map_fields_default(void)
   _lagr_extra_module.luminance   = cs_field_by_name_try("luminance");
   if (cs_field_by_name_try("velocity_1") != NULL) {
     /* we are probably using NEPTUNE_CFD */
-    _lagr_extra_module.vel         = cs_field_by_name_try("velocity_1");
+    _lagr_extra_module.vel         = cs_field_by_name_try("lagr_velocity");
 
-    _lagr_extra_module.cvar_k      = cs_field_by_name_try("k_1");
-    _lagr_extra_module.cvar_ep     = cs_field_by_name_try("epsilon_1");
+    _lagr_extra_module.cvar_k      = cs_field_by_name_try("lagr_k");
+    _lagr_extra_module.cvar_ep     = cs_field_by_name_try("lagr_epsilon");
     _lagr_extra_module.cvar_omg    = NULL;
-    _lagr_extra_module.cvar_rij    = cs_field_by_name_try("rij_1");
+    _lagr_extra_module.cvar_rij    = cs_field_by_name_try("lagr_rij");
     _lagr_extra_module.viscl       = cs_field_by_name_try
-                                       ("molecular_viscosity_1");
-    _lagr_extra_module.scal_t      = cs_field_by_name_try("enthalpy_1");
+                                       ("lagr_molecular_viscosity");
+    _lagr_extra_module.scal_t      = cs_field_by_name_try("lagr_enthalpy");
     _lagr_extra_module.cpro_viscls = cs_field_by_name_try
-                                       ("thermal_conductivity_1");
-    _lagr_extra_module.cpro_cp     = cs_field_by_name_try("specific_heat_1");
+                                       ("lagr_thermal_conductivity");
+    _lagr_extra_module.cpro_cp     = cs_field_by_name_try("lagr_specific_heat");
     _lagr_extra_module.temperature = cs_field_by_name_try("lagr_temperature");
     _lagr_extra_module.t_gaz       = NULL;
     _lagr_extra_module.x_oxyd      = NULL;
     _lagr_extra_module.x_eau       = NULL;
     _lagr_extra_module.x_m         = NULL;
-    _lagr_extra_module.cromf       = cs_field_by_name_try("density_1");
+    _lagr_extra_module.cromf       = cs_field_by_name_try("lagr_density");
     /* TODO FIXME */
     _lagr_extra_module.visls0      = 0.;
 
-    _lagr_extra_module.ustar   = cs_field_by_name_try("wall_friction_velocity");
+    _lagr_extra_module.ustar
+      = cs_field_by_name_try("lagr_wall_friction_velocity");
   }
   else {
     /* we use Code_Saturne */
@@ -1155,7 +1201,6 @@ cs_lagr_finalize(void)
   BFT_FREE(extra->grad_pr);
   if (extra->grad_vel != NULL)
     BFT_FREE(extra->grad_vel);
-
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1221,12 +1266,36 @@ cs_lagr_injection_set_default(cs_lagr_injection_set_t  *zis)
 
   zis->cluster              =  0;
 
-  zis->particle_aggregate = 1;
+  /* Agglomeration/fragmentation default*/
+  zis->aggregat_class_id = 1;
+  zis->aggregat_fractal_dim = 3;
 
   zis->velocity_magnitude   = - cs_math_big_r;
 
   for (int  i = 0; i < 3; i++)
     zis->velocity[i]        = - cs_math_big_r;
+
+  /* For spheroids without inertia  */
+  /* Default shape: sphere */
+  zis->shape = 0.;
+
+  /* Angular velocity */
+  for (int i = 0; i < 3; i++)
+    zis->angular_vel[i] = 0.;
+
+  /* Spheroids radii a b c */
+  for (int i = 0; i < 3; i++)
+    zis->radii[i] = 0.;
+
+  /* Shape parameters */
+  for (int i = 0; i < 4; i++)
+    zis->shape_param[i] = 0.;
+
+  /* First three Euler parameters */
+  for (int i = 0; i < 3; i++)
+    zis->euler[i] = 0.;
+
+  zis->euler[3] = 1.;
 
   zis->stat_weight          = - cs_math_big_r;
   zis->diameter             = - cs_math_big_r;
@@ -1364,6 +1433,30 @@ cs_lagr_clogging_model_t *
 cs_get_lagr_clogging_model(void)
 {
   return &_cs_glob_lagr_clogging_model;
+}
+
+/*----------------------------------------------------------------------------
+ * Provide access to cs_lagr_shape_model_t
+ *
+ * needed to initialize structure with GUI
+ *----------------------------------------------------------------------------*/
+
+cs_lagr_shape_model_t *
+cs_get_lagr_shape_model(void)
+{
+  return &_cs_glob_lagr_shape_model;
+}
+
+/*----------------------------------------------------------------------------
+ * Provide access to cs_lagr_agglomeration_model_t
+ *
+ * needed to initialize structure with GUI
+ *----------------------------------------------------------------------------*/
+
+cs_lagr_agglomeration_model_t *
+cs_get_lagr_agglomeration_model(void)
+{
+  return &_cs_glob_lagr_agglomeration_model;
 }
 
 /*----------------------------------------------------------------------------
@@ -1607,7 +1700,8 @@ cs_lagr_solve_initialize(const cs_real_t  *dt)
   cs_lnum_t ncelet = cs_glob_mesh->n_cells_with_ghosts;
 
   BFT_MALLOC(extra->grad_pr, ncelet, cs_real_3_t);
-  if (cs_glob_lagr_time_scheme->modcpl > 0)
+  if (cs_glob_lagr_time_scheme->modcpl > 0
+      || cs_glob_lagr_model->shape > 0 )
     BFT_MALLOC(extra->grad_vel, ncelet, cs_real_33_t);
 
   /* For frozen field:
@@ -1676,19 +1770,13 @@ cs_lagr_solve_time_step(const int         itypfb[],
   cs_lagr_extra_module_t *extra = cs_glob_lagr_extra_module;
   cs_lagr_particle_counter_t *part_c = cs_lagr_get_particle_counter();
 
-  cs_lnum_t ncelet = cs_glob_mesh->n_cells_with_ghosts;
   cs_lnum_t n_b_faces = cs_glob_mesh->n_b_faces;
 
   cs_lnum_t *ifabor = cs_glob_mesh->b_face_cells;
   cs_real_t *surfbo = cs_glob_mesh_quantities->b_face_surf;
   cs_real_t *surfbn = cs_glob_mesh_quantities->b_face_normal;
 
-  /* Allocate temporary arrays */
-  cs_real_t *w1, *w2;
-  BFT_MALLOC(w1, ncelet, cs_real_t);
-  BFT_MALLOC(w2, ncelet, cs_real_t);
-
-  /* Allocate other arrays depending on user options    */
+  /* Allocate arrays depending on user options */
 
   cs_real_t *tempp = NULL;
   if (   lagr_model->clogging == 1
@@ -1795,7 +1883,7 @@ cs_lagr_solve_time_step(const int         itypfb[],
 
   /* User initialization by set and boundary */
 
-  if (cs_gui_file_is_loaded() && ts->nt_cur == ts->nt_prev +1)
+  if (ts->nt_cur == ts->nt_prev +1)
     cs_gui_particles_bcs();
 
   /* User initialization by set and zone */
@@ -1920,6 +2008,12 @@ cs_lagr_solve_time_step(const int         itypfb[],
              &cs_glob_lagr_clogging_model->csthpp,
              &cs_glob_lagr_physico_chemical->lambda_vdw);
 
+  /* Initialization for the nonsphere model
+     ------------------------------------- */
+
+  if (lagr_model->shape == 1)
+    cs_glob_lagr_shape_model->param_chmb = 1.0;
+
   /* Update for new particles which entered the domain
      ------------------------------------------------- */
 
@@ -1934,22 +2028,28 @@ cs_lagr_solve_time_step(const int         itypfb[],
   else                 /* Use fields at previous time step */
     iprev = 1;
 
+  /* Fields at current time step if using NEPTUNE_CFD */
+  if (cs_field_by_name_try("velocity_1") != NULL)
+    iprev = 0;
+
   cs_lagr_injection(iprev, itypfb, vislen);
 
   /* Initialization for the agglomeration/fragmentation models
      --------------------------------------------------------- */
 
-  /* The algorithms are based on discrete values of particle radii (CS_LAGR_DIAMETER).
-     It uses a minimum diameter, corresponding to monomers (unbreakable particles).
+  /* The algorithms are based on discrete values of particle radii
+     (CS_LAGR_DIAMETER).
+     It uses a minimum diameter, corresponding to monomers
+     (unbreakable particles).
      Aggregates are formed of multiples of these monomers. */
 
   /* Evaluation of the minimum diameter */
   cs_real_t minimum_particle_diam = 0.;
 
-  if (cs_glob_lagr_model->agglomeration)
+  if (cs_glob_lagr_model->agglomeration == 1)
     minimum_particle_diam = cs_glob_lagr_agglomeration_model->base_diameter;
 
-  if (cs_glob_lagr_model->fragmentation)
+  if (cs_glob_lagr_model->fragmentation == 1)
     minimum_particle_diam = cs_glob_lagr_fragmentation_model->base_diameter;
 
   /* Management of advancing time
@@ -2097,9 +2197,7 @@ cs_lagr_solve_time_step(const int         itypfb[],
                   bx,
                   tempct,
                   extra->grad_pr,
-                  extra->grad_vel,
-                  w1,
-                  w2);
+                  extra->grad_vel);
 
       /* Integration of SDEs: position, fluid and particle velocity */
 
@@ -2114,6 +2212,20 @@ cs_lagr_solve_time_step(const int         itypfb[],
                   terbru,
                   (const cs_real_t *)vislen,
                   &nresnew);
+
+      /* Integration of SDEs for orientation of spheroids without inertia */
+      if (lagr_model->shape == 1) {
+        cs_lagr_orientation_dyn_spheroids(iprev,
+                                          cs_glob_lagr_time_step->dtp,
+                                          (const cs_real_33_t *)extra->grad_vel);
+      }
+      /* Integration of Jeffrey equations for ellispoids */
+      else if (lagr_model->shape == 2) {
+        cs_lagr_orientation_dyn_jeffery(iprev,
+                                        cs_glob_lagr_time_step->dtp,
+                                        (const cs_real_33_t *)extra->grad_vel);
+      }
+
 
       /* Save bx values associated with particles for next pass */
 
@@ -2167,8 +2279,8 @@ cs_lagr_solve_time_step(const int         itypfb[],
       cs_lnum_t *occupied_cell_ids = NULL;
       cs_lnum_t *particle_list = NULL;
 
-      if (   cs_glob_lagr_model->agglomeration
-          || cs_glob_lagr_model->fragmentation) {
+      if (   cs_glob_lagr_model->agglomeration == 1
+          || cs_glob_lagr_model->fragmentation == 1 ) {
 
         n_occupied_cells
           = _get_n_occupied_cells(p_set, 0, p_set->n_particles);
@@ -2187,7 +2299,7 @@ cs_lagr_solve_time_step(const int         itypfb[],
          (avoid second pass if second order scheme is used) */
       if (   cs_glob_lagr_time_step->nor == 1
           && ((cs_glob_lagr_model->agglomeration == 1) ||
-             (cs_glob_lagr_model->fragmentation == 1))) {
+              (cs_glob_lagr_model->fragmentation == 1))) {
 
         /* Initialize lists (ids of cells and particles) */
         cs_lnum_t *cell_particle_idx;
@@ -2198,18 +2310,13 @@ cs_lagr_solve_time_step(const int         itypfb[],
         cs_lnum_t enter_parts = p_set->n_particles;
 
         /* Loop on all cells that contain at least one particle */
-        for (cs_lnum_t iep = 0; iep < n_occupied_cells; ++iep) {
+        for (cs_lnum_t icell = 0; icell < n_occupied_cells; ++icell) {
 
-          cs_lnum_t cell_id = occupied_cell_ids[iep];
-          cs_real_t mass_part
-            = cs_lagr_particles_get_real(p_set, cell_id, CS_LAGR_MASS);
-          cs_real_t diam_part
-            = cs_lagr_particles_get_real(p_set, cell_id, CS_LAGR_DIAMETER);
-          cs_real_t rho = 6. * mass_part / (cs_math_pi * cs_math_pow3(diam_part));
+          cs_lnum_t cell_id = occupied_cell_ids[icell];
 
           /* Particle indices: between start_part and end_part (list) */
-          cs_lnum_t start_part = particle_list[iep];
-          cs_lnum_t end_part = particle_list[iep+1];
+          cs_lnum_t start_part = particle_list[icell];
+          cs_lnum_t end_part = particle_list[icell+1];
 
           cs_lnum_t init_particles = p_set->n_particles;
 
@@ -2219,7 +2326,6 @@ cs_lagr_solve_time_step(const int         itypfb[],
             cs_lagr_agglomeration(cell_id,
                                   dt[0],
                                   minimum_particle_diam,
-                                  rho,
                                   start_part,
                                   end_part);
           }
@@ -2273,13 +2379,15 @@ cs_lagr_solve_time_step(const int         itypfb[],
 
           if (cs_glob_lagr_model->fragmentation == 1) {
             cs_lagr_fragmentation(dt[0],
-                                  minimum_particle_diam, rho,
-                                  start_part, end_part - deleted_parts,
-                                  init_particles, p_set->n_particles);
+                                  minimum_particle_diam,
+                                  start_part,
+                                  end_part - deleted_parts,
+                                  init_particles,
+                                  p_set->n_particles);
           }
           cs_lnum_t inserted_parts_frag = p_set->n_particles - init_particles;
 
-          cell_particle_idx[iep+1] =   cell_particle_idx[iep]
+          cell_particle_idx[icell+1] =   cell_particle_idx[icell]
                                      + inserted_parts_agglo + inserted_parts_frag;
         }
 
@@ -2303,7 +2411,7 @@ cs_lagr_solve_time_step(const int         itypfb[],
 
       if (   cs_glob_lagr_time_scheme->iilagr == CS_LAGR_TWOWAY_COUPLING
           && cs_glob_lagr_time_step->nor == cs_glob_lagr_time_scheme->t_order)
-        cs_lagr_coupling(taup, tempct, tsfext, cpgd1, cpgd2, cpght, w1, w2);
+        cs_lagr_coupling(taup, tempct, tsfext, cpgd1, cpgd2, cpght);
 
       /* Deallocate arrays whose size is based on p_set->n_particles
          (which may change next) */
@@ -2544,8 +2652,6 @@ cs_lagr_solve_time_step(const int         itypfb[],
     cs_lagr_print(ts->t_cur);
 
   /* Free memory */
-  BFT_FREE(w1);
-  BFT_FREE(w2);
 
   if (   lagr_model->deposition == 1
       && ts->nt_cur == ts->nt_max)

@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -31,10 +31,10 @@ import os
 import os.path
 import sys
 
-from cs_case_domain import *
-from cs_case import *
-import cs_exec_environment
-import cs_runcase
+from code_saturne.cs_case_domain import *
+from code_saturne.cs_case import *
+from code_saturne import cs_exec_environment
+from code_saturne import cs_runcase
 
 #===============================================================================
 # Main function for code coupling execution
@@ -66,8 +66,6 @@ def coupling(package,
     syr_domains = []
     nep_domains = []
     cat_domains = []
-    ast_domain = []
-    fsi_coupler = None
     py_domains = []
 
     if domains == None:
@@ -75,8 +73,7 @@ def coupling(package,
 
     for d in domains:
 
-        if ((d.get('script') == None or d.get('domain') == None) \
-            and d.get('coupler') == None):
+        if (d.get('script') == None or d.get('domain') == None):
             msg = 'Check your coupling definition.\n'
             msg += 'script or domain key is missing.'
             raise RunCaseError(msg)
@@ -139,47 +136,6 @@ def coupling(package,
             use_syrthes = True
             syr_domains.append(dom)
 
-        elif (d.get('solver') == 'Code_Aster' or d.get('solver') == 'Aster'):
-
-            if len(ast_domain) > 0:
-                err_str = 'Only 1 Code_Aster domain is currently handled\n'
-                raise RunCaseError(err_str)
-
-            try:
-                dom = aster_domain(package,
-                                   name = d.get('domain'),
-                                   param = d.get('script'))
-
-            except Exception:
-                err_str = 'Cannot create Code_Aster domain.\n'
-                err_str += ' domain = ' + d.get('domain') + '\n'
-                err_str += ' script = ' + d.get('script') + '\n'
-                raise RunCaseError(err_str)
-
-            ast_domain.append(dom)
-
-        elif (d.get('coupler') == 'FSI_coupler'):
-
-            if fsi_coupler:
-                err_str = 'Only 1 FSI coupler is currently handled\n'
-                raise RunCaseError(err_str)
-
-            try:
-                fsi_coupler = {'max_time_steps' : d.get('max_time_steps'),
-                               'n_sub_iterations' : d.get('n_sub_iterations'),
-                               'time_step' : d.get('time_step'),
-                               'start_time' : d.get('start_time'),
-                               'epsilon' : d.get('epsilon')}
-
-            except Exception:
-                err_str = 'Cannot create FSI coupler\n'
-                err_str += '  max_time_steps = ' + d.get('max_time_steps') + '\n'
-                err_str += '  n_sub_iterations = ' + d.get('n_sub_iterations' + '\n')
-                err_str += '  time_step = ' + d.get('time_step') + '\n'
-                err_str += '  start_time = ' + d.get('start_time') + '\n'
-                err_str += '  epsilon = ' + d.get('epsilon') + '\n'
-                raise RunCaseError(err_str)
-
         elif (d.get('solver') == 'CATHARE'):
             # Current version using Cathare2: the cathare case is converted to a
             # .so library which is opened and launched by a NEPTUNE_CFD executable
@@ -188,26 +144,15 @@ def coupling(package,
 
             if script[-4:] == '.xml':
                 param = script
-
             else:
-                runcase_path = os.path.join(os.getcwd(),
-                                            d.get('domain'),
-                                            'SCRIPTS',
-                                            script)
-                try:
-                    runcase = cs_runcase.runcase(runcase_path)
-                    param = runcase.get_parameters()
+                d['script'] = d['paramfile']
+                param = d['script']
 
-                except Exception:
-                    err_str = 'Cannot read ' + d.get('solver') \
-                              + ' script: ' + runcase_path
-                    raise RunCaseError(err_str)
-                d['script'] = param
 
             dom = cathare_domain(package,
                                  package_compute = package_compute,
                                  name = d.get('domain'),
-                                 param = d.get('paramfile'),
+                                 param = d.get('script'),
                                  n_procs_weight = d.get('n_procs_weight'),
                                  n_procs_min = d.get('n_procs_min'),
                                  n_procs_max = d.get('n_procs_max'),
@@ -225,7 +170,7 @@ def coupling(package,
                 dom = python_domain(package,
                                     name = d.get('domain'),
                                     cmd_line = d.get('command_line'),
-                                    script_name = d.get('py_code'))
+                                    script_name = d.get('script'))
 
             except Exception:
                 err_str = 'Cannot create Python code domain.\n'
@@ -257,8 +202,7 @@ domains = [
         d_first = False
         k_first = True
         for k in ('solver', 'domain', 'script', 'n_procs_weight', 'n_procs_min',
-                  'coupler', 'max_time_steps', 'n_sub_iterations', 'time_step',
-                  'start_time', 'epsilon'):
+                  'cathare_case_file', 'neptune_cfd_domain'):
             v = d.get(k)
             if v:
                 if type(v) == str:
@@ -281,8 +225,6 @@ domains = [
              coupling_parameters = coupling_parameters,
              domains = sat_domains + nep_domains + cat_domains,
              syr_domains = syr_domains,
-             ast_domain = ast_domain,
-             fsi_coupler = fsi_coupler,
              py_domains = py_domains)
 
     if verbose:
@@ -293,9 +235,6 @@ domains = [
             msg += '   o SYRTHES      [' + str(len(syr_domains)) + ' domain(s)];\n'
         if use_neptune == True:
             msg += '   o NEPTUNE_CFD  [' + str(len(nep_domains)) + ' domain(s)];\n'
-        if ast_domain or fsi_coupler:
-            msg += '   o Code_Aster   [1 domain(s)];\n'
-            msg += '                  [1 coupler(s)];\n'
         if use_cathare == True:
             msg += '   o CATHARE2     [' + str(len(cat_domains)) + ' domain(s)];\n'
         if use_py_code == True:

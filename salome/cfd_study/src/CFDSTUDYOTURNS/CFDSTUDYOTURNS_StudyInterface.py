@@ -3,7 +3,7 @@
 #
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -61,6 +61,7 @@ class cfd_openturns_study:
         # --------------------------
         # Init from user values
         self.study_path = study_path
+        os.chdir(study_path)
 
         self.cfg_name = study_cfg
         cfg_path      = os.path.join(study_path, study_cfg)
@@ -120,12 +121,12 @@ class cfd_openturns_study:
 
         case_dir = os.path.join(self.study_path, self.case_id)
 
-        if os.path.isdir(case_dir):
+        case_resu_dir = os.path.join(case_dir, "RESU")
             # Check if the case directory allready exists.
             # if it exists, check if a case has allready been run
-            case_resu_dir = os.path.join(case_dir, "RESU")
+        if os.path.isdir(case_dir):
 
-            dirs = filter(os.path.isdir, glob(case_resu_dir + "/*"))
+            dirs = [e for e in filter(os.path.isdir, glob(case_resu_dir + "/*"))]
 
             self.__setCsCase__()
             self.case['case_path'] = case_dir
@@ -140,6 +141,8 @@ class cfd_openturns_study:
             self.__createCase__()
             self.load_launcher(case_dir)
 
+#       os.chdir(case_resu_dir)
+
     # ---------------------------------------
 
     # ---------------------------------------
@@ -152,17 +155,15 @@ class cfd_openturns_study:
         self.cs_launcher.launch(force_submit=False)
 
         if self.run_type == 'distant':
+            self.cs_launcher.sync_results()
             while True:
                 if self.cs_launcher.need_restart():
                     old_run = self.cs_launcher.run_id
 
-                    rst_dir = os.path.join(self.study_path,
-                                           self.case_id,
-                                           'RESU',
-                                           old_run)
+                    rst_dir = os.path.join('RESU', old_run)
                     self.__setRestartPath__(rst_dir)
-                    self.cs_launcher.__setRunId__()
 
+                    self.cs_launcher.__setRunId__()
                     self.cs_launcher.launch(force_submit=True)
 
                     if self.cs_launcher.job_failed:
@@ -193,7 +194,7 @@ class cfd_openturns_study:
         results = ()
         if os.path.exists(rspth):
             r = open(rspth, 'r').readlines()
-            d = r[-1].split()
+            d = r[-1].split(',')
             for ed in d:
                 results += (float(ed),)
 
@@ -279,10 +280,6 @@ class cfd_openturns_study:
 
         paramfile = self.cfg.get('study_parameters', 'xmlfile')
         fp = os.path.join(self.study_path, self.case_id, 'DATA', paramfile)
-
-        print("=======================================")
-        print(fp)
-        print("=======================================")
 
         self.case = Case(package=self.pkg, file_name=fp)
         self.case['xmlfile'] = fp

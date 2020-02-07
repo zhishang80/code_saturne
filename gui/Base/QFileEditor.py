@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -50,11 +50,11 @@ except ImportError:
 try:
     # PyQt5
     from code_saturne.Base.QtWidgets import QMainWindow, QMessageBox, \
-        QAction, QFileDialog, QTextEdit, QSizePolicy, QMenu, QMessageBox
+        QAction, QFileDialog, QTextEdit, QPlainTextEdit, QSizePolicy, QMenu, QMessageBox
 except Exception:
     # PyQt4
-    from code_saturne.Base.QtQui import QMainWindow, QMessageBox, \
-        QAction, QFileDialog, QTextEdit, QSizePolicy, QMenu, QMessagBox
+    from code_saturne.Base.QtGui import QMainWindow, QMessageBox, \
+        QAction, QFileDialog, QTextEdit, QPlainTextEdit, QSizePolicy, QMenu, QMessagBox
 
 import resource_base_rc
 
@@ -111,6 +111,113 @@ class HighlightingRule():
 
 
 #-------------------------------------------------------------------------------
+# CodeEditor with line numbering
+#-------------------------------------------------------------------------------
+
+class LineNumberArea(QtWidgets.QWidget):
+
+    def __init__(self, editor):
+        # Handle the python2/python3 differences for super
+        super(LineNumberArea, self).__init__(editor)
+
+        self.editor = editor
+
+    def sizeHint(self):
+        return QtCore.QSize(self.editor.lineNumberAreaWidth(),0)
+
+    def paintEvent(self, event):
+        self.editor.lineNumberAreaPaintEvent(event)
+
+class CodeEditor(QPlainTextEdit):
+    def __init__(self):
+        # Handle the python2/python3 differences for super
+        super(CodeEditor, self).__init__()
+
+        self.lineNumberArea = LineNumberArea(self)
+
+        self.blockCountChanged.connect(self.updateLineNumberAreaWidth)
+        self.updateRequest.connect(self.updateLineNumberArea)
+        self.cursorPositionChanged.connect(self.highlightCurrentLine)
+
+        self.updateLineNumberAreaWidth(0)
+
+
+    def lineNumberAreaWidth(self):
+        digits = 1
+        count = max(1, self.blockCount())
+        while count >= 10:
+            count /= 10
+            digits += 1
+        space = 3 + self.fontMetrics().width('9') * digits
+        return space
+
+
+    def updateLineNumberAreaWidth(self, _):
+        self.setViewportMargins(self.lineNumberAreaWidth(), 0, 0, 0)
+
+
+    def updateLineNumberArea(self, rect, dy):
+
+        if dy:
+            self.lineNumberArea.scroll(0, dy)
+        else:
+            self.lineNumberArea.update(0, rect.y(), self.lineNumberArea.width(),
+                       rect.height())
+
+        if rect.contains(self.viewport().rect()):
+            self.updateLineNumberAreaWidth(0)
+
+
+    def resizeEvent(self, event):
+        # Handle the python2/python3 differences for super
+        super(CodeEditor, self).resizeEvent(event)
+
+        cr = self.contentsRect();
+        self.lineNumberArea.setGeometry(QtCore.QRect(cr.left(), cr.top(),
+                    self.lineNumberAreaWidth(), cr.height()))
+
+
+    def lineNumberAreaPaintEvent(self, event):
+        mypainter = QtGui.QPainter(self.lineNumberArea)
+
+        mypainter.fillRect(event.rect(), QtCore.Qt.lightGray)
+
+        block = self.firstVisibleBlock()
+        blockNumber = block.blockNumber()
+        top = self.blockBoundingGeometry(block).translated(self.contentOffset()).top()
+        bottom = top + self.blockBoundingRect(block).height()
+
+        # Just to make sure I use the right font
+        height = self.fontMetrics().height()
+        while block.isValid() and (top <= event.rect().bottom()):
+            if block.isVisible() and (bottom >= event.rect().top()):
+                number = str(blockNumber + 1)
+                mypainter.setPen(QtCore.Qt.black)
+                mypainter.drawText(0, top, self.lineNumberArea.width(), height,
+                 QtCore.Qt.AlignRight, number)
+
+            block = block.next()
+            top = bottom
+            bottom = top + self.blockBoundingRect(block).height()
+            blockNumber += 1
+
+
+    def highlightCurrentLine(self):
+        extraSelections = []
+
+        if not self.isReadOnly():
+            selection = QTextEdit.ExtraSelection()
+
+            lineColor = QtGui.QColor(QtCore.Qt.yellow).lighter(160)
+
+            selection.format.setBackground(lineColor)
+            selection.format.setProperty(QtGui.QTextFormat.FullWidthSelection, True)
+            selection.cursor = self.textCursor()
+            selection.cursor.clearSelection()
+            extraSelections.append(selection)
+        self.setExtraSelections(extraSelections)
+
+#-------------------------------------------------------------------------------
 # QtextHighlighter class
 #-------------------------------------------------------------------------------
 
@@ -120,29 +227,51 @@ class QtextHighlighter(QtGui.QSyntaxHighlighter):
     """
 
     # ---------------------------------------------------------------
-    def __init__(self, parent):
+    def __init__(self, parent, extension):
 
         QtGui.QSyntaxHighlighter.__init__(self, parent)
         self.parent = parent
         self.highlightingRules = []
 
         # Keywords (C or Fortran)
-        self.kw = ['if', 'else', 'endif', '\#', 'include',
-                   'void', 'int', 'integer', 'double', 'const',
-                   'fprintf', 'bft_printf', 'bft_printf_flush',
-                   'cs_real_t',
-                   'subroutine', 'function', 'def',
-                   'double precision', 'use', 'implicit none',
-                   'allocatable', 'dimension', 'string', 'float',
-                   'allocate', 'deallocate',
-                   'char', 'for', 'while', 'assert',
-                   'continue', 'break', 'switch',
-                   'del', 'pass', 'return', 'true', 'false']
+        fortran_kw = ['if', 'else', 'endif', 'do', 'enddo', 'end',
+                      'implicit none', 'use', 'subroutine', 'function',
+                      'double precision', 'real', 'integer', 'char',
+                      'allocatable', 'allocate', 'deallocate', 'dimension',
+                      'select case']
+
+        c_kw       = ['if', 'else', 'for', 'switch', 'while',
+                      '\#', 'include', 'pass', 'return', 'del', 'delete',
+                      'assert', 'true', 'false', 'continue', 'break',
+                      'fprintf', 'bft_printf', 'bft_printf_flush', 'bft_error',
+                      'cs_real_t', 'cs_lnum_t', 'cs_real_3_t', 'int', 'char',
+                      'string', 'void', 'double', 'const',
+                      'BEGIN_C_DECLS', 'END_C_DECLS']
+
+        py_kw      = ['if', 'elif', 'for', 'range', 'while', 'return', 'def',
+                      'True', 'False']
+
+        self.kw = []
+        # Fortran
+        if extension in ['f90', 'F90', 'F', 'f77']:
+            for kw in fortran_kw:
+                self.kw.append(kw)
+                self.kw.append(kw.upper())
+        # C/C++
+        elif extension in ['c', 'cpp', 'cxx', 'c++']:
+            for kw in c_kw:
+                self.kw.append(kw)
+                self.kw.append(kw.upper())
+        # Python
+        elif extension == 'py':
+            for kw in py_kw:
+                self.kw.append(kw)
+
 
         # Operators
         self.op = ['=', '==', '!=', '<', '>', '<=', '>=',
                    '\+', '-', '\*', '/', '\%', '\*\*',
-                   '\+=', '-=', '\*=', '/=',
+                   '\+=', '-=', '\*=', '/=', '->', '=>',
                    '\^', '\|', '\&', '\|\|', '\&\&']
 
         # Braces
@@ -468,6 +597,7 @@ class QFileEditor(QMainWindow):
 
         # file attributes
         self.filename = ""
+        self.file_extension  = ""
 
         self.mainWidget = FormWidget(self, [self.explorer, self.textEdit])
         self.setCentralWidget(self.mainWidget)
@@ -493,7 +623,7 @@ class QFileEditor(QMainWindow):
             _tab_string += ' '
 
         # Main text zone
-        textEdit = QTextEdit()
+        textEdit = CodeEditor()
         textEdit.setFont(base_font)
         textEdit.textChanged.connect(self.updateFileState)
         textEdit.setReadOnly(self.readOnly)
@@ -828,6 +958,8 @@ class QFileEditor(QMainWindow):
         Update file state (saved or not)
         """
         self.saved  = new_state
+        # To ensure syntax highlighting while modifying the text
+        self.textEdit.viewport().update()
     # ---------------------------------------------------------------
 
 
@@ -852,11 +984,12 @@ class QFileEditor(QMainWindow):
 
         if self.filename != None and self.filename != '':
             file = open(self.filename,'r')
+            self.file_extension = self.filename.split('.')[-1]
 
             self.newFile()
             with file:
                 text = file.read()
-                self.textEdit.setText(text)
+                self.textEdit.setPlainText(text)
                 self.updateFileState(True)
 
     def openFileForAction(self, fn = None):
@@ -877,7 +1010,7 @@ class QFileEditor(QMainWindow):
         self.opened = True
         self.updateFileState(False)
         if self.useHighlight:
-            hl = QtextHighlighter(self.textEdit)
+            hl = QtextHighlighter(self.textEdit.document(), self.file_extension)
         self.textEdit.show()
     # ---------------------------------------------------------------
 
@@ -930,7 +1063,7 @@ class QFileEditor(QMainWindow):
         Close an opened file
         """
 
-        if self.saved == False:
+        if self.saved == False and self.readOnly == False:
             choice = QMessageBox.question(self, 'Built-in editor',
                                           'File changed.\nDo you want to save?',
                                           QMessageBox.Yes | QMessageBox.No)
@@ -943,7 +1076,7 @@ class QFileEditor(QMainWindow):
         self.opened = False
 
         self.filename = ''
-        self.textEdit.setText('')
+        self.textEdit.setPlainText('')
     # ---------------------------------------------------------------
 
 
@@ -967,14 +1100,17 @@ class QFileEditor(QMainWindow):
                               self.saveGeometry())
 
             self.close()
+            return 0
         else:
-            pass
+            return 1
     # ---------------------------------------------------------------
 
     # ---------------------------------------------------------------
     def closeEvent(self, event):
 
-        self.closeApplication()
+        decision = self.closeApplication()
+        if decision == 1:
+            event.ignore()
     # ---------------------------------------------------------------
 
 

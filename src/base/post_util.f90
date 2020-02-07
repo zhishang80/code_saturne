@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -153,10 +153,7 @@ if (iscalt.gt.0) then
     inc = 1
     iccocg = 1
 
-    call field_gradient_scalar &
-      (ivarfl(ivar), 0, imrgra, inc,         &
-       iccocg,                               &
-       grad)
+    call field_gradient_scalar(ivarfl(ivar), 0, 0, inc, iccocg, grad)
 
     ! Compute reconstructed temperature
 
@@ -205,7 +202,8 @@ if (iscalt.gt.0) then
                 - flumab*cpp/srfbn*(coefap(ifac) + coefbp(ifac)*theipb(ifac))
     ! here bflux = 0 if current face is coupled
 
-    if (vcopt%icoupl.gt.0) then
+    if (vcopt%icoupl.gt.0.and.ntpabs.gt.1) then
+      ! FIXME exchange coefs not computed at start of calculation
       if (cpl_faces(ifac)) then
         heq = hextp(ifac) * hintp(ifac) / ((hextp(ifac) + hintp(ifac))*srfbn)
         bflux(iloc) = heq*(theipb(ifac)-dist_theipb(ifac))
@@ -359,10 +357,7 @@ if (itstar.ge.0 .and. itplus.ge.0) then
     inc = 1
     iccocg = 1
 
-    call field_gradient_scalar &
-      (ivarfl(ivar), 0, imrgra, inc,         &
-       iccocg,                               &
-       grad)
+    call field_gradient_scalar(ivarfl(ivar), 0, 0, inc, iccocg, grad)
 
     ! Compute reconstructed temperature
 
@@ -417,7 +412,8 @@ if (itstar.ge.0 .and. itplus.ge.0) then
     numer = (cofafp(ifac) + cofbfp(ifac)*theipb(ifac)) * distb(ifac)
     ! here numer = 0 if current face is coupled
 
-    if (vcopt%icoupl.gt.0) then
+    if (vcopt%icoupl.gt.0.and.ntpabs.gt.1) then
+      ! FIXME exchange coefs not computed at start of calculation
       if (cpl_faces(ifac)) then
         heq = hextp(ifac) * hintp(ifac) / ((hextp(ifac) + hintp(ifac))*srfbn)
         numer = heq*(theipb(ifac)-dist_theipb(ifac)) * distb(ifac)

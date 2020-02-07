@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -42,36 +42,11 @@
  * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_mem.h"
-#include "bft_error.h"
-#include "bft_printf.h"
-
-#include "cs_base.h"
-#include "cs_boundary_zone.h"
-#include "cs_field.h"
-#include "cs_field_pointer.h"
-#include "cs_field_operator.h"
-#include "cs_elec_model.h"
-#include "cs_log.h"
-#include "cs_mesh.h"
-#include "cs_mesh_location.h"
-#include "cs_mesh_quantities.h"
-#include "cs_mesh_quantities.h"
-#include "cs_notebook.h"
-#include "cs_parameters.h"
-#include "cs_physical_model.h"
-#include "cs_time_step.h"
-#include "cs_selector.h"
+#include "cs_headers.h"
 
 #if defined(HAVE_MEDCOUPLING_LOADER)
 #include "cs_medcoupling_remapper.hxx"
 #endif
-
-/*----------------------------------------------------------------------------
- * Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -115,11 +90,15 @@ cs_user_boundary_conditions(int         nvar,
   if (true)
     return;
 
-  /* Getting the value of a user defined parameter t_inlet */
+  /* Get a user parameter defined in the GUI notebook */
+  /*! [user_defined_param] */
   cs_real_t t_bnd = cs_notebook_parameter_value_by_name("t_inlet");
+  /*! [user_defined_param] */
 
 
-  /* Variables needed for boundary condition sub-selection */
+  /* Define some variables needed for the boundary condition specification */
+
+  /*! [bc_param] */
   const cs_lnum_t n_b_faces = cs_glob_mesh->n_b_faces;
 
 
@@ -130,6 +109,9 @@ cs_user_boundary_conditions(int         nvar,
   cs_lnum_t  nelts = 0;
   cs_lnum_t *lstelt = NULL;
 
+  /*! [bc_param] */
+
+  /*! [apply_bc] */
   BFT_MALLOC(lstelt, n_b_faces, cs_lnum_t);
 
   cs_selector_get_b_face_list("inlet", &nelts, lstelt);
@@ -142,6 +124,7 @@ cs_user_boundary_conditions(int         nvar,
   }
 
   BFT_FREE(lstelt);
+  /*! [apply_bc] */
 
 }
 

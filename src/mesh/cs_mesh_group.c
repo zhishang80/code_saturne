@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -873,7 +873,7 @@ cs_mesh_group_combine_classes(cs_mesh_t   *mesh,
 
     for (i = 0; i < n_elts; i++) {
       cs_lnum_t k, l, n;
-      _Bool is_same = true;
+      bool is_same = true;
       j = order[i];
       n = gc_id_idx[j+1] - gc_id_idx[j];
       if (n != n_prev)

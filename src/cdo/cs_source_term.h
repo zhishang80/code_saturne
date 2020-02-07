@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -52,10 +52,25 @@ BEGIN_C_DECLS
  * Type definitions
  *============================================================================*/
 
+/*! \struct cs_source_term_boussinesq_t
+ *  \brief Structure storing the parameters related to the Boussinesq source
+ *         term
+ */
+
+typedef struct {
+
+  cs_real_t    g[3];      /* gravity vector */
+  cs_real_t    rho0;      /* reference value for the mass density */
+  cs_real_t    beta;      /* dilatation coefficient */
+  cs_real_t    var0;      /* reference value of the variable */
+  cs_real_t   *var;       /* array of values of the variable */
+
+} cs_source_term_boussinesq_t;
+
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *
  * \param[in]      source     pointer to a cs_xdef_term_t structure
  * \param[in]      cm         pointer to a cs_cell_mesh_t structure
@@ -149,7 +164,7 @@ cs_source_term_get_flag(const cs_xdef_t  *st);
  */
 /*----------------------------------------------------------------------------*/
 
-cs_flag_t
+cs_eflag_t
 cs_source_term_init(cs_param_space_scheme_t      space_scheme,
                     const int                    n_source_terms,
                     cs_xdef_t            *const *source_terms,
@@ -187,44 +202,8 @@ cs_source_term_compute_cellwise(const int                    n_source_terms,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Compute the contribution related to a source term in the case of
- *         an input data which is a density
- *
- * \param[in]      loc        describe where is located the associated DoF
- * \param[in]      source     pointer to a cs_xdef_t structure
- * \param[in]      time_eval  physical time at which one evaluates the term
- * \param[in, out] p_values   pointer to the computed values (allocated if NULL)
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_source_term_compute_from_density(cs_flag_t                loc,
-                                    const cs_xdef_t         *source,
-                                    cs_real_t                time_eval,
-                                    double                  *p_values[]);
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief  Compute the contribution related to a source term in the case of
- *         an input data which is a potential
- *
- * \param[in]      loc        describe where is located the associated DoF
- * \param[in]      source     pointer to a cs_xdef_t structure
- * \param[in]      time_eval  physical time at which one evaluates the term
- * \param[in, out] p_values   pointer to the computed values (allocated if NULL)
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_source_term_compute_from_potential(cs_flag_t                loc,
-                                      const cs_xdef_t         *source,
-                                      cs_real_t                time_eval,
-                                      double                  *p_values[]);
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices by a constant
  *         value.
  *         A discrete Hodge operator has to be computed before this call and
@@ -250,7 +229,7 @@ cs_source_term_pvsp_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices by an
  *         analytical function.
  *         A discrete Hodge operator has to be computed before this call and
@@ -276,7 +255,7 @@ cs_source_term_pvsp_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by a value.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -299,7 +278,7 @@ cs_source_term_dcsd_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a vector-valued density defined at dual cells by a value.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -322,7 +301,7 @@ cs_source_term_dcvd_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an array.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -345,7 +324,30 @@ cs_source_term_dcsd_by_array(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
+ *         Case of a scalar density defined at dual cells by a DoF function.
+ *
+ * \param[in]      source     pointer to a cs_xdef_t structure
+ * \param[in]      cm         pointer to a cs_cell_mesh_t structure
+ * \param[in]      time_eval  physical time at which one evaluates the term
+ * \param[in, out] cb         pointer to a cs_cell_builder_t structure
+ * \param[in, out] input      pointer to an element cast on-the-fly (or NULL)
+ * \param[in, out] values     pointer to the computed values
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_source_term_dcsd_by_dof_func(const cs_xdef_t           *source,
+                                const cs_cell_mesh_t      *cm,
+                                cs_real_t                  time_eval,
+                                cs_cell_builder_t         *cb,
+                                void                      *input,
+                                double                    *values);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the contribution for a cell related to a source term and
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use the barycentric approximation as quadrature to evaluate the
@@ -371,7 +373,7 @@ cs_source_term_dcsd_bary_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use a the barycentric approximation as quadrature to evaluate the
@@ -397,7 +399,7 @@ cs_source_term_dcsd_q1o1_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use a ten-point quadrature rule to evaluate the integral.
@@ -423,7 +425,7 @@ cs_source_term_dcsd_q10o2_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at dual cells by an analytical
  *         function.
  *         Use a five-point quadrature rule to evaluate the integral.
@@ -451,7 +453,7 @@ cs_source_term_dcsd_q5o3_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices and cells
  *         by a constant value.
  *         A discrete Hodge operator has to be computed before this call and
@@ -477,7 +479,7 @@ cs_source_term_vcsp_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar potential defined at primal vertices and cells by
  *         an analytical function.
  *         A discrete Hodge operator has to be computed before this call and
@@ -503,7 +505,7 @@ cs_source_term_vcsp_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density (sd) defined on primal cells by a value.
  *         Case of face-based schemes
  *
@@ -523,6 +525,54 @@ cs_source_term_pcsd_by_value(const cs_xdef_t           *source,
                              cs_cell_builder_t         *cb,
                              void                      *input,
                              double                    *values);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the contribution for a cell related to a source term and
+ *         add it to the given array of values.
+ *         Case of a density defined on primal cells by a DoF function.
+ *         Case of face-based schemes
+ *
+ * \param[in]      source     pointer to a cs_xdef_t structure
+ * \param[in]      cm         pointer to a cs_cell_mesh_t structure
+ * \param[in]      time_eval  physical time at which one evaluates the term
+ * \param[in, out] cb         pointer to a cs_cell_builder_t structure
+ * \param[in, out] input      pointer to an element cast on-the-fly (or NULL)
+ * \param[in, out] values     pointer to the computed value
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_source_term_pcsd_by_dof_func(const cs_xdef_t           *source,
+                                const cs_cell_mesh_t      *cm,
+                                cs_real_t                  time_eval,
+                                cs_cell_builder_t         *cb,
+                                void                      *input,
+                                double                    *values);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the contribution for a cell related to a source term and
+ *         add it to the given array of values.
+ *         Case of a density defined on primal cells by a DoF function.
+ *         Case of vector-valued face-based schemes
+ *
+ * \param[in]      source     pointer to a cs_xdef_t structure
+ * \param[in]      cm         pointer to a cs_cell_mesh_t structure
+ * \param[in]      time_eval  physical time at which one evaluates the term
+ * \param[in, out] cb         pointer to a cs_cell_builder_t structure
+ * \param[in, out] input      pointer to an element cast on-the-fly (or NULL)
+ * \param[in, out] values     pointer to the computed value
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_source_term_pcvd_by_dof_func(const cs_xdef_t           *source,
+                                const cs_cell_mesh_t      *cm,
+                                cs_real_t                  time_eval,
+                                cs_cell_builder_t         *cb,
+                                void                      *input,
+                                double                    *values);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -552,7 +602,7 @@ cs_source_term_pcvd_by_value(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at primal cells by an analytical
  *         function.
  *         Use the barycentric approximation as quadrature to evaluate the
@@ -603,7 +653,7 @@ cs_source_term_pcsd_by_analytic(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a scalar density defined at primal cells by an array.
  *
  * \param[in]      source     pointer to a cs_xdef_t structure
@@ -626,7 +676,7 @@ cs_source_term_pcsd_by_array(const cs_xdef_t           *source,
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Compute the contribution for a cell related to a source term and
- *         add it the given array of values.
+ *         add it to the given array of values.
  *         Case of a vector-valued density defined at primal cells by an
  *         analytical function.
  *         Use the barycentric approximation as quadrature to evaluate the

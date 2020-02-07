@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -54,7 +54,7 @@ from code_saturne.model.Common import GuiParam
 from code_saturne.Base.QtPage import ComboModel, DoubleValidator
 from code_saturne.model.LocalizationModelNeptune import LocalizationModel
 from code_saturne.model.LocalizationModel import Zone
-from BoundaryConditionsNeptune import Ui_BoundaryConditions
+from code_saturne.Pages.BoundaryConditionsNeptune import Ui_BoundaryConditions
 from code_saturne.model.BoundaryNeptune import *
 from code_saturne.model.BoundaryConditionsModelNeptune import *
 from code_saturne.model.MainFieldsModel import MainFieldsModel

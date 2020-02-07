@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -64,8 +64,6 @@ BEGIN_C_DECLS
  * \param[out] tempct   thermal charactersitic time
  * \param[in]  gradpr   pressure gradient
  * \param[in]  gradvf   fluid velocity gradient
- * \param[in]  energi   work array
- * \param[in]  dissip   work array
  */
 /*----------------------------------------------------------------------------*/
 
@@ -78,9 +76,7 @@ cs_lagr_car(int              iprev,
             cs_real_33_t     bx[],
             cs_real_t        tempct[],
             cs_real_3_t      gradpr[],
-            cs_real_33_t     gradvf[],
-            cs_real_t        energi[],
-            cs_real_t        dissip[]);
+            cs_real_33_t     gradvf[]);
 
 /*----------------------------------------------------------------------------*/
 

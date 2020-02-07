@@ -2,7 +2,7 @@ dnl-----------------------------------------------------------------------------
 dnl
 dnl This file is part of Code_Saturne, a general-purpose CFD tool.
 dnl
-dnl Copyright (C) 1998-2019 EDF S.A.
+dnl Copyright (C) 1998-2020 EDF S.A.
 dnl
 dnl This program is free software; you can redistribute it and/or modify it under
 dnl the terms of the GNU General Public License as published by the Free Software
@@ -225,7 +225,7 @@ Otherwise, you need to provide a MED 3.0 library and development headers.])
   unset saved_LIBS
 
   case $host_os in
-    mingw32)
+    mingw64)
       med_prefix=`cygpath --path --windows "$with_med"`;;
     *)
       ;;

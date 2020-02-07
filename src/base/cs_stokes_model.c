@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -55,6 +55,7 @@
 #include "cs_physical_model.h"
 #include "cs_mesh_location.h"
 #include "cs_time_step.h"
+#include "cs_turbulence_model.h"
 
 /*----------------------------------------------------------------------------
  * Header for the current file
@@ -352,7 +353,7 @@ cs_f_stokes_options_get_pointers(int     **ivisse,
 
 /*----------------------------------------------------------------------------
  *!
- * \brief Provide acces to cs_glob_stokes_model
+ * \brief Provide access to cs_glob_stokes_model
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/
@@ -403,7 +404,7 @@ cs_stokes_model_log_setup(void)
      _("\n"
        "Stokes model\n"
        "------------\n\n"
-       "    idilat:      %14d (0: Boussines approximation\n"
+       "    idilat:      %14d (0: Boussinesq approximation\n"
        "                                 1: without unsteady term\n"
        "                                    in the continuity equation\n"
        "                                 2: with unsteady term in\n"
@@ -425,25 +426,49 @@ cs_stokes_model_log_setup(void)
        "    iphydr:      %14d (1: account for explicit\n"
        "                                    balance between pressure\n"
        "                                    gradient, gravity source\n"
-       "                                    terms, and head losses\n"
-       "                                  2: compute a hydrostatic\n"
-       "                                     pressure which is\n"
-       "                                     in balance with buoyancy)\n"
-       "    icalhy:      %14d (1: compute hydrostatic\n"
-       "                                    pressure for dirichlet\n"
-       "                                    conditions for pressure\n"
-       "                                    on outlet)\n"
-       "    iprco :      %14d (1: pressure-continuity)\n"
+       "                                    terms, and head losses)\n"),
+     cs_glob_stokes_model->idilat,
+     cs_glob_porous_model,
+     cs_glob_stokes_model->iphydr);
+
+  /* Sub options of "iphydr=1" */
+  if (cs_glob_stokes_model->iphydr == 1) {
+    cs_log_printf
+      (CS_LOG_SETUP,
+       _("      icalhy:    %14d (1: compute hydrostatic\n"
+         "                                    pressure for dirichlet\n"
+         "                                    conditions for pressure\n"
+         "                                    on outlet)\n"
+         "      igpust:    %14d (1: take user momentum source\n"
+         "                                    terms into account\n"
+         "                                    in the hydrostatic\n"
+         "                                    pressure computation)\n"),
+       cs_glob_stokes_model->icalhy,
+       cs_glob_stokes_model->igpust);
+
+    const cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
+    if (turb_model != NULL) {
+      if (turb_model->order == CS_TURB_SECOND_ORDER)
+        cs_log_printf(CS_LOG_SETUP,
+         _("      igprij:    %14d (1: take div(rho R)\n"
+           "                                    terms into account\n"
+           "                                    in the hydrostatic\n"
+           "                                    pressure computation)\n"),
+         cs_glob_stokes_model->igprij);
+    }
+
+  }
+
+  cs_log_printf
+    (CS_LOG_SETUP,
+     _("    iprco :      %14d (1: pressure-continuity)\n"
        "    ipucou:      %14d (1: reinforced u-p coupling)\n"
        "    nterup:      %14d (n: n sweeps on navsto for\n"
        "                                    velocity/pressure coupling)\n"),
-     cs_glob_stokes_model->idilat,
-     cs_glob_porous_model,
-     cs_glob_stokes_model->iphydr,
-     cs_glob_stokes_model->icalhy,
      cs_glob_stokes_model->iprco,
      cs_glob_stokes_model->ipucou,
      cs_glob_piso->nterup);
+
 
   cs_log_printf
     (CS_LOG_SETUP,

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -88,23 +88,6 @@ static bool _setup_read = false;
 /*============================================================================
  * Public function definitions
  *============================================================================*/
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief  Indicate if an XML file has been loaded.
- *
- * \return  1 if an XML file has been loaded, 0 otherwise
- */
-/*----------------------------------------------------------------------------*/
-
-int
-cs_gui_file_is_loaded(void)
-{
-  int retval = 0;
-  if (_setup_read)
-    retval = 1;
-  return retval;
-}
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -260,7 +243,7 @@ cs_gui_is_equal_real(cs_real_t v1,
  * \brief  Update an integer value based on a tree node
  *
  * If no node is present, the initial value is unchanged.
- * If the node is present but the value missing, an error is returne.
+ * If the node is present but the value missing, an error is returned.
  *
  * \param[in]       node    node whose value is queried
  * \param[in, out]  value   queried value
@@ -293,7 +276,7 @@ cs_gui_node_get_int(cs_tree_node_t  *node,
  * \brief  Update an real value based on a tree node
  *
  * If no node is present, the initial value is unchanged.
- * If the node is present but the value missing, an error is returne.
+ * If the node is present but the value missing, an error is returned.
  *
  * \param[in]       node    node whose value is queried
  * \param[in, out]  value   queried value
@@ -411,7 +394,7 @@ cs_gui_node_get_tag(cs_tree_node_t  *node,
  * \brief  Update an integer value based on a tree's child node
  *
  * If no node is present, the initial value is unchanged.
- * If the node is present but the value missing, an error is returne.
+ * If the node is present but the value missing, an error is returned.
  *
  * \param[in]       node        node whose value is queried
  * \param[in]       child_name  name of child node
@@ -448,7 +431,7 @@ cs_gui_node_get_child_int(cs_tree_node_t  *node,
  * \brief  Update an integer value based on a tree's child node
  *
  * If no node is present, the initial value is unchanged.
- * If the node is present but the value missing, an error is returne.
+ * If the node is present but the value missing, an error is returned.
  *
  * \param[in]       node        node whose value is queried
  * \param[in]       child_name  name of child node

@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -481,23 +481,6 @@ cs_grid_dump(const cs_grid_t  *g);
 void
 cs_grid_set_matrix_tuning(cs_matrix_fill_type_t  fill_type,
                           int                    max_level);
-
-/*----------------------------------------------------------------------------
- * Force matrix variant selection for multigrid coarse meshes.
- *
- * The finest mesh (level 0) is handled by the default options,
- * so only coarser meshes are considered here.
- *
- * parameters:
- *   fill_type <-- associated matrix fill type
- *   level     <-- level for which variant is assiged
- *   mv        <-- matrix variant to assign (NULL to unassign)
- *----------------------------------------------------------------------------*/
-
-void
-cs_grid_set_matrix_variant(cs_matrix_fill_type_t       fill_type,
-                           int                         level,
-                           const cs_matrix_variant_t  *mv);
 
 /*----------------------------------------------------------------------------*/
 

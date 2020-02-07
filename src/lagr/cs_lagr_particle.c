@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -97,7 +97,7 @@ BEGIN_C_DECLS
 
 /* keys to sort attributes by type.
 
-   rvar real values at current an previous time steps
+   rvar real values at current and previous time steps
    ivar integer values at current and previous time steps
    rprp real properties at current an previous time steps
    iprp integer properties at current and previous time steps
@@ -169,11 +169,23 @@ const char *cs_lagr_attribute_name[] = {
   "velocity_seen",
   "tr_truncate",
   "tr_reposition",
+
+  /* Arrays for 2nd order scheme */
   "turb_state_1",
   "pred_velocity",
   "pred_velocity_seen",
   "v_gauss",
   "br_gauss",
+
+  /* Non-spherical particles submodel additoinal parameters */
+  "shape",
+  "orientation",
+  "radii",
+  "angular_vel",
+  "euler",
+  "shape_param",
+
+  /* Deposition submodel additional parameters */
   "yplus",
   "interf",
   "neighbor_face_id",
@@ -703,6 +715,30 @@ cs_lagr_particle_attr_initialize(void)
   attr_keys[CS_LAGR_DIAMETER][0] = CS_LAGR_P_RVAR_TS;
   attr_keys[CS_LAGR_DIAMETER][1] = ++loc_count;
 
+  /* Non-sphere model
+   * TODO activate only required arrays */
+  if (lagr_model->shape != 0) {
+    attr_keys[CS_LAGR_SHAPE][0] = CS_LAGR_P_RPRP;
+    attr_keys[CS_LAGR_SHAPE][1] = ++loc_count;
+
+    attr_keys[CS_LAGR_ORIENTATION][1] = ++loc_count;
+    attr_keys[CS_LAGR_ORIENTATION][2] = 3;
+
+    attr_keys[CS_LAGR_RADII][0] = CS_LAGR_P_RPRP;
+    attr_keys[CS_LAGR_RADII][1] = ++loc_count;
+    attr_keys[CS_LAGR_RADII][2] = 3;
+
+    attr_keys[CS_LAGR_ANGULAR_VEL][1] = ++loc_count;
+    attr_keys[CS_LAGR_ANGULAR_VEL][2] = 3;
+
+    attr_keys[CS_LAGR_EULER][1] = ++loc_count;
+    attr_keys[CS_LAGR_EULER][2] = 4;
+
+    attr_keys[CS_LAGR_SHAPE_PARAM][0] = CS_LAGR_P_RPRP;
+    attr_keys[CS_LAGR_SHAPE_PARAM][1] = ++loc_count;
+    attr_keys[CS_LAGR_SHAPE_PARAM][2] = 4;
+  }
+
   attr_keys[CS_LAGR_COORDS][1] = ++loc_count;
   attr_keys[CS_LAGR_COORDS][2] = 3;
 
@@ -859,9 +895,13 @@ cs_lagr_particle_attr_initialize(void)
     attr_keys[CS_LAGR_STAT_CLASS][1] = ++loc_count;
   }
 
-  if (lagr_model->n_particle_aggregates > 0) {
-    attr_keys[CS_LAGR_PARTICLE_AGGREGATE][0] = CS_LAGR_P_IPRP;
-    attr_keys[CS_LAGR_PARTICLE_AGGREGATE][1] = ++loc_count;
+  if (lagr_model->agglomeration == 1 ||
+      lagr_model->fragmentation == 1 ) {
+    attr_keys[CS_LAGR_AGGLO_CLASS_ID][0] = CS_LAGR_P_IPRP;
+    attr_keys[CS_LAGR_AGGLO_CLASS_ID][1] = ++loc_count;
+
+    attr_keys[CS_LAGR_AGGLO_FRACTAL_DIM][0] = CS_LAGR_P_RPRP;
+    attr_keys[CS_LAGR_AGGLO_FRACTAL_DIM][1] = ++loc_count;
   }
 
   if (lagr_model->n_user_variables > 0) {

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -40,7 +40,6 @@ subroutine cfprop
 !===============================================================================
 
 use paramx
-use ihmpre
 use dimens
 use numvar
 use optcal
@@ -85,9 +84,7 @@ cv0 = 0.d0
 call cs_cf_set_thermo_options
 
 ! Variability of volumetric molecular viscosity (gui setting)
-if (iihmpr.eq.1) then
-  call csvvva(iviscv)
-endif
+call csvvva(iviscv)
 
 ! User settings: variability of molecular thermal conductivity and volume
 ! viscosity

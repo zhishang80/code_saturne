@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -53,7 +53,7 @@ from code_saturne.Base.QtWidgets import *
 from code_saturne.model.Common import GuiParam
 from code_saturne.Base.QtPage import ComboModel, DoubleValidator, IntValidator
 from code_saturne.Base.QtPage import from_qvariant, to_text_string
-from TimeStep import Ui_TimeStep
+from code_saturne.Pages.TimeStep import Ui_TimeStep
 from code_saturne.model.TimeStepModelNeptune import TimeStepModel
 
 #-------------------------------------------------------------------------------

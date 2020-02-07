@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -95,7 +95,7 @@ cs_equation_by_name(const char    *eqname);
  */
 /*----------------------------------------------------------------------------*/
 
-_Bool
+bool
 cs_equation_has_field_name(const cs_equation_t  *eq,
                            const char           *fld_name);
 
@@ -196,6 +196,22 @@ cs_equation_get_field_id(const cs_equation_t    *eq);
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Return the global number of degrees of freedom associated to this
+ *         cs_equation_t structure
+ *
+ * \param[in]  eq       pointer to a cs_equation_t structure
+ * \param[in]  cdoq     pointer to a cs_cdo_quantities_t structure
+ *
+ * \return a global number of degrees of freedom (DoFs)
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_gnum_t
+cs_equation_get_global_n_dofs(const cs_equation_t         *eq,
+                              const cs_cdo_quantities_t   *cdoq);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief  Return the field structure for the (normal) boundary flux associated
  *         to a cs_equation_t structure
  *
@@ -272,7 +288,7 @@ cs_equation_get_scheme_context(const cs_equation_t    *eq);
  */
 /*----------------------------------------------------------------------------*/
 
-_Bool
+bool
 cs_equation_is_steady(const cs_equation_t    *eq);
 
 /*----------------------------------------------------------------------------*/
@@ -285,7 +301,7 @@ cs_equation_is_steady(const cs_equation_t    *eq);
  */
 /*----------------------------------------------------------------------------*/
 
-_Bool
+bool
 cs_equation_uses_new_mechanism(const cs_equation_t    *eq);
 
 /*----------------------------------------------------------------------------*/
@@ -413,9 +429,10 @@ cs_equation_set_sles(void);
  * \param[in]  connect          pointer to a cs_cdo_connect_t structure
  * \param[in]  quant            pointer to additional mesh quantities struct.
  * \param[in]  time_step        pointer to a time step structure
+ * \param[in]  eb_scheme_flag   metadata for Eb schemes
+ * \param[in]  fb_scheme_flag   metadata for Fb schemes
  * \param[in]  vb_scheme_flag   metadata for Vb schemes
  * \param[in]  vcb_scheme_flag  metadata for V+C schemes
- * \param[in]  fb_scheme_flag   metadata for Fb schemes
  * \param[in]  hho_scheme_flag  metadata for HHO schemes
  */
 /*----------------------------------------------------------------------------*/
@@ -424,9 +441,10 @@ void
 cs_equation_set_shared_structures(const cs_cdo_connect_t      *connect,
                                   const cs_cdo_quantities_t   *quant,
                                   const cs_time_step_t        *time_step,
+                                  cs_flag_t                    eb_scheme_flag,
+                                  cs_flag_t                    fb_scheme_flag,
                                   cs_flag_t                    vb_scheme_flag,
                                   cs_flag_t                    vcb_scheme_flag,
-                                  cs_flag_t                    fb_scheme_flag,
                                   cs_flag_t                    hho_scheme_flag);
 
 /*----------------------------------------------------------------------------*/
@@ -436,6 +454,7 @@ cs_equation_set_shared_structures(const cs_cdo_connect_t      *connect,
  *
  * \param[in]  vb_scheme_flag   metadata for Vb schemes
  * \param[in]  vcb_scheme_flag  metadata for V+C schemes
+ * \param[in]  eb_scheme_flag   metadata for Eb schemes
  * \param[in]  fb_scheme_flag   metadata for Fb schemes
  * \param[in]  hho_scheme_flag  metadata for HHO schemes
  */
@@ -444,6 +463,7 @@ cs_equation_set_shared_structures(const cs_cdo_connect_t      *connect,
 void
 cs_equation_unset_shared_structures(cs_flag_t    vb_scheme_flag,
                                     cs_flag_t    vcb_scheme_flag,
+                                    cs_flag_t    eb_scheme_flag,
                                     cs_flag_t    fb_scheme_flag,
                                     cs_flag_t    hho_scheme_flag);
 
@@ -470,7 +490,7 @@ cs_equation_set_range_set(const cs_cdo_connect_t   *connect);
  */
 /*----------------------------------------------------------------------------*/
 
-_Bool
+bool
 cs_equation_set_functions(void);
 
 /*----------------------------------------------------------------------------*/
@@ -488,18 +508,18 @@ cs_equation_create_fields(void);
  *         Set the initialize condition to all variable fields associated to
  *         each cs_equation_t structure.
  *
- * \param[in]  mesh      pointer to a cs_mesh_t structure
- * \param[in]  connect   pointer to a cs_cdo_connect_t structure
- * \param[in]  quant     pointer to a cs_cdo_quantities_t structure
- * \param[in]  ts        pointer to a cs_time_step_t structure
+ * \param[in]       mesh      pointer to a cs_mesh_t structure
+ * \param[in]       ts        pointer to a cs_time_step_t structure
+ * \param[in]       quant     pointer to a cs_cdo_quantities_t structure
+ * \param[in, out]  connect   pointer to a cs_cdo_connect_t structure
  */
 /*----------------------------------------------------------------------------*/
 
 void
 cs_equation_initialize(const cs_mesh_t             *mesh,
-                       const cs_cdo_connect_t      *connect,
+                       const cs_time_step_t        *ts,
                        const cs_cdo_quantities_t   *quant,
-                       const cs_time_step_t        *ts);
+                       cs_cdo_connect_t            *connect);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -684,17 +704,19 @@ cs_equation_get_type(const cs_equation_t    *eq);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  For a given equation, retrieve an array of values related to each
- *         face of the mesh for the unknowns
+ * \brief  For a given equation, retrieve the related cellwise builder
+ *         structures: cs_cell_builder_t and cs_cell_system_t structures
  *
- * \param[in]   eq        pointer to a \ref cs_equation_t structure
- *
- * \return a pointer to an array of face values
+ * \param[in]   eq       pointer to a \ref cs_equation_t structure
+ * \param[out]  cb       pointer to a pointer on a cs_cell_sys_t structure
+ * \param[out]  csys     pointer to a pointer on a cs_cell_builder_t structure
  */
 /*----------------------------------------------------------------------------*/
 
-cs_real_t *
-cs_equation_get_face_values(const cs_equation_t    *eq);
+void
+cs_equation_get_cellwise_builders(const cs_equation_t    *eq,
+                                  cs_cell_sys_t         **csys,
+                                  cs_cell_builder_t     **cb);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -713,6 +735,34 @@ cs_equation_get_cell_values(const cs_equation_t    *eq);
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  For a given equation, retrieve an array of values related to each
+ *         face of the mesh for the unknowns
+ *
+ * \param[in]   eq        pointer to a \ref cs_equation_t structure
+ *
+ * \return a pointer to an array of face values
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_real_t *
+cs_equation_get_face_values(const cs_equation_t    *eq);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  For a given equation, retrieve an array of values related to each
+ *         edge of the mesh for the unknowns
+ *
+ * \param[in]   eq        pointer to a \ref cs_equation_t structure
+ *
+ * \return a pointer to an array of edge values
+ */
+/*----------------------------------------------------------------------------*/
+
+cs_real_t *
+cs_equation_get_edge_values(const cs_equation_t    *eq);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  For a given equation, retrieve an array of values related to each
  *         vertex of the mesh for the unknowns
  *
  * \param[in]   eq        pointer to a \ref cs_equation_t structure
@@ -723,6 +773,24 @@ cs_equation_get_cell_values(const cs_equation_t    *eq);
 
 cs_real_t *
 cs_equation_get_vertex_values(const cs_equation_t    *eq);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the integral over the domain of the variable field
+ *         associated to the given equation.
+ *
+ * \param[in]      connect    pointer to a \ref cs_cdo_connect_t structure
+ * \param[in]      cdoq       pointer to a \ref cs_cdo_quantities_t structure
+ * \param[in]      eq         pointer to a \ref cs_equation_t structure
+ * \param[in, out] integral   result of the computation
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_equation_integrate_variable(const cs_cdo_connect_t     *connect,
+                               const cs_cdo_quantities_t  *cdoq,
+                               const cs_equation_t        *eq,
+                               cs_real_t                  *result);
 
 /*----------------------------------------------------------------------------*/
 /*!

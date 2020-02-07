@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -85,7 +85,7 @@ integer          ivar  , ivers(1), f_id
 integer          ierror, itysup, nbval
 integer          nberro, t_id
 integer          nfmtru
-integer          jale, jcavit, jvolfl
+integer          jale, jvolfl
 integer          ival(1)
 double precision rval(1)
 
@@ -121,7 +121,7 @@ cindfp='YY'
 ! 1. OUVERTURE DU FICHIER OU STOP
 !===============================================================================
 
-ficsui = 'main'
+ficsui = 'main.csc'
 call restart_create(ficsui, '', 0, rp)
 
 ! ---> Debut de la lecture
@@ -297,7 +297,9 @@ if (iturbo.eq.2) then
   if (nberro.eq.0)  write(nfecra,2412) ttpmob
 endif
 
-call turbomachinery_restart_read(rp)
+if (iturbo.ne.0) then
+  call turbomachinery_restart_read(rp)
+endif
 
 ! Fin de la lecture des options
 write(nfecra,1499)
@@ -338,6 +340,7 @@ if (ichemistry.gt.0.or.iaerosol.gt.0) then
   rubriq = 'atmospheric_chem'
   itysup = 0
   nbval  = 1
+  ival(1) = 1
   call restart_read_section_int_t(rp,rubriq,itysup,nbval,ival,ierror)
   init_at_chem = ival(1)
   if (ierror.eq.0.and.init_at_chem.gt.0) then
@@ -719,25 +722,6 @@ return
 '@      rotor/stator coupling method.                         ',/,&
 '@    The calculation will be executed with the previous      ',/,&
 '@      moving mesh moment initialized to TTCMOB = ',E12.4     ,/,&
-'@    Please check the integrity of the file used as          ',/,&
-'@        restart file, however.                              ',/,&
-'@                                                            ',/,&
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/)
- 9404 format(                                                     &
-'@                                                            ',/,&
-'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
-'@                                                            ',/,&
-'@ @@ WARNING : ERROR AT THE MAIN RESTART FILE READING        ',/,&
-'@    =========                                               ',/,&
-'@                                                            ',/,&
-'@      ERROR AT READING THE INDICATOR OF THE CAVITATION MODEL',/,&
-'@                                                            ',/,&
-'@    The read restart file might come from a previous        ',/,&
-'@      version of Code Saturne, without cavitation.          ',/,&
-'@    The calculation will be executed but                    ',/,&
-'@      cavitation model data will be reset.                  ',/,&
 '@    Please check the integrity of the file used as          ',/,&
 '@        restart file, however.                              ',/,&
 '@                                                            ',/,&

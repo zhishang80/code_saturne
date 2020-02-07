@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -77,7 +77,7 @@
   \section init_and_final Initialization and finalization
 
   It is useful to map a field array to a local pointer for a clear and concise
-  access, such as done here fro the velocity:
+  access, such as done here for the velocity:
 
   \snippet cs_user_head_losses.c map_field_arrays
 
@@ -100,7 +100,7 @@
 
   \subsection head_loss_examples Head loss examples
 
-  Note that in the following examples, we checku the zone name, so we
+  Note that in the following examples, we check the zone name, so we
   know which zone we are dealing with using in case of multiple zones.
 
   head loss tensor coefficients for each cell are organized as follows:

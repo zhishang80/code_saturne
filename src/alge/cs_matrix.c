@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -161,20 +161,6 @@ static char _no_exclude_diag_error_str[]
        "does not handle case with excluded diagonal.");
 
 #endif
-
-static const char *_matrix_operation_name[CS_MATRIX_N_FILL_TYPES][2]
-  = {{N_("y <- A.x"),
-      N_("y <- (A-D).x")},
-     {N_("Symmetric y <- A.x"),
-      N_("Symmetric y <- (A-D).x")},
-     {N_("Block diagonal y <- A.x"),
-      N_("Block diagonal y <- (A-D).x")},
-     {N_("Block 6 diagonal y <- A.x"),
-      N_("Block 6 diagonal y <- (A-D).x")},
-     {N_("Block diagonal symmetric y <- A.x"),
-      N_("Block diagonal symmetric y <- (A-D).x")},
-     {N_("Block y <- A.x"),
-      N_("Block y <- (A-D).x")}};
 
 /*============================================================================
  * Private function definitions
@@ -1197,7 +1183,7 @@ _6_6_mat_vec_p_l_native(bool                exclude_diag,
 
   const cs_real_t  *restrict xa = mc->xa;
 
-  assert(matrix->db_size[0] == 3 && matrix->db_size[3] == 9);
+  assert(matrix->db_size[0] == 6 && matrix->db_size[3] == 36);
 
   /* Diagonal part of matrix.vector product */
 
@@ -4309,236 +4295,13 @@ _pre_vector_multiply_sync(cs_halo_rotation_t   rotation_mode,
 }
 
 /*----------------------------------------------------------------------------
- * Copy array to reference for matrix computation check.
- *
- * parameters:
- *   n_elts      <-- number values to compare
- *   y           <-- array to copare or copy
- *   yr          <-- reference array
- *
- * returns:
- *   maximum difference between values
- *----------------------------------------------------------------------------*/
-
-static double
-_matrix_check_compare(cs_lnum_t        n_elts,
-                      const cs_real_t  y[],
-                      cs_real_t        yr[])
-{
-  cs_lnum_t  ii;
-
-  double dmax = 0.0;
-
-  for (ii = 0; ii < n_elts; ii++) {
-    double d = CS_ABS(y[ii] - yr[ii]);
-    if (d > dmax)
-      dmax = d;
-  }
-
-#if defined(HAVE_MPI)
-
-  if (cs_glob_n_ranks > 1) {
-    double dmaxg;
-    MPI_Allreduce(&dmax, &dmaxg, 1, MPI_DOUBLE, MPI_MAX, cs_glob_mpi_comm);
-    dmax = dmaxg;
-  }
-
-#endif
-
-  return dmax;
-}
-
-/*----------------------------------------------------------------------------
- * Check local matrix.vector product operations.
- *
- * parameters:
- *   t_measure   <-- minimum time for each measure
- *   n_variants  <-- number of variants in array
- *   n_rows      <-- local number of rows
- *   n_cols_ext  <-- number of local + ghost columns
- *   n_edges     <-- local number of (undirected) graph edges
- *   edges       <-- edges (symmetric row <-> column) connectivity
- *   halo        <-- cell halo structure
- *   numbering   <-- vectorization or thread-related numbering info, or NULL
- *   m_variant   <-> array of matrix variants
- *----------------------------------------------------------------------------*/
-
-static void
-_matrix_check(int                    n_variants,
-              cs_lnum_t              n_rows,
-              cs_lnum_t              n_cols_ext,
-              cs_lnum_t              n_edges,
-              const cs_lnum_2_t     *edges,
-              const cs_halo_t       *halo,
-              const cs_numbering_t  *numbering,
-              cs_matrix_variant_t   *m_variant)
-{
-  cs_lnum_t  ii;
-  int  v_id, f_id, ed_flag;
-
-  bool print_subtitle = false;
-  cs_real_t  *da = NULL, *xa = NULL, *x = NULL, *y = NULL;
-  cs_real_t  *yr0 = NULL, *yr1 = NULL;
-  cs_matrix_structure_t *ms = NULL;
-  cs_matrix_t *m = NULL;
-  cs_lnum_t d_block_size[4] = {3, 3, 3, 9};
-  cs_lnum_t ed_block_size[4] = {3, 3, 3, 9};
-
-  /* Allocate and initialize  working arrays */
-
-  if (CS_MEM_ALIGN > 0) {
-    BFT_MEMALIGN(x, CS_MEM_ALIGN, n_cols_ext*d_block_size[1], cs_real_t);
-    BFT_MEMALIGN(y, CS_MEM_ALIGN, n_cols_ext*d_block_size[1], cs_real_t);
-    BFT_MEMALIGN(yr0, CS_MEM_ALIGN, n_cols_ext*d_block_size[1], cs_real_t);
-    BFT_MEMALIGN(yr1, CS_MEM_ALIGN, n_cols_ext*d_block_size[1], cs_real_t);
-  }
-  else {
-    BFT_MALLOC(x, n_cols_ext*d_block_size[1], cs_real_t);
-    BFT_MALLOC(y, n_cols_ext*d_block_size[1], cs_real_t);
-    BFT_MALLOC(yr0, n_cols_ext*d_block_size[1], cs_real_t);
-    BFT_MALLOC(yr1, n_cols_ext*d_block_size[1], cs_real_t);
-  }
-
-  BFT_MALLOC(da, n_cols_ext*d_block_size[3], cs_real_t);
-  BFT_MALLOC(xa, n_edges*2*ed_block_size[3], cs_real_t);
-
-  /* Initialize arrays */
-
-# pragma omp parallel for
-  for (ii = 0; ii < n_cols_ext*d_block_size[3]; ii++)
-    da[ii] = 1.0 + cos(ii);
-
-# pragma omp parallel for
-  for (ii = 0; ii < n_edges*ed_block_size[3]; ii++) {
-    xa[ii*2] = 0.5*(0.9 + cos(ii));
-    xa[ii*2 + 1] = -0.5*(0.9 + cos(ii));
-  }
-
-# pragma omp parallel for
-  for (ii = 0; ii < n_cols_ext*d_block_size[1]; ii++)
-    x[ii] = sin(ii);
-
-  /* Loop on fill options */
-
-  for (f_id = 0; f_id < CS_MATRIX_N_FILL_TYPES; f_id++) {
-
-    const cs_lnum_t *_d_block_size
-      = (f_id >= CS_MATRIX_BLOCK_D) ? d_block_size : NULL;
-    const cs_lnum_t *_ed_block_size
-      = (f_id >= CS_MATRIX_BLOCK) ? ed_block_size : NULL;
-    const cs_lnum_t _block_mult = (_d_block_size != NULL) ? d_block_size[1] : 1;
-    const bool sym_coeffs = (   f_id == CS_MATRIX_SCALAR_SYM
-                             || f_id == CS_MATRIX_BLOCK_D_SYM) ? true : false;
-
-    /* Loop on diagonal exclusion options */
-
-    for (ed_flag = 0; ed_flag < 2; ed_flag++) {
-
-      print_subtitle = true;
-
-      /* Loop on variant types */
-
-      for (v_id = 0; v_id < n_variants; v_id++) {
-
-        cs_matrix_variant_t *v = m_variant + v_id;
-
-        cs_matrix_vector_product_t  *vector_multiply
-          = v->vector_multiply[f_id][ed_flag];
-
-        if (vector_multiply == NULL)
-          continue;
-
-        ms = cs_matrix_structure_create(v->type,
-                                        true,
-                                        n_rows,
-                                        n_cols_ext,
-                                        n_edges,
-                                        edges,
-                                        halo,
-                                        numbering);
-        m = cs_matrix_create(ms);
-
-        cs_matrix_set_coefficients(m,
-                                   sym_coeffs,
-                                   _d_block_size,
-                                   _ed_block_size,
-                                   n_edges,
-                                   edges,
-                                   da,
-                                   xa);
-
-        /* Check multiplication */
-
-        vector_multiply(ed_flag, m, x, y);
-        if (v_id == 0)
-          memcpy(yr0, y, n_rows*_block_mult*sizeof(cs_real_t));
-        else {
-          double dmax = _matrix_check_compare(n_rows*_block_mult, y, yr0);
-          if (print_subtitle) {
-            bft_printf("\n%s\n",
-                       _matrix_operation_name[f_id][ed_flag]);
-            print_subtitle = false;
-          }
-          bft_printf("  %-32s : %12.5e\n",
-                     v->name,
-                     dmax);
-          bft_printf_flush();
-        }
-
-        cs_matrix_release_coefficients(m);
-        cs_matrix_destroy(&m);
-        cs_matrix_structure_destroy(&ms);
-
-      } /* end of loop on variants */
-
-    } /* end of loop on ed_flag */
-
-  } /* end of loop on fill types */
-
-  BFT_FREE(yr1);
-  BFT_FREE(yr0);
-
-  BFT_FREE(y);
-  BFT_FREE(x);
-
-  BFT_FREE(xa);
-  BFT_FREE(da);
-}
-
-/*----------------------------------------------------------------------------
- * Initialize local variant matrix.
- *
- * parameters:
- *   v  <-> pointer to matrix variant
- *----------------------------------------------------------------------------*/
-
-static void
-_variant_init(cs_matrix_variant_t  *v)
-{
-  v->matrix_create_cost = -1.;
-  for (int i = 0; i < CS_MATRIX_N_FILL_TYPES; i++) {
-    for (int j = 0; j < 2; j++) {
-      v->vector_multiply[i][j] = NULL;
-      v->matrix_vector_cost[i][j][0] = -1.;
-      v->matrix_vector_cost[i][j][1] = -1.;
-    }
-    v->matrix_assign_cost[i] = -1.;
-  }
-}
-
-/*----------------------------------------------------------------------------
  * Add variant
  *
  * parameters:
- *   name                 <-- matrix variant name
  *   type                 <-- matrix type
- *   n_fill_types         <-- number of fill types tuned for
- *   fill_types           <-- array of fill types tuned for
+ *   mft                  <-- fill type tuned for
  *   ed_flag              <-- 0: with diagonal only, 1 exclude only; 2; both
  *   vector_multiply      <-- function pointer for A.x
- *   b_vector_multiply    <-- function pointer for block A.x
- *   bb_vector_multiply   <-- function pointer for block A.x
- *                             with block extra diag
  *   n_variants           <-> number of variants
  *   n_variants_max       <-> current maximum number of variants
  *   m_variant            <-> array of matrix variants
@@ -4547,19 +4310,18 @@ _variant_init(cs_matrix_variant_t  *v)
 static void
 _variant_add(const char                        *name,
              cs_matrix_type_t                   type,
-             int                                n_fill_types,
-             cs_matrix_fill_type_t              fill_types[],
+             cs_matrix_fill_type_t              mft,
              int                                ed_flag,
              cs_matrix_vector_product_t        *vector_multiply,
-             cs_matrix_vector_product_t        *b_vector_multiply,
-             cs_matrix_vector_product_t        *bb_vector_multiply,
              int                               *n_variants,
              int                               *n_variants_max,
              cs_matrix_variant_t              **m_variant)
 {
   cs_matrix_variant_t  *v;
-  int j;
   int i = *n_variants;
+
+  if (vector_multiply == NULL)
+    return;
 
   if (*n_variants_max == *n_variants) {
     if (*n_variants_max == 0)
@@ -4571,47 +4333,19 @@ _variant_add(const char                        *name,
 
   v = (*m_variant) + i;
 
-  _variant_init(v);
-
-  strcpy(v->name, name);
-  v->type = type;
-
-  for (j = 0; j < n_fill_types; j++) {
-
-    cs_matrix_fill_type_t mft =  fill_types[j];
-
-    switch(mft) {
-
-    case CS_MATRIX_SCALAR:
-    case  CS_MATRIX_SCALAR_SYM:
-      if (ed_flag != 1)
-        v->vector_multiply[mft][0] = vector_multiply;
-      if (ed_flag != 0)
-        v->vector_multiply[mft][1] = vector_multiply;
-      break;
-
-    case CS_MATRIX_BLOCK_D:
-    case CS_MATRIX_BLOCK_D_66:
-    case CS_MATRIX_BLOCK_D_SYM:
-      if (ed_flag != 1)
-        v->vector_multiply[mft][0] = b_vector_multiply;
-      if (ed_flag != 0)
-        v->vector_multiply[mft][1] = b_vector_multiply;
-      break;
-
-    case CS_MATRIX_BLOCK:
-      if (ed_flag != 1)
-        v->vector_multiply[mft][0] = bb_vector_multiply;
-      if (ed_flag != 0)
-        v->vector_multiply[mft][1] = bb_vector_multiply;
-      break;
-
-    default:
-      assert(0);
-      break;
-    }
-
+  for (int j = 0; j < 2; j++) {
+    v->vector_multiply[j] = NULL;
+    strncpy(v->name[j], name, 31);
+    v->name[j][31] = '\0';
   }
+
+  v->type = type;
+  v->fill_type = mft;
+
+  if (ed_flag != 1)
+    v->vector_multiply[0] = vector_multiply;
+  if (ed_flag != 0)
+    v->vector_multiply[1] = vector_multiply;
 
   *n_variants += 1;
 }
@@ -4625,7 +4359,7 @@ _variant_add(const char                        *name,
  *   CS_MATRIX_NATIVE  (all fill types)
  *     default
  *     standard
- *     3_3_diag        (for CS_MATRIX_33_BLOCK_D or CS_MATRIX_33_BLOCK_D_SYM)
+ *     fixed           (for CS_MATRIX_33_BLOCK_D or CS_MATRIX_33_BLOCK_D_SYM)
  *     omp             (for OpenMP with compatible numbering)
  *     vector          (For vector machine with compatible numbering)
  *
@@ -4640,6 +4374,7 @@ _variant_add(const char                        *name,
  *     mkl             (with MKL)
  *
  *   CS_MATRIX_MSR     (all fill types except CS_MATRIX_33_BLOCK)
+ *     default
  *     standard
  *     omp_sched       (Improved scheduling for OpenMP)
  *     mkl             (with MKL, for CS_MATRIX_SCALAR or CS_MATRIX_SCALAR_SYM)
@@ -4663,7 +4398,7 @@ _set_spmv_func(cs_matrix_type_t             m_type,
                cs_matrix_fill_type_t        fill_type,
                int                          ed_flag,
                const char                  *func_name,
-               cs_matrix_vector_product_t  *vector_multiply[][2])
+               cs_matrix_vector_product_t  *vector_multiply[2])
 {
   int retcode = 1;
   int standard = 0;
@@ -4692,8 +4427,8 @@ _set_spmv_func(cs_matrix_type_t             m_type,
       case CS_MATRIX_BLOCK_D:
       case CS_MATRIX_BLOCK_D_66:
       case CS_MATRIX_BLOCK_D_SYM:
-        spmv[0] = _b_mat_vec_p_l_native;
-        spmv[1] = _b_mat_vec_p_l_native;
+        spmv[0] = _b_mat_vec_p_l_native_fixed;
+        spmv[1] = _b_mat_vec_p_l_native_fixed;
         break;
       case CS_MATRIX_BLOCK:
         spmv[0] = _bb_mat_vec_p_l_native;
@@ -4740,19 +4475,6 @@ _set_spmv_func(cs_matrix_type_t             m_type,
 
     }
 
-    else if (!strcmp(func_name, "fixed")) {
-      switch(fill_type) {
-      case CS_MATRIX_BLOCK_D:
-      case CS_MATRIX_BLOCK_D_66:
-      case CS_MATRIX_BLOCK_D_SYM:
-        spmv[0] = _b_mat_vec_p_l_native_fixed;
-        spmv[1] = _b_mat_vec_p_l_native_fixed;
-        break;
-      default:
-        break;
-      }
-    }
-
     else if (!strcmp(func_name, "omp")) {
 #if defined(HAVE_OPENMP)
       if (numbering != NULL) {
@@ -4773,6 +4495,28 @@ _set_spmv_func(cs_matrix_type_t             m_type,
             break;
           }
         }
+      }
+#else
+      retcode = 2;
+#endif
+    }
+
+    else if (!strcmp(func_name, "omp_atomic")) {
+#if defined(HAVE_OPENMP)
+      switch(fill_type) {
+      case CS_MATRIX_SCALAR:
+      case CS_MATRIX_SCALAR_SYM:
+        spmv[0] = _mat_vec_p_l_native_omp_atomic;
+        spmv[1] = _mat_vec_p_l_native_omp_atomic;
+        break;
+      case CS_MATRIX_BLOCK_D:
+      case CS_MATRIX_BLOCK_D_66:
+      case CS_MATRIX_BLOCK_D_SYM:
+        spmv[0] = _b_mat_vec_p_l_native_omp_atomic;
+        spmv[1] = _b_mat_vec_p_l_native_omp_atomic;
+        break;
+      default:
+        break;
       }
 #else
       retcode = 2;
@@ -4859,19 +4603,6 @@ _set_spmv_func(cs_matrix_type_t             m_type,
       }
     }
 
-    else if (!strcmp(func_name, "generic")) {
-      switch(fill_type) {
-      case CS_MATRIX_BLOCK_D:
-      case CS_MATRIX_BLOCK_D_66:
-      case CS_MATRIX_BLOCK_D_SYM:
-        spmv[0] = _b_mat_vec_p_l_msr_generic;
-        spmv[1] = _b_mat_vec_p_l_msr_generic;
-        break;
-      default:
-        break;
-      }
-    }
-
     else if (!strcmp(func_name, "mkl")) {
 #if defined(HAVE_MKL)
       switch(fill_type) {
@@ -4907,11 +4638,11 @@ _set_spmv_func(cs_matrix_type_t             m_type,
   }
 
   if (ed_flag != 1 && spmv[0] != NULL) {
-    vector_multiply[fill_type][0] = spmv[0];
+    vector_multiply[0] = spmv[0];
     retcode = 0;
   }
   if (ed_flag != 0 && spmv[0] != NULL) {
-    vector_multiply[fill_type][1] = spmv[1];
+    vector_multiply[1] = spmv[1];
     retcode = 0;
   }
 
@@ -5163,7 +4894,7 @@ _matrix_create(cs_matrix_type_t  type)
                    mft,
                    2,    /* ed_flag */
                    NULL, /* func_name */
-                   m->vector_multiply);
+                   m->vector_multiply[mft]);
 
   switch(m->type) {
 
@@ -5545,6 +5276,8 @@ cs_matrix_structure_destroy(cs_matrix_structure_t  **ms)
 cs_matrix_t *
 cs_matrix_create(const cs_matrix_structure_t  *ms)
 {
+  assert(ms != NULL); /* Sanity check */
+
   cs_matrix_t *m = _matrix_create(ms->type);
 
   /* Map shared structure */
@@ -5557,42 +5290,6 @@ cs_matrix_create(const cs_matrix_structure_t  *ms)
   m->halo = ms->halo;
   m->numbering = ms->numbering;
   m->assembler = ms->assembler;
-
-  return m;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief Create a matrix container using a given variant.
- *
- * If the matrix variant is incompatible with the structure, it is ignored,
- * and defaults for that structure are used instead.
- *
- * \param[in]  ms  associated matrix structure
- * \param[in]  mv  associated matrix variant
- *
- * \return  pointer to created matrix structure;
- */
-/*----------------------------------------------------------------------------*/
-
-cs_matrix_t *
-cs_matrix_create_by_variant(const cs_matrix_structure_t  *ms,
-                            const cs_matrix_variant_t    *mv)
-{
-  cs_matrix_t *m = cs_matrix_create(ms);
-
-  m->assembler = ms->assembler;
-
-  if (mv != NULL) {
-    if (mv->type == ms->type) {
-      for (int i = 0; i < CS_MATRIX_N_FILL_TYPES; i++) {
-        for (int j = 0; j < 2; j++) {
-          if (mv->vector_multiply[i][j] != NULL)
-            m->vector_multiply[i][j] = mv->vector_multiply[i][j];
-        }
-      }
-    }
-  }
 
   return m;
 }
@@ -7363,37 +7060,32 @@ cs_matrix_msr_assembler_values_add(void             *matrix_p,
  * The variant will initially use default matrix-vector functions,
  * which can be later modified using cs_matrix_variant_set_func().
  *
- * \param[in]  type       type of matrix considered
- * \param[in]  numbering  vectorization or thread-related numbering info,
- *                        or NULL
+ * \param[in]  m   pointer to matrix
  */
 /*----------------------------------------------------------------------------*/
 
 cs_matrix_variant_t *
-cs_matrix_variant_create(cs_matrix_type_t         type,
-                         const cs_numbering_t    *numbering)
-
+cs_matrix_variant_create(cs_matrix_t  *m)
 {
-  cs_matrix_fill_type_t mft;
   cs_matrix_variant_t  *mv;
 
   BFT_MALLOC(mv, 1, cs_matrix_variant_t);
 
-  _variant_init(mv);
+  mv->type = m->type;
+  mv->fill_type = m->fill_type;
 
-  mv->type = type;
-
-  strncpy(mv->name, cs_matrix_type_name[type], 31);
-  mv->name[31] = '\0';
-
-  for (mft = 0; mft < CS_MATRIX_N_FILL_TYPES; mft++) {
-    (void) _set_spmv_func(type,
-                          numbering,
-                          mft,
-                          2,
-                          NULL, /* func_name */
-                          mv->vector_multiply);
+  for (int j = 0; j < 2; j++) {
+    mv->vector_multiply[j] = NULL;
+    strncpy(mv->name[j], "default", 31);
+    mv->name[j][31] = '\0';
   }
+
+  (void) _set_spmv_func(m->type,
+                        m->numbering,
+                        m->fill_type,
+                        2,
+                        NULL, /* func_name */
+                        mv->vector_multiply);
 
   return mv;
 }
@@ -7402,131 +7094,172 @@ cs_matrix_variant_create(cs_matrix_type_t         type,
 /*!
  * \brief Build list of variants for tuning or testing.
  *
- * \param[in]   n_fill_types  number of fill types tuned for
- * \param[in]   fill_types    array of fill types tuned for
- * \param[in]   type_filter   true for matrix types tuned for, false for others
- * \param[in]   numbering     vectorization or thread-related numbering info,
- *                            or NULL
+ * The matrix coefficients should be assigned, so the fill type can
+ * be determined.
+ *
+ * \param[in]   m             associated matrix
  * \param[out]  n_variants    number of variants
  * \param[out]  m_variant     array of matrix variants
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_matrix_variant_build_list(int                      n_fill_types,
-                             cs_matrix_fill_type_t    fill_types[],
-                             bool                     type_filter[],
-                             const cs_numbering_t    *numbering,
+cs_matrix_variant_build_list(const cs_matrix_t       *m,
                              int                     *n_variants,
                              cs_matrix_variant_t    **m_variant)
 {
-  int  i;
-  int  _n_fill_types;
-  cs_matrix_fill_type_t  _fill_types[CS_MATRIX_N_FILL_TYPES];
-
   int  n_variants_max = 0;
 
   *n_variants = 0;
   *m_variant = NULL;
 
-  if (type_filter[CS_MATRIX_NATIVE]) {
+  cs_matrix_vector_product_t  *vector_multiply = NULL;
 
-    _variant_add(_("Native, baseline"),
-                 CS_MATRIX_NATIVE,
-                 n_fill_types,
-                 fill_types,
+  if (m->type == CS_MATRIX_NATIVE) {
+
+    switch(m->fill_type) {
+    case CS_MATRIX_SCALAR:
+    case CS_MATRIX_SCALAR_SYM:
+      vector_multiply = _mat_vec_p_l_native;
+      break;
+    case CS_MATRIX_BLOCK_D:
+    case CS_MATRIX_BLOCK_D_66:
+    case CS_MATRIX_BLOCK_D_SYM:
+      vector_multiply = _b_mat_vec_p_l_native_fixed;
+      break;
+    case CS_MATRIX_BLOCK:
+      vector_multiply = _bb_mat_vec_p_l_native;
+      break;
+    default:
+      vector_multiply = NULL;
+    }
+
+    _variant_add(_("native, baseline"),
+                 m->type,
+                 m->fill_type,
                  2, /* ed_flag */
-                 _mat_vec_p_l_native,
-                 _b_mat_vec_p_l_native,
-                 _bb_mat_vec_p_l_native,
+                 vector_multiply,
                  n_variants,
                  &n_variants_max,
                  m_variant);
 
-    _variant_add(_("Native, fixed blocks"),
-                 CS_MATRIX_NATIVE,
-                 n_fill_types,
-                 fill_types,
-                 2, /* ed_flag */
-                 NULL,
-                 _b_mat_vec_p_l_native_fixed,
-                 NULL,
-                 n_variants,
-                 &n_variants_max,
-                 m_variant);
-
-    if (numbering != NULL) {
+    if (m->numbering != NULL) {
 
 #if defined(HAVE_OPENMP)
 
-      if (numbering->type == CS_NUMBERING_THREADS)
-        _variant_add(_("Native, OpenMP"),
-                     CS_MATRIX_NATIVE,
-                     n_fill_types,
-                     fill_types,
+      if (m->numbering->type == CS_NUMBERING_THREADS) {
+
+        switch(m->fill_type) {
+        case CS_MATRIX_SCALAR:
+        case CS_MATRIX_SCALAR_SYM:
+          vector_multiply = _mat_vec_p_l_native_omp;
+          break;
+        case CS_MATRIX_BLOCK_D:
+        case CS_MATRIX_BLOCK_D_66:
+        case CS_MATRIX_BLOCK_D_SYM:
+          vector_multiply = _b_mat_vec_p_l_native_omp;
+          break;
+        default:
+          vector_multiply = NULL;
+        }
+
+        _variant_add(_("native, OpenMP"),
+                     m->type,
+                     m->fill_type,
                      2, /* ed_flag */
-                     _mat_vec_p_l_native_omp,
-                     _b_mat_vec_p_l_native_omp,
-                     NULL,
+                     vector_multiply,
                      n_variants,
                      &n_variants_max,
                      m_variant);
+      }
 
-      _variant_add(_("Native, OpenMP atomic"),
-                   CS_MATRIX_NATIVE,
-                   n_fill_types,
-                   fill_types,
+      switch(m->fill_type) {
+      case CS_MATRIX_SCALAR:
+      case CS_MATRIX_SCALAR_SYM:
+        vector_multiply = _mat_vec_p_l_native_omp_atomic;
+        break;
+      case CS_MATRIX_BLOCK_D:
+      case CS_MATRIX_BLOCK_D_66:
+      case CS_MATRIX_BLOCK_D_SYM:
+        vector_multiply = _b_mat_vec_p_l_native_omp_atomic;
+        break;
+      default:
+        vector_multiply = NULL;
+      }
+
+      _variant_add(_("native, OpenMP atomic"),
+                   m->type,
+                   m->fill_type,
                    2, /* ed_flag */
-                   _mat_vec_p_l_native_omp_atomic,
-                   _b_mat_vec_p_l_native_omp_atomic,
-                   NULL,
+                   vector_multiply,
                    n_variants,
                    &n_variants_max,
                    m_variant);
 
 #endif
 
-      if (numbering->type == CS_NUMBERING_VECTORIZE)
-        _variant_add(_("Native, vectorized"),
-                     CS_MATRIX_NATIVE,
-                     n_fill_types,
-                     fill_types,
+      if (m->numbering->type == CS_NUMBERING_VECTORIZE) {
+
+        switch(m->fill_type) {
+        case CS_MATRIX_SCALAR:
+        case CS_MATRIX_SCALAR_SYM:
+          vector_multiply = _mat_vec_p_l_native_vector;
+          break;
+        default:
+          vector_multiply = NULL;
+        }
+
+        _variant_add(_("native, vectorized"),
+                     m->type,
+                     m->fill_type,
                      2, /* ed_flag */
-                     _mat_vec_p_l_native_vector,
-                     NULL,
-                     NULL,
+                     vector_multiply,
                      n_variants,
                      &n_variants_max,
                      m_variant);
 
+      }
+
     }
 
   }
 
-  if (type_filter[CS_MATRIX_CSR]) {
+  if (m->type == CS_MATRIX_CSR) {
+
+    switch(m->fill_type) {
+    case CS_MATRIX_SCALAR:
+    case CS_MATRIX_SCALAR_SYM:
+      vector_multiply = _mat_vec_p_l_csr;
+      break;
+    default:
+      vector_multiply = NULL;
+    }
 
     _variant_add(_("CSR"),
-                 CS_MATRIX_CSR,
-                 n_fill_types,
-                 fill_types,
+                 m->type,
+                 m->fill_type,
                  2, /* ed_flag */
-                 _mat_vec_p_l_csr,
-                 NULL,
-                 NULL,
+                 vector_multiply,
                  n_variants,
                  &n_variants_max,
                  m_variant);
 
 #if defined(HAVE_MKL)
+
+    switch(m->fill_type) {
+    case CS_MATRIX_SCALAR:
+    case CS_MATRIX_SCALAR_SYM:
+      vector_multiply = _mat_vec_p_l_csr_mkl;
+      break;
+    default:
+      vector_multiply = NULL;
+    }
 
     _variant_add(_("CSR, with MKL"),
-                 CS_MATRIX_CSR,
-                 n_fill_types,
-                 fill_types,
+                 m->type,
+                 m->fill_type,
                  0, /* ed_flag */
-                 _mat_vec_p_l_csr_mkl,
-                 NULL,
-                 NULL,
+                 vector_multiply,
                  n_variants,
                  &n_variants_max,
                  m_variant);
@@ -7535,101 +7268,120 @@ cs_matrix_variant_build_list(int                      n_fill_types,
 
   }
 
-  if (type_filter[CS_MATRIX_CSR_SYM]) {
+  if (m->type == CS_MATRIX_CSR_SYM) {
 
-    for (i = 0, _n_fill_types = 0; i < n_fill_types; i++) {
-      if (fill_types[i] == CS_MATRIX_SCALAR_SYM) {
-        _fill_types[_n_fill_types++] = fill_types[i];
-      }
+    switch(m->fill_type) {
+    case CS_MATRIX_SCALAR_SYM:
+      vector_multiply = _mat_vec_p_l_csr_sym;
+      break;
+    default:
+      vector_multiply = NULL;
     }
 
-    if (_n_fill_types > 0) {
-
-      _variant_add(_("CSR_SYM"),
-                   CS_MATRIX_CSR_SYM,
-                   _n_fill_types,
-                   _fill_types,
-                   2, /* ed_flag */
-                   _mat_vec_p_l_csr_sym,
-                   NULL,
-                   NULL,
-                   n_variants,
-                   &n_variants_max,
-                   m_variant);
+    _variant_add(_("CSR_SYM"),
+                 m->type,
+                 m->fill_type,
+                 2, /* ed_flag */
+                 vector_multiply,
+                 n_variants,
+                 &n_variants_max,
+                 m_variant);
 
 #if defined(HAVE_MKL)
 
-      _variant_add(_("CSR_SYM, with MKL"),
-                   CS_MATRIX_CSR_SYM,
-                   _n_fill_types,
-                   _fill_types,
-                   0, /* ed_flag */
-                   _mat_vec_p_l_csr_sym_mkl,
-                   NULL,
-                   NULL,
-                   n_variants,
-                   &n_variants_max,
-                   m_variant);
+    switch(m->fill_type) {
+    case CS_MATRIX_SCALAR_SYM:
+      vector_multiply = _mat_vec_p_l_csr_sym_mkl;
+      break;
+    default:
+      vector_multiply = NULL;
+    }
+
+    _variant_add(_("CSR_SYM, with MKL"),
+                 m->type,
+                 m->fill_type,
+                 0, /* ed_flag */
+                 vector_multiply,
+                 n_variants,
+                 &n_variants_max,
+                 m_variant);
 
 #endif /* defined(HAVE_MKL) */
 
-    }
-
   }
 
-  if (type_filter[CS_MATRIX_MSR]) {
+  if (m->type == CS_MATRIX_MSR) {
+
+      switch(m->fill_type) {
+      case CS_MATRIX_SCALAR:
+      case CS_MATRIX_SCALAR_SYM:
+        vector_multiply = _mat_vec_p_l_msr;
+        break;
+      case CS_MATRIX_BLOCK_D:
+      case CS_MATRIX_BLOCK_D_66:
+      case CS_MATRIX_BLOCK_D_SYM:
+        vector_multiply = _b_mat_vec_p_l_msr;
+        break;
+      default:
+        vector_multiply = NULL;
+      }
 
     _variant_add(_("MSR"),
-                 CS_MATRIX_MSR,
-                 n_fill_types,
-                 fill_types,
+                 m->type,
+                 m->fill_type,
                  2, /* ed_flag */
-                 _mat_vec_p_l_msr,
-                 _b_mat_vec_p_l_msr,
-                 NULL,
-                 n_variants,
-                 &n_variants_max,
-                 m_variant);
-
-    _variant_add(_("MSR, generic"),
-                 CS_MATRIX_MSR,
-                 n_fill_types,
-                 fill_types,
-                 2, /* ed_flag */
-                 NULL,
-                 _b_mat_vec_p_l_msr_generic,
-                 NULL,
+                 vector_multiply,
                  n_variants,
                  &n_variants_max,
                  m_variant);
 
 #if defined(HAVE_MKL)
 
+    switch(m->fill_type) {
+    case CS_MATRIX_SCALAR:
+    case CS_MATRIX_SCALAR_SYM:
+      vector_multiply = _mat_vec_p_l_msr_mkl;
+      break;
+    default:
+      vector_multiply = NULL;
+    }
+
     _variant_add(_("MSR, with MKL"),
-                 CS_MATRIX_MSR,
-                 n_fill_types,
-                 fill_types,
+                 m->type,
+                 m->fill_type,
                  2, /* ed_flag */
-                 _mat_vec_p_l_msr_mkl,
-                 NULL,
-                 NULL,
+                 vector_multiply,
                  n_variants,
                  &n_variants_max,
                  m_variant);
 
 #endif /* defined(HAVE_MKL) */
 
-    _variant_add(_("MSR, OpenMP scheduling"),
-                 CS_MATRIX_MSR,
-                 n_fill_types,
-                 fill_types,
-                 2, /* ed_flag */
-                 _mat_vec_p_l_msr_omp_sched,
-                 NULL,
-                 NULL,
-                 n_variants,
-                 &n_variants_max,
-                 m_variant);
+#if defined(HAVE_OPENMP)
+
+    if (omp_get_num_threads() > 1) {
+
+      switch(m->fill_type) {
+      case CS_MATRIX_SCALAR:
+      case CS_MATRIX_SCALAR_SYM:
+        vector_multiply = _mat_vec_p_l_msr_omp_sched;
+        break;
+      default:
+        vector_multiply = NULL;
+      }
+
+      _variant_add(_("MSR, OpenMP scheduling"),
+                   m->type,
+                   m->fill_type,
+                   2, /* ed_flag */
+                   vector_multiply,
+                   n_variants,
+                   &n_variants_max,
+                   m_variant);
+
+    }
+
+#endif /* defined(HAVE_OPENMP) */
 
   }
 
@@ -7654,29 +7406,57 @@ cs_matrix_variant_destroy(cs_matrix_variant_t  **mv)
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief Apply a variant to a given matrix
+ *
+ * \param[in, out]  m   pointer to matrix
+ * \param[in]       mv  pointer to matrix variant pointer
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_matrix_variant_apply(cs_matrix_t          *m,
+                        cs_matrix_variant_t  *mv)
+{
+  if (m == NULL || mv == NULL)
+    return;
+
+  if (   m->type < 0 || m->type > CS_MATRIX_N_BUILTIN_TYPES
+      || m->fill_type < 0 || m->fill_type > CS_MATRIX_N_FILL_TYPES)
+    return;
+
+  for (int i = 0; i < 2; i++)
+    m->vector_multiply[m->fill_type][0] = mv->vector_multiply[0];
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief Select the sparse matrix-vector product function to be used by a
  * matrix variant for a given fill type.
  *
  * Currently, possible variant functions are:
  *
  *   CS_MATRIX_NATIVE  (all fill types)
+ *     default
  *     standard
- *     fixed           (for CS_MATRIX_??_BLOCK_D or CS_MATRIX_??_BLOCK_D_SYM)
  *     omp             (for OpenMP with compatible numbering)
+ *     omp_atomic      (for OpenMP with atomics)
  *     vector          (For vector machine with compatible numbering)
  *
  *   CS_MATRIX_CSR     (for CS_MATRIX_SCALAR or CS_MATRIX_SCALAR_SYM)
+ *     default
  *     standard
  *     mkl             (with MKL)
  *
  *   CS_MATRIX_CSR_SYM (for CS_MATRIX_SCALAR_SYM)
+ *     default
  *     standard
  *     mkl             (with MKL)
  *
  *   CS_MATRIX_MSR     (all fill types except CS_MATRIX_33_BLOCK)
+ *     default
  *     standard
- *     fixed           (for CS_MATRIX_??_BLOCK_D or CS_MATRIX_??_BLOCK_D_SYM)
  *     mkl             (with MKL, for CS_MATRIX_SCALAR or CS_MATRIX_SCALAR_SYM)
+ *     omp_sched       (For OpenMP with scheduling)
  *
  * parameters:
  *   mv        <-> Pointer to matrix variant
@@ -7694,19 +7474,24 @@ cs_matrix_variant_set_func(cs_matrix_variant_t     *mv,
                            int                      ed_flag,
                            const char              *func_name)
 {
-  int retcode = _set_spmv_func(mv->type,
-                               numbering,
-                               fill_type,
-                               ed_flag,
-                               func_name,
-                               mv->vector_multiply);
+  int s_id = (ed_flag != 1) ? 0 : 1;
+  int e_id = (ed_flag != 0) ? 2 : 1;
+
+  for (int j = s_id; j < e_id; j++) {
+
+    int retcode = _set_spmv_func(mv->type,
+                                 numbering,
+                                 fill_type,
+                                 j,
+                                 func_name,
+                                 mv->vector_multiply);
 
   if (retcode == 1)
     bft_error
       (__FILE__, __LINE__, 0,
        _("Assignment of matrix.vector product \"%s\" to matrix variant \"%s\"\n"
          "of type \"%s\" for fill \"%s\" not allowed."),
-       func_name, mv->name, cs_matrix_type_name[mv->type],
+       func_name, mv->name[j], cs_matrix_type_name[mv->type],
        cs_matrix_fill_type_name[fill_type]);
   else if (retcode == 2)
     bft_error
@@ -7714,40 +7499,6 @@ cs_matrix_variant_set_func(cs_matrix_variant_t     *mv,
        _("Matrix.vector product function type \"%s\"\n"
          "is not available in this build."),
        func_name);
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief Merge a functions to a matrix variant from another variant sharing
- * the same structure.
- *
- * Functions from the structure to merge for the selected fill type are
- * assigned to the main variant.
- *
- * This can be useful when tuning has been done separately for different fill
- * types, and the resulting selected structure is identical.
- *
- * \param[in, out]  mv         pointer to matrix variant
- * \param[in]       mv_merge   pointer to matrix variant to merge
- * \param[in]       fill_type  matrix fill type to merge from
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_matrix_variant_merge(cs_matrix_variant_t        *mv,
-                        const cs_matrix_variant_t  *mv_merge,
-                        cs_matrix_fill_type_t       fill_type)
-{
-  if (mv->type == mv_merge->type) {
-    for (int i = 0; i < 2; i++) {
-      mv->vector_multiply[fill_type][i]
-        = mv_merge->vector_multiply[fill_type][i];
-      mv->matrix_vector_cost[fill_type][i][0]
-        = mv_merge->matrix_vector_cost[fill_type][i][0];
-      mv->matrix_vector_cost[fill_type][i][1]
-        = mv_merge->matrix_vector_cost[fill_type][i][1];
-    }
-    mv->matrix_assign_cost[fill_type] = mv_merge->matrix_assign_cost[fill_type];
   }
 }
 
@@ -7763,71 +7514,6 @@ cs_matrix_type_t
 cs_matrix_variant_type(const cs_matrix_variant_t  *mv)
 {
   return mv->type;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief Test local matrix.vector product operations.
- *
- * \param[in]  n_rows       local number of rows
- * \param[in]  n_cols_ext   number of local + ghost columns
- * \param[in]  n_edges      local number of (undirected) graph edges
- * \param[in]  edges        edges (symmetric row <-> column) connectivity
- * \param[in]  halo         cell halo structure
- * \param[in]  numbering    vectorization or thread-related numbering info,
- *                          or NULL
- *
- * \return  pointer to tuning results structure
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_matrix_variant_test(cs_lnum_t              n_rows,
-                       cs_lnum_t              n_cols_ext,
-                       cs_lnum_t              n_edges,
-                       const cs_lnum_2_t     *edges,
-                       const cs_halo_t       *halo,
-                       const cs_numbering_t  *numbering)
-{
-  int  n_variants = 0;
-  bool type_filter[CS_MATRIX_N_TYPES] = {true, true, true, true};
-  cs_matrix_fill_type_t  fill_types[] = {CS_MATRIX_SCALAR,
-                                         CS_MATRIX_SCALAR_SYM,
-                                         CS_MATRIX_BLOCK_D,
-                                         CS_MATRIX_BLOCK_D_66,
-                                         CS_MATRIX_BLOCK_D_SYM,
-                                         CS_MATRIX_BLOCK};
-  cs_matrix_variant_t  *m_variant = NULL;
-
-  /* Test basic flag combinations */
-
-  bft_printf
-    (_("\n"
-       "Checking matrix structure and operation variants (diff/reference):\n"
-       "------------------------------------------------\n"));
-
-  /* Build variants array */
-
-  cs_matrix_variant_build_list(CS_MATRIX_N_FILL_TYPES,
-                               fill_types,
-                               type_filter,
-                               numbering,
-                               &n_variants,
-                               &m_variant);
-
-  /* Run tests on variants */
-
-  _matrix_check(n_variants,
-                n_rows,
-                n_cols_ext,
-                n_edges,
-                edges,
-                halo,
-                numbering,
-                m_variant);
-
-  n_variants = 0;
-  BFT_FREE(m_variant);
 }
 
 /*----------------------------------------------------------------------------*/

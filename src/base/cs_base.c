@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -103,7 +103,7 @@ BEGIN_C_DECLS
 
 /*
  * 'usual' maximum name length; a longer name is possible, but will
- * provoque a dynamic memory allocation.
+ * provoke a dynamic memory allocation.
  */
 
 #define CS_BASE_N_STRINGS                               5
@@ -167,8 +167,8 @@ static _cs_base_sighandler_t cs_glob_base_sigtrap_save = SIG_DFL;
 static _cs_base_sighandler_t cs_glob_base_sigcpu_save = SIG_DFL;
 #endif
 
-/* Workaround fo SIGSEGV at exit
-   with some ParaViw Catalyst/OpenGL driver combinations */
+/* Workaround for SIGSEGV at exit
+   with some ParaView Catalyst/OpenGL driver combinations */
 
 #if _CS_EXIT_DEPLIB_CRASH_WORKAROUND
 static jmp_buf _cs_exit_jmp_buf;
@@ -203,6 +203,14 @@ static bool   _cs_trace = false;
 /* Additional cleanup steps */
 
 static cs_base_atexit_t  * _cs_base_atexit = NULL;
+
+/* Additional MPI communicators */
+
+#if defined(HAVE_MPI)
+static int        _n_step_comms = 0;
+static int       *_step_ranks = NULL;
+static MPI_Comm  *_step_comm = NULL;
+#endif
 
 /*============================================================================
  * Private function definitions
@@ -403,7 +411,7 @@ _cs_base_sig_exit_crash_workaround(int  signum)
  * This is used at exit to transform errors into warnings on rank 0
  * only during a standard exit routine.
  *
- * This is an ugly workaroud to an ugly crash observed when exiting after
+ * This is an ugly workaround to an ugly crash observed when exiting after
  * have used VTK (Paraview Catalyst) libraries (on Debian Stretch with
  * NVIDIA 390 driver at least).
  *
@@ -750,7 +758,7 @@ _get_path(const char   *dir_path,
     const char *cs_root_dir = NULL;
     const char *rel_path = NULL;
 
-    /* Allow for displacable install */
+    /* Allow for displaceable install */
 
     if (*env_path != NULL)
       return *env_path;
@@ -819,7 +827,28 @@ _get_path(const char   *dir_path,
 #if defined(HAVE_MPI)
 
 /*----------------------------------------------------------------------------
- *  Finalisation MPI
+ * Destroy a set of reduced communicators
+ *----------------------------------------------------------------------------*/
+
+static void
+_finalize_reduced_communicators(void)
+{
+  int comm_id;
+
+  for (comm_id = 1; comm_id < _n_step_comms; comm_id++) {
+    if (   _step_comm[comm_id] != MPI_COMM_NULL
+        && _step_comm[comm_id] != cs_glob_mpi_comm)
+      MPI_Comm_free(&(_step_comm[comm_id]));
+  }
+
+  BFT_FREE(_step_comm);
+  BFT_FREE(_step_ranks);
+
+  _n_step_comms = 0;
+}
+
+/*----------------------------------------------------------------------------
+ *  MPI finalization
  *----------------------------------------------------------------------------*/
 
 static void
@@ -1227,7 +1256,7 @@ cs_base_logfile_head(int    argc,
              "                      Version %s\n\n",
              CS_APP_VERSION);
 
-  bft_printf("\n  Copyright (C) 1998-2019 EDF S.A., France\n\n");
+  bft_printf("\n  Copyright (C) 1998-2020 EDF S.A., France\n\n");
 
 #if defined(CS_REVISION)
   if (strlen(CS_REVISION) > 0)
@@ -1383,6 +1412,81 @@ cs_base_mpi_init(int    *argc,
   }
 
 #endif
+}
+
+/*----------------------------------------------------------------------------
+ * Return a reduced communicator matching a multiple of the total
+ * number of ranks.
+ *
+ * This updates the number of reduced communicators if necessary.
+ *
+ * parameters:
+ *   n_ranks <-- number of ranks of reduced communicator
+ *----------------------------------------------------------------------------*/
+
+MPI_Comm
+cs_base_get_rank_step_comm(int  rank_step)
+{
+  if (rank_step <= 1)
+    return cs_glob_mpi_comm;
+
+  int n_ranks = cs_glob_n_ranks / rank_step;
+  if (cs_glob_n_ranks % rank_step > 0)
+    n_ranks += 1;
+
+  if (n_ranks <= 1)
+    return MPI_COMM_NULL;
+
+  int comm_id = 0;
+  if (_n_step_comms > 0) {
+    while (   _step_ranks[comm_id] != n_ranks
+           && comm_id < _n_step_comms)
+      comm_id++;
+  }
+
+  /* Add communicator if required */
+
+  if (comm_id >= _n_step_comms) {
+
+    _n_step_comms += 1;
+    BFT_REALLOC(_step_comm, _n_step_comms, MPI_Comm);
+    BFT_REALLOC(_step_ranks, _n_step_comms, cs_lnum_t);
+
+    _step_ranks[comm_id] = n_ranks;
+
+    if (n_ranks == cs_glob_n_ranks)
+      _step_comm[comm_id] = cs_glob_mpi_comm;
+
+    else if (n_ranks == 1)
+      _step_comm[comm_id] = MPI_COMM_NULL;
+
+    else {
+
+      int ranges[1][3];
+      MPI_Group old_group, new_group;
+
+      MPI_Barrier(cs_glob_mpi_comm); /* For debugging */
+
+      MPI_Comm_size(cs_glob_mpi_comm, &n_ranks);
+      MPI_Comm_group(cs_glob_mpi_comm, &old_group);
+
+      ranges[0][0] = 0;
+      ranges[0][1] = n_ranks - 1;
+      ranges[0][2] = rank_step;
+
+      MPI_Group_range_incl(old_group, 1, ranges, &new_group);
+      MPI_Comm_create(cs_glob_mpi_comm, new_group, &(_step_comm[comm_id]));
+      MPI_Group_free(&new_group);
+
+      MPI_Group_free(&old_group);
+
+      MPI_Barrier(cs_glob_mpi_comm); /* For debugging */
+
+    }
+
+  }
+
+  return _step_comm[comm_id];
 }
 
 #endif /* HAVE_MPI */
@@ -1559,20 +1663,22 @@ void
 cs_base_mem_finalize(void)
 {
   int    ind_bil, itot;
-  double valreal[2];
+  double valreal[4];
 
 #if defined(HAVE_MPI)
   int  imax = 0, imin = 0;
-  double val_sum[2];
-  int  ind_min[2];
-  _cs_base_mpi_double_int_t  val_in[2], val_min[2], val_max[2];
+  double val_sum[4];
+  int  ind_min[4];
+  _cs_base_mpi_double_int_t  val_in[4], val_min[4], val_max[4];
 #endif
 
-  int   ind_val[2] = {1, 1};
+  int   ind_val[4] = {1, 1, 1, 1};
   const char  unit[8] = {'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'};
 
   const char  * type_bil[] = {N_("Total memory used:                       "),
-                              N_("Theoretical instrumented dynamic memory: ")};
+                              N_("Theoretical instrumented dynamic memory: "),
+                              N_("Virtual memory used:                     "),
+                              N_("Shared libraries memory used:            ")};
 
   /* Memory summary */
 
@@ -1581,30 +1687,32 @@ cs_base_mem_finalize(void)
 
   valreal[0] = (double)bft_mem_usage_max_pr_size();
   valreal[1] = (double)bft_mem_size_max();
+  valreal[2] = (double)bft_mem_usage_max_vm_size();
+  valreal[3] = (double)bft_mem_usage_shared_lib_size();
 
   /* Ignore inconsistent measurements */
 
-  for (ind_bil = 0; ind_bil < 2; ind_bil++) {
+  for (ind_bil = 0; ind_bil < 4; ind_bil++) {
     if (valreal[ind_bil] < 1.0)
       ind_val[ind_bil] = 0;
   }
 
 #if defined(HAVE_MPI)
   if (cs_glob_n_ranks > 1) {
-    MPI_Reduce(ind_val, ind_min, 2, MPI_INT, MPI_MIN,
+    MPI_Reduce(ind_val, ind_min, 4, MPI_INT, MPI_MIN,
                0, cs_glob_mpi_comm);
-    MPI_Reduce(valreal, val_sum, 2, MPI_DOUBLE, MPI_SUM,
+    MPI_Reduce(valreal, val_sum, 4, MPI_DOUBLE, MPI_SUM,
                0, cs_glob_mpi_comm);
-    for (ind_bil = 0; ind_bil < 2; ind_bil++) {
+    for (ind_bil = 0; ind_bil < 4; ind_bil++) {
       val_in[ind_bil].val = valreal[ind_bil];
       val_in[ind_bil].rank = cs_glob_rank_id;
     }
-    MPI_Reduce(val_in, val_min, 2, MPI_DOUBLE_INT, MPI_MINLOC,
+    MPI_Reduce(val_in, val_min, 4, MPI_DOUBLE_INT, MPI_MINLOC,
                0, cs_glob_mpi_comm);
-    MPI_Reduce(val_in, val_max, 2, MPI_DOUBLE_INT, MPI_MAXLOC,
+    MPI_Reduce(val_in, val_max, 4, MPI_DOUBLE_INT, MPI_MAXLOC,
                0, cs_glob_mpi_comm);
     if (cs_glob_rank_id == 0) {
-      for (ind_bil = 0; ind_bil < 2; ind_bil++) {
+      for (ind_bil = 0; ind_bil < 4; ind_bil++) {
         ind_val[ind_bil]  = ind_min[ind_bil];
         valreal[ind_bil] = val_sum[ind_bil];
       }
@@ -1614,7 +1722,7 @@ cs_base_mem_finalize(void)
 
   /* Similar handling of several instrumentation methods */
 
-  for (ind_bil = 0 ; ind_bil < 2 ; ind_bil++) {
+  for (ind_bil = 0; ind_bil < 4; ind_bil++) {
 
     /* If an instrumentation method returns an apparently consistent
        result, print it. */
@@ -1640,9 +1748,14 @@ cs_base_mem_finalize(void)
 
       /* Print to log file */
 
-      cs_log_printf(CS_LOG_PERFORMANCE,
-                    _("  %s %12.3f %ciB\n"),
-                    _(type_bil[ind_bil]), valreal[ind_bil], unit[itot]);
+      if (ind_bil < 2 || cs_glob_n_ranks < 2)
+        cs_log_printf(CS_LOG_PERFORMANCE,
+                      _("  %s %12.3f %ciB\n"),
+                      _(type_bil[ind_bil]), valreal[ind_bil], unit[itot]);
+      else
+        cs_log_printf(CS_LOG_PERFORMANCE,
+                      _("  %s\n"),
+                      _(type_bil[ind_bil]));
 
 #if defined(HAVE_MPI)
       if (cs_glob_n_ranks > 1 && cs_glob_rank_id == 0) {
@@ -1662,6 +1775,13 @@ cs_base_mem_finalize(void)
 
   cs_log_printf(CS_LOG_PERFORMANCE, "\n");
   cs_log_separator(CS_LOG_PERFORMANCE);
+
+  /* Finalize extra communicators now as they use memory allocated through
+     bft_mem_* API */
+
+#if defined(HAVE_MPI)
+  _finalize_reduced_communicators();
+#endif
 
   /* Finalize memory handling */
 
@@ -1870,7 +1990,7 @@ cs_base_bft_printf_init(const char  *log_name,
 
   const char ext[] = ".log";
 
-  /* Allow bypassing this with environment variable to accomodate
+  /* Allow bypassing this with environment variable to accommodate
      some debug habits */
 
   bool log_to_stdout = false;
@@ -2044,7 +2164,7 @@ cs_base_warn(const char  *file_name,
  * Define a function to be called when entering cs_exit() or bft_error().
  *
  * Compared to the C atexit(), only one function may be called (latest
- * setting wins), but the function is called slighty before exit,
+ * setting wins), but the function is called slightly before exit,
  * so it is well adapted to cleanup such as flushing of non-C API logging.
  *
  * parameters:
@@ -2315,8 +2435,8 @@ cs_base_dlopen(const char *filename)
   void *retval = NULL;
 
   /* Disable floating-point traps as the initialization of some libraries
-     may interfere with this (for example, embree, and optional Paraview
-     depedency) */
+     may interfere with this (for example, embree, and optional ParaView
+     dependency) */
 
   cs_fp_exception_disable_trap();
 
@@ -2339,7 +2459,7 @@ cs_base_dlopen(const char *filename)
 /*!
  * \brief Load a plugin's dynamic library
  *
- * This function is similar to \ref cs_base_dlopen, execpt that only
+ * This function is similar to \ref cs_base_dlopen, except that only
  * the base plugin file name (with no extension) needs to be given.
  * It is assumed the file is available in the code's "pkglibdir" directory,
  *

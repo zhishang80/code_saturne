@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -202,6 +202,12 @@ class StandardItemModelBoundaries(QStandardItemModel):
             label = zone.getLabel()
             nature = zone.getNature()
             interaction = self.model.getBoundaryChoice(nature, label)
+            if interaction not in self.dicoM2V[nature].keys():
+                print("error: BC '" + label + "' (" + nature + ") type '"
+                      + interaction + "' requested\n"
+                      "       but model is not active: set to rebound")
+                interaction = 'bounce'
+                self.model.setBoundaryChoice(nature, label, interaction)
             n_sets = self.model.getNumberOfSetsValue(label)
             line = [label, nature, interaction, n_sets]
             self._data.append(line)
@@ -223,11 +229,6 @@ class StandardItemModelBoundaries(QStandardItemModel):
             else:
                 return self._data[row][col]
 
-        if role == Qt.ToolTipRole:
-            if index.column() == 2:
-                return self.tr("Code_Saturne keyword: IUSCLB")
-            elif index.column() == 3:
-                return self.tr("Code_Saturne keyword: NBCLAS")
         return None
 
 

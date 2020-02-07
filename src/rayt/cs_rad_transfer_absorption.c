@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -106,16 +106,18 @@ BEGIN_C_DECLS
  * For the P-1 model, this function also checks whether the medium's optical
  * length is at least of the order of unity.
  *
- * \param[in]   tempk  gas phase temperature at cells (in Kelvin)
- * \param[out]  kgas   radiation coefficients of the gray gases at cells
- *                      (per gas)
- * \param[out]  agas   weights of the gray gases at cells (per gas)
- * \param[out]  agasb  weights of the gray gases at boundary faces (per gas)
+ * \param[in]   tempk      gas phase temperature at cells (in Kelvin)
+ * \param[out]  cpro_cak0  medium (gas) Absorption coefficient
+ * \param[out]  kgas       radiation coefficients of the gray gases at cells
+ *                         (per gas)
+ * \param[out]  agas       weights of the gray gases at cells (per gas)
+ * \param[out]  agasb      weights of the gray gases at boundary faces (per gas)
  */
 /*----------------------------------------------------------------------------*/
 
 void
 cs_rad_transfer_absorption(const cs_real_t  tempk[],
+                           cs_real_t        cpro_cak0[],
                            cs_real_t        kgas[],
                            cs_real_t        agas[],
                            cs_real_t        agasb[])
@@ -141,8 +143,6 @@ cs_rad_transfer_absorption(const cs_real_t  tempk[],
   }
 
   cs_real_t *crom = CS_F_(rho)->val;
-
-  cs_real_t *cpro_cak0 = CS_FI_(rad_cak, 0)->val;
 
   /* Absorption coefficient of gas mix (m-1)
      --------------------------------------- */
@@ -215,7 +215,7 @@ cs_rad_transfer_absorption(const cs_real_t  tempk[],
 
   /* Coal or fuel combustion */
 
-  else if (   pm_flag[CS_COMBUSTION_COAL] >=  0
+  else if (   pm_flag[CS_COMBUSTION_COAL] >= 0
            || pm_flag[CS_COMBUSTION_FUEL] >= 0) {
 
     cs_real_t *cpro_temp1 = cs_field_by_name("t_gas")->val;
@@ -438,7 +438,7 @@ cs_rad_transfer_absorption_check_p1(const cs_real_t  cpro_cak[])
 
   cs_rad_transfer_params_t *rt_params = cs_glob_rad_transfer_params;
 
-  cs_real_t s[3] = {0, 0, 0};
+  cs_real_t s[2] = {0, 0};
 
   /* Compute the characteristic length of the computational domain */
 
@@ -481,9 +481,9 @@ cs_rad_transfer_absorption_check_p1(const cs_real_t  cpro_cak[])
            "   this optical length is xkmin = %11.4e.\n"
            "   This value is not reached for %11.4e%% of mesh cells.\n\n"
            "   The percentage of cells for which we allow this condition\n"
-           "   is not reached is currently set to:\n"
+           "   not to be reached is currently set to:\n"
            "   \"cs_glob_rad_transfer_params->xnp1mx\" = %11.4e.\n\n"),
-         __func__, xkmin, iok/n_cells*100.,
+         __func__, xkmin, iok/cs_glob_mesh->n_g_cells*100.,
          rt_params->xnp1mx);
     rt_params->iwrp1t += 1;
 

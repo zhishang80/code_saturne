@@ -1,8 +1,9 @@
+
 !-------------------------------------------------------------------------------
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -108,7 +109,7 @@ integer          modntl
 integer          iflmas, iflmab
 integer          icou, ifou , icoucf
 integer          inc, iccocg
-integer          nswrgp, imligp
+integer          imrgrp, nswrgp, imligp
 integer          f_id
 integer          nbrval, nclptr
 integer          ntcam1
@@ -206,8 +207,7 @@ if (ippmod(icompf).ge.0) then
    icepdc , icetsm , itypsm ,                                   &
    dt     ,                                                     &
    ckupdc , smacel ,                                            &
-   wcf    ,                                                     &
-   viscf  , viscb  , cofbft )
+   wcf    )
 
 endif
 
@@ -292,6 +292,7 @@ if (idtvar.ge.0) then
       coefbr(ifac) = 0.d0
     enddo
 
+    imrgrp = vcopt_p%imrgra
     nswrgp = vcopt_p%nswrgr
     imligp = vcopt_p%imligr
     iwarnp = vcopt_p%iwarni
@@ -304,7 +305,7 @@ if (idtvar.ge.0) then
     iccocg = 1
 
     call gradient_s &
- ( f_id   , imrgra , inc    , iccocg , nswrgp , imligp ,          &
+ ( f_id   , imrgrp , inc    , iccocg , nswrgp , imligp ,          &
    iwarnp , epsrgp , climgp , extrap ,                            &
    crom, brom, coefbr ,                                           &
    grad )

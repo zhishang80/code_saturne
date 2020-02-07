@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -2512,7 +2512,9 @@ ecs_loc_pre_cgns__lit_ele(ecs_maillage_t             *maillage,
 
           ient = ECS_ENTMAIL_CEL;
 
+#if CGNS_VERSION >= 3400
           cgsize_t *elt_idx = ptr_section->offsets;
+#endif
           ptr_ele = ptr_section->elems;
 
           size_t   connect_size = 0;
@@ -2845,7 +2847,6 @@ ecs_loc_pre_cgns__cree_grps_boco(const ecs_loc_cgns_base_t  *base_maillage,
   ecs_int_t    ind_ent;
   ecs_int_t    ind_glob;
   ecs_int_t    ind_nom;
-  ecs_int_t    n_elts_zone;
 
   int          cel_dim;
 
@@ -2989,8 +2990,6 @@ ecs_loc_pre_cgns__cree_grps_boco(const ecs_loc_cgns_base_t  *base_maillage,
 
         ptr_zone = tab_zone + ptr_boco->num_zone - 1;
 
-        n_elts_zone = ptr_zone->num_elt_fin - ptr_zone->num_elt_deb;
-
         /* Liste définie par numéro de début et fin */
 
         if (   ptr_boco->ptset_type == CS_CG_ENUM(PointRange)
@@ -3028,9 +3027,9 @@ ecs_loc_pre_cgns__cree_grps_boco(const ecs_loc_cgns_base_t  *base_maillage,
             ind_ent = ptr_boco->pnts[ind] - ptr_zone->num_elt_deb;
 
             /* If boundary condition references elements not present,
-               ignore it (workaroud for bug in ICEM Meshing 13 output). */
+               ignore it (workaround for bug in ICEM Meshing 13 output). */
 
-            if (ind_ent > ptr_zone->renum_size)
+            if (ind_ent >= ptr_zone->renum_size)
               continue;
 
             /* Stockage des valeurs lues avant transfert dans maillage */

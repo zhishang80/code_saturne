@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -145,8 +145,11 @@ call field_get_val_v(ivarfl(iu), vel)
 call field_get_key_int(ivarfl(iu), kbmasf, iflmab)
 call field_get_val_s(iflmab, bmasfl)
 
+! No face to face assumption
 if (ifaccp.eq.0) then
   icscp = icscpl
+
+! Face to face mapping assumption
 else
   icscp = icscpd
 endif
@@ -177,13 +180,13 @@ do ivar = 1, nvcp
   if (ivar.ne.iu .and. ivar.ne.iv .and. ivar.ne.iw) then
 
     call field_get_val_s(ivarfl(ivar), cvar_var)
-    call field_gradient_scalar(ivarfl(ivar), iprev, imrgra, inc,   &
-                               iccocg,                             &
+    call field_gradient_scalar(ivarfl(ivar), iprev, 0, inc,   &
+                               iccocg,                        &
                                grad)
 
   else if (ivar.eq.iu) then
 
-    call field_gradient_vector(ivarfl(iu), iprev, imrgra, inc,  &
+    call field_gradient_vector(ivarfl(iu), iprev, 0, inc,  &
                                gradv)
 
   endif
@@ -507,8 +510,11 @@ integer          ipt
 ! 1.  Translation of the coupling to boundary conditions
 !===============================================================================
 
+! No face to face assumption
 if (ifaccp.eq.0) then
   icscp = icscpl
+
+! Face to face mapping assumption
 else
   icscp = icscpd
 endif
@@ -525,7 +531,7 @@ do ivar = 1, nvcp
       ifac = lfbcpl(ipt)
 
       itypfb(ifac) = icscp
-      icodcl(ifac,ivar  ) = 1
+      icodcl(ifac,ivar) = 1
 
     enddo
 
@@ -538,9 +544,9 @@ do ivar = 1, nvcp
       itypfb(ifac) = icscp
 
       if (ivar.ne.ipr) then
-        icodcl(ifac,ivar  ) = 1
+        icodcl(ifac, ivar) = 1
       else
-        icodcl(ifac,ivar  ) = 3
+        icodcl(ifac, ivar) = 3
       endif
 
     enddo

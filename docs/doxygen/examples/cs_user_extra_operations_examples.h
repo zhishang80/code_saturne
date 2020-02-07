@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -37,10 +37,12 @@
   \section cs_user_extra_operations_examples_cs_user_extra_op_examples Extra operations examples
   Here is the list of examples dedicated to different physics:
 
-  - \subpage cs_user_extra_operations_examples_energy_balance_p
+  - \subpage cs_user_extra_operations_examples_vorticity_field_p
   - \subpage cs_user_extra_operations_examples_balance_by_zone_p
+  - \subpage cs_user_extra_operations_examples_scalar_balance_p
+  - \subpage cs_user_extra_operations_examples_energy_balance_p
   - \subpage cs_user_extra_operations_examples_force_temperature_p
-  - \subpage cs_user_extra_operations_examples_global_efforts_p
+  - \subpage cs_user_extra_operations_examples_boundary_forces_p
   - \subpage cs_user_extra_operations_examples_parallel_operations_p
   - \subpage cs_user_extra_operations_examples_stopping_criterion_p
 
@@ -277,6 +279,38 @@
 // __________________________________________________________________________________
 /*!
 
+  \page cs_user_extra_operations_examples_scalar_balance_p Scalar balance on full domain
+
+  \section cs_user_extra_operations_examples_scalar_balance Scalar balance on full domain
+
+  This is an example of \ref cs_user_extra_operations which performs a scalar
+  balance on the full computational domain. It is possible to customize the output to extract
+  the contribution of some boundary zones of interest.
+
+  Define local variables
+
+  \snippet cs_user_extra_operations-scalar_balance.c local_variables
+
+  Get the physical fields
+
+  \snippet cs_user_extra_operations-scalar_balance.c local_variables
+
+  Initialization step
+
+  \snippet cs_user_extra_operations-scalar_balance.c init
+
+  Computation step
+
+  \snippet cs_user_extra_operations-scalar_balance.c computation
+
+  Write the balance at time step n
+
+  \snippet cs_user_extra_operations-scalar_balance.c computation
+
+*/
+// __________________________________________________________________________________
+/*!
+
   \page cs_user_extra_operations_examples_force_temperature_p Force temperature in a given region
 
   \section cs_user_extra_operations_examples_force_temperature Force temperature in a given region
@@ -302,22 +336,62 @@
 // __________________________________________________________________________________
 /*!
 
-  \page cs_user_extra_operations_examples_global_efforts_p Global efforts
+  \page cs_user_extra_operations_examples_vorticity_field_p Compute vorticity field values
 
-  \section cs_user_extra_operations_examples_global_efforts Global efforts
+  \section cs_user_extra_operations_examples_vorticity_field Compute vorticity field values
 
-  This is an example of \ref cs_user_extra_operations which computes global efforts
+  This is an example of \ref cs_user_extra_operations
+  which computes the vorticity field values over the whole domain.
 
-  \subsection cs_user_extra_operations_examples_loc_var_geff Local variables to be added
+  First number of cells in the current sub-domain (or the whole domain for a sequential calculation)
+  is retrieved. The number of cells with ghosts (i.e. including halo cells) is retrieved first, then
+  the number of standard cells. The array that will host the velocity gradient values is finally
+  declared, as a 3x3 real matrix array per cell.
 
-  \snippet cs_user_extra_operations-global_efforts.f90 loc_var_dec
+  \snippet cs_user_extra_operations-vorticity_field.c vorticity_d
 
-  \subsection cs_user_extra_operations_examples_geff_body Body
+  The array hosting the gradient values has to be allocated consistantly with his type.
 
-  Example: compute global efforts on a subset of faces.
-  If boundary stresses have been calculated correctly:
+  \snippet cs_user_extra_operations-vorticity_field.c vorticity_a
 
-  \snippet cs_user_extra_operations-global_efforts.f90 example_1
+  Then the gradient of the velocity is computed. This is done as follows, by calling the appropriate
+  field operator:
+
+  \snippet cs_user_extra_operations-vorticity_field.c vorticity_g
+
+  The vorticity field has to be retrieved as follows below. Note that if it doesn't exist the pointer
+  will be set to NULL (this is the behavior of the "_try" variant of the field accesser).
+  The vorticity field can have been added through the GUI (menu postprocessing > additional user
+  arrays) or in \ref cs_user_model.
+
+  \snippet cs_user_extra_operations-vorticity_field.c vorticity_f
+
+  Finally the vorticity values are computed in each standard cell if the field "vorticity" has been
+  well retrieved previously only. Notice the way the gradient values are accessed.
+
+  \snippet cs_user_extra_operations-vorticity_field.c vorticity_cv
+
+  The array holding the gradient values has to be deallocated at the end.
+
+  \snippet cs_user_extra_operations-vorticity_field.c vorticity_da
+
+*/
+// __________________________________________________________________________________
+/*!
+
+  \page cs_user_extra_operations_examples_boundary_forces_p Boundary forces
+
+  \section cs_user_extra_operations_examples_boundary_forces Boundary forces
+
+  This is an example of \ref cs_user_extra_operations which computes boundary forces
+
+  Example 1: compute total forces on a boundary zone (subset of boundary faces).
+
+  \snippet cs_user_extra_operations-boundary_forces.c boundary_forces_ex1
+
+  Example 2: compute pressure forces on a boundary zone (subset of boundary faces).
+
+  \snippet cs_user_extra_operations-boundary_forces.c boundary_forces_ex2
 
 */
 // __________________________________________________________________________________
@@ -460,5 +534,18 @@
   \f]
 
   \snippet cs_user_extra_operations-stopping_criterion.c extra_stopping_criterion
+
+*/
+// __________________________________________________________________________________
+/*!
+
+  \page cs_user_extra_operations_examples_verif_cdo_diff Postprocessing of results obtained with CDO schemes for a scalar transport equation.
+
+  \section cs_user_extra_operations_examples_verif_cdo_diff Postprocessing of results obtained with CDO schemes for a scalar transport equation.
+
+  This is an example of \ref cs_user_extra_operations allowing to add operations on results produced by CDO schemes. It allows to define advanced
+  postprocessing.
+
+  \snippet cs_user_extra_operations-verif_cdo_diffusion.c extra_verif_cdo_diff
 
 */

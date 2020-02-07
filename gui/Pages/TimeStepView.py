@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -127,7 +127,7 @@ class TimeStepView(QWidget, Ui_TimeStepForm):
         validatorCDTMIN = DoubleValidator(self.lineEditCDTMIN, min=0.0, max=1.0)
         validatorCDTMIN.setExclusiveMin(True)
         validatorCDTMAX = DoubleValidator(self.lineEditCDTMAX, min=1.0)
-        validatorVARRDT = DoubleValidator(self.lineEditVARRDT, min=0.0, max=1.0)
+        validatorVARRDT = DoubleValidator(self.lineEditVARRDT, min=0.0)
         validatorVARRDT.setExclusiveMin(True)
 
         self.lineEditDTREF.setValidator(validatorDTREF)

@@ -4,7 +4,7 @@
 
 /* This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -136,6 +136,8 @@ BEGIN_C_DECLS
         - 4: T2 (32 directions)
         - 5: T4 (128 directions)
         - 6: Tn (8*ndirec^2 directions)
+        - 7: 120 directions (LC11)
+        - 8: 48 directions (DCT020-2468)
   \var  cs_rad_transfer_params_t::ndirec
         Number of directions for the angular discretisation of the radiation
         propagation with the DOM model.\n
@@ -182,6 +184,8 @@ BEGIN_C_DECLS
   \var  cs_rad_transfer_params_t::itpt1d
         Calculation of the temperature with the 1D wall thermal module,
         which solves a heat equation.
+  \var  cs_rad_transfer_params_t::ifinfe
+        Modeling of an infinite extrusion for open boundaries.
 */
 
 /*----------------------------------------------------------------------------*/
@@ -208,6 +212,7 @@ const char *cs_rad_transfer_model_name[] = {
 
 /*! Quadrature name */
 const char *cs_rad_transfer_quadrature_name[] = {
+  "",
   "S4 (24 directions)",
   "S6 (48 directions)",
   "S8 (80 directions)",
@@ -242,6 +247,7 @@ cs_rad_transfer_params_t _rt_params = {.type = CS_RAD_TRANSFER_NONE,
                                        .ifgrno = 31,
                                        .ifrefl = 32,
                                        .itpt1d = 4,
+                                       .ifinfe = 5,
                                        .atmo_ir_absorption = false,
                                        .dispersion = false,
                                        .dispersion_coeff = 1.};

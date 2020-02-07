@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -69,7 +69,6 @@ use pointe
 use albase
 use parall
 use period
-use ihmpre
 use ppppar
 use ppthch
 use ppincl
@@ -141,7 +140,7 @@ ipass = ipass + 1
 
 if (iperot.gt.0 .and. itytur.eq.3) then
   call field_get_key_struct_var_cal_opt(ivarfl(ir11), vcopt)
-  call perinr(imrgra, vcopt%iwarni, vcopt%epsrgr, vcopt%extrag)
+  call perinr(vcopt%imrgra, vcopt%iwarni, vcopt%epsrgr, vcopt%extrag)
 endif
 
 !===============================================================================
@@ -161,17 +160,15 @@ endif
 ! - Interface Code_Saturne
 !   ======================
 
-if (iihmpr.eq.1) then
-  call uiphyv(iviscv, itempk, visls0, viscv0)
+call uiphyv(iviscv, itempk, visls0, viscv0)
 
-  if (ippmod(idarcy).ge.0) then
-    call uidapp                                                           &
-    ( darcy_anisotropic_permeability,                                     &
-      darcy_anisotropic_dispersion,                                       &
-      darcy_gravity,                                                      &
-      darcy_gravity_x, darcy_gravity_y, darcy_gravity_z,                  &
-      darcy_unsaturated)
-  endif
+if (ippmod(idarcy).ge.0) then
+  call uidapp                                                           &
+  ( darcy_anisotropic_permeability,                                     &
+    darcy_anisotropic_dispersion,                                       &
+    darcy_gravity,                                                      &
+    darcy_gravity_x, darcy_gravity_y, darcy_gravity_z,                  &
+    darcy_unsaturated)
 endif
 
 call usphyv(nvar, nscal, mbrom, dt)
@@ -359,9 +356,7 @@ elseif (itytur.eq.3) then
     inc    = 1
     iccocg = 1
 
-    call field_gradient_scalar(ivarfl(ial), iprev, imrgra, inc,     &
-                               iccocg,                              &
-                               grad)
+    call field_gradient_scalar(ivarfl(ial), iprev, 0, inc, iccocg, grad)
   endif
 
   do iel = 1, ncel

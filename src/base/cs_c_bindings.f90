@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -227,6 +227,28 @@ module cs_c_bindings
 
     !---------------------------------------------------------------------------
 
+    ! Interface to C function activating default log.
+
+    subroutine cs_log_default_activate(activate)  &
+      bind(C, name='cs_log_default_activate')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      logical(kind=c_bool), value :: activate
+    end subroutine cs_log_default_activate
+
+    !---------------------------------------------------------------------------
+
+    ! Interface to C function activating default log.
+
+    function cs_log_default_is_active() result(active) &
+      bind(C, name='cs_log_default_is_active')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      logical(kind=c_bool) :: active
+    end function cs_log_default_is_active
+
+    !---------------------------------------------------------------------------
+
     ! Interface to C function logging field and other array statistics
     ! at relevant time steps.
 
@@ -252,6 +274,26 @@ module cs_c_bindings
 
     !---------------------------------------------------------------------------
 
+    ! Initialize turbulence model structures
+
+    subroutine cs_turb_model_init()  &
+      bind(C, name='cs_turb_model_init')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine cs_turb_model_init
+
+    !---------------------------------------------------------------------------
+
+    ! Set type and order of the turbulence model
+
+    subroutine cs_set_type_order_turbulence_model()  &
+      bind(C, name='cs_set_type_order_turbulence_model')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine cs_set_type_order_turbulence_model
+
+    !---------------------------------------------------------------------------
+
     !> \brief Compute filters for dynamic models.
 
 
@@ -267,6 +309,56 @@ module cs_c_bindings
       real(kind=c_double), dimension(*) :: val
       real(kind=c_double), dimension(*), intent(out) :: f_val
     end subroutine les_filter
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Create the LES balance structure.
+
+    subroutine les_balance_create()  &
+      bind(C, name='cs_les_balance_create')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine les_balance_create
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Destroy the LES balance structure.
+
+    subroutine les_balance_finalize()  &
+      bind(C, name='cs_les_balance_finalize')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine les_balance_finalize
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Write the LES balance restart file.
+
+    subroutine les_balance_write_restart()  &
+      bind(C, name='cs_les_balance_write_restart')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine les_balance_write_restart
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Compute additional time averages for LES balance.
+
+    subroutine les_balance_update_gradients()  &
+      bind(C, name='cs_les_balance_update_gradients')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine les_balance_update_gradients
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Compute the LES balance.
+
+    subroutine les_balance_compute()  &
+      bind(C, name='cs_les_balance_compute')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine les_balance_compute
 
     !---------------------------------------------------------------------------
 
@@ -1492,6 +1584,22 @@ module cs_c_bindings
 
     !---------------------------------------------------------------------------
 
+    ! Interface to C function creating a CDO variable field
+
+    function cs_variable_cdo_field_create(name, label, location_id,       &
+                                          dim, has_previous) result(id)   &
+      bind(C, name='cs_variable_cdo_field_create')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      character(kind=c_char, len=1), dimension(*), intent(in)  :: name, label
+      integer(c_int), value                                    :: location_id
+      integer(c_int), value                                    :: has_previous
+      integer(c_int), value                                    :: dim
+      integer(c_int)                                           :: id
+    end function cs_variable_cdo_field_create
+
+    !---------------------------------------------------------------------------
+
     ! Add terms from backward differentiation in time.
 
     subroutine cs_backward_differentiation_in_time(field_id,                  &
@@ -1644,6 +1752,18 @@ module cs_c_bindings
       use, intrinsic :: iso_c_binding
       implicit none
     end subroutine user_physical_properties
+
+    !---------------------------------------------------------------------------
+
+    ! Interface to C user function
+
+    subroutine user_source_terms(f_id, st_exp, st_imp)  &
+      bind(C, name='cs_user_source_terms_wrapper')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      integer(c_int), value :: f_id
+      real(kind=c_double), dimension(*), intent(inout) :: st_exp, st_imp
+    end subroutine user_source_terms
 
     !---------------------------------------------------------------------------
 
@@ -2145,15 +2265,19 @@ module cs_c_bindings
 
     !> \brief Return pointers to atmo includes
 
-    !> \param[out]   compute_z_ground     Pointer to compute_z_ground
-    !> \param[out]   nespg
-    !> \param[out]   nrg
-
-    subroutine cs_f_atmo_get_pointers(compute_z_ground, ichemistry, nespg, nrg) &
+    subroutine cs_f_atmo_get_pointers(syear, squant, shour, smin, ssec, &
+        longitude, latitude,                                            &
+        compute_z_ground,                                               &
+        sedimentation_model, deposition_model, nucleation_model,        &
+        ichemistry, nespg, nrg) &
       bind(C, name='cs_f_atmo_get_pointers')
       use, intrinsic :: iso_c_binding
       implicit none
       type(c_ptr), intent(out) :: compute_z_ground, ichemistry, nespg, nrg
+      type(c_ptr), intent(out) :: sedimentation_model, deposition_model
+      type(c_ptr), intent(out) :: nucleation_model
+      type(c_ptr), intent(out) :: syear, squant, shour, smin, ssec
+      type(c_ptr), intent(out) :: longitude, latitude
     end subroutine cs_f_atmo_get_pointers
 
     !---------------------------------------------------------------------------
@@ -2190,13 +2314,35 @@ module cs_c_bindings
 
     !---------------------------------------------------------------------------
 
-    !> \brief Declare chemistry variables from SAPCK
+    !> \brief Sets the file name used to initialize SPACK
+
+    subroutine cs_atmo_chemistry_set_spack_file_name(name) &
+      bind(C, name='cs_atmo_chemistry_set_spack_file_name')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      character(kind=c_char, len=1), dimension(*), intent(in) :: name
+    end subroutine cs_atmo_chemistry_set_spack_file_name
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Declare chemistry variables from SPACK
 
     subroutine cs_atmo_declare_chem_from_spack() &
       bind(C, name='cs_atmo_declare_chem_from_spack')
       use, intrinsic :: iso_c_binding
       implicit none
     end subroutine cs_atmo_declare_chem_from_spack
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Initialize C chemistry structure from Fortran
+
+    subroutine cs_f_atmo_chem_initialize_species_to_fid(species_fid) &
+      bind(C, name='cs_f_atmo_chem_initialize_species_to_fid')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      integer(c_int), dimension(*), intent(in) :: species_fid
+    end subroutine cs_f_atmo_chem_initialize_species_to_fid
 
     !---------------------------------------------------------------------------
 
@@ -2405,6 +2551,16 @@ module cs_c_bindings
       integer(kind=c_int), value :: field_id
       real(kind=c_double), dimension(*), intent(in) :: theipb, temp_neig
     end subroutine cs_ic_set_temp
+
+    !---------------------------------------------------------------------------
+
+    ! Init fluid mesh quantities
+
+    subroutine cs_mesh_init_fluid_quantities()   &
+      bind(C, name='cs_mesh_init_fluid_quantities')
+      use, intrinsic :: iso_c_binding
+      implicit none
+    end subroutine cs_mesh_init_fluid_quantities
 
     !---------------------------------------------------------------------------
 
@@ -4392,6 +4548,56 @@ contains
 
   !=============================================================================
 
+  !> \brief  Add a CDO field defining a general solved variable, with default
+  !>         options.
+
+  !> \param[in]  name           field name
+  !> \param[in]  label          field default label, or empty
+  !> \param[in]  location_id    field location type:
+  !>                              0: none
+  !>                              1: cells
+  !>                              2: interior faces
+  !>                              3: interior faces
+  !>                              4: vertices
+  !> \param[in]  dim            field dimension
+  !> \param[in]  has_previous   if greater than 1 then store previous state
+  !> \param[out] id             id of defined field
+
+  subroutine variable_cdo_field_create(name, label, location_id, dim, &
+                                       has_previous, id)
+
+    use, intrinsic :: iso_c_binding
+    implicit none
+
+    ! Arguments
+
+    character(len=*), intent(in) :: name, label
+    integer, intent(in)          :: location_id, dim, has_previous
+    integer, intent(out)         :: id
+
+    ! Local variables
+
+    character(len=len_trim(name)+1, kind=c_char) :: c_name
+    character(len=len_trim(label)+1, kind=c_char) :: c_label
+    integer(c_int) :: c_location_id, c_dim, c_has_previous, c_id
+
+    c_name = trim(name)//c_null_char
+    c_label = trim(label)//c_null_char
+    c_location_id = location_id
+    c_dim = dim
+    c_has_previous = has_previous;
+
+    c_id = cs_variable_cdo_field_create(c_name, c_label, c_location_id, &
+                                        c_dim, c_has_previous)
+
+    id = c_id
+
+    return
+
+  end subroutine variable_cdo_field_create
+
+  !=============================================================================
+
   !> \brief Return the number of volume zones associated with a given type flag.
 
   !> \param[in]   type_flag   type flag queried
@@ -5594,6 +5800,30 @@ contains
     val = c_val
 
   end function notebook_parameter_value_by_name
+
+  !=============================================================================
+
+  !> \brief Sets the file name used to initialize SPACK
+
+  !> \param[in]     name      name of the file
+
+  subroutine atmo_chemistry_set_spack_file_name(name)
+
+    use, intrinsic :: iso_c_binding
+    implicit none
+
+    ! Arguments
+
+    character(len=*), intent(in) :: name
+
+    ! Local variables
+
+    character(len=len_trim(name)+1, kind=c_char) :: c_name
+
+    c_name = trim(name)//c_null_char
+    call cs_atmo_chemistry_set_spack_file_name(c_name)
+
+  end subroutine atmo_chemistry_set_spack_file_name
 
   !=============================================================================
 

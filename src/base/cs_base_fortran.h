@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -236,6 +236,11 @@ cs_user_extra_operations_initialize_wrapper(void);
 
 void
 cs_user_physical_properties_wrapper(void);
+
+  void
+cs_user_source_terms_wrapper(int       f_id,
+                             cs_real_t *st_exp,
+                             cs_real_t *st_imp);
 
 void
 cs_user_extra_operations_wrapper(void);

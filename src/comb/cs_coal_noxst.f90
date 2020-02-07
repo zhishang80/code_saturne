@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -21,9 +21,7 @@
 !-------------------------------------------------------------------------------
 
 subroutine cs_coal_noxst &
-!=======================
-
- ( ncelet , ncel   ,                                                      &
+ ( ncel   ,                                                               &
    indpdf ,                                                               &
    pdfm1  , pdfm2  , doxyd  , dfuel  , hrec ,                             &
    f3m    , f4m    , f5m    , f6m    , f7m  , f8m , f9m ,                 &

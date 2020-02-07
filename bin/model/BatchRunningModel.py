@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -35,7 +35,7 @@ from __future__ import print_function
 import sys, unittest
 import os, os.path, shutil, sys, types, re
 
-import cs_batch
+from code_saturne import cs_batch
 
 #-------------------------------------------------------------------------------
 # Library modules import
@@ -43,7 +43,7 @@ import cs_batch
 
 from code_saturne.model.XMLvariables import Variables, Model
 
-import cs_exec_environment
+from code_saturne import cs_exec_environment
 
 #-------------------------------------------------------------------------------
 # Class BatchRunningModel
@@ -73,6 +73,7 @@ class BatchRunningModel(Model):
         self.dictValues['run_nthreads'] = None
         self.dictValues['run_id'] = None
         self.dictValues['run_build'] = None
+        self.dictValues['run_stage_init'] = False
 
         # Is a batch file present ?
 
@@ -89,6 +90,7 @@ class BatchRunningModel(Model):
         self.dictValues['run_nthreads'] = self.case['runcase'].get_nthreads()
         self.dictValues['run_id'] = self.case['runcase'].get_run_id()[0]
         self.dictValues['run_build'] = self.case['runcase'].get_compute_build()
+        self.dictValues['run_stage_init'] = self.case['runcase'].get_run_stage('initialize')
 
 
     def updateBatchRunOptions(self, keyword=None):
@@ -104,6 +106,9 @@ class BatchRunningModel(Model):
             self.case['runcase'].set_run_id(run_id = self.dictValues['run_id'])
         if (keyword == 'run_build' or not keyword) and self.case['runcase']:
             self.case['runcase'].set_compute_build(self.dictValues['run_build'])
+        if (keyword == 'run_stage_init' or not keyword) and self.case['runcase']:
+            self.case['runcase'].set_run_stage('initialize',
+                                               self.dictValues['run_stage_init'])
 
 
     def parseBatchFile(self):

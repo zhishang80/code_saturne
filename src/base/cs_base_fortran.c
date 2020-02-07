@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -470,7 +470,7 @@ cs_base_fortran_bft_printf_set(const char  *log_name,
 
   if (suppress == false) {
 
-    /* Allow bypassing this with environment variable to accomodate
+    /* Allow bypassing this with environment variable to accommodate
        some debug habits */
 
     const char *p = getenv("CS_LOG_TO_STDOUT");
@@ -622,6 +622,17 @@ void
 cs_user_physical_properties_wrapper(void)
 {
   cs_user_physical_properties(cs_glob_domain);
+}
+
+void
+cs_user_source_terms_wrapper(int       f_id,
+                             cs_real_t *st_exp,
+                             cs_real_t *st_imp)
+{
+  cs_user_source_terms(cs_glob_domain,
+                       f_id,
+                       st_exp,
+                       st_imp);
 }
 
 void

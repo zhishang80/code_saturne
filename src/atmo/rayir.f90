@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -86,7 +86,7 @@ use period
 use ppppar
 use ppthch
 use ppincl
-use atincl, only: kmx, rvsra, cpvcpa, sigc, irdu, iru, ird
+use atincl, only: kmx, cpvcpa, sigc, irdu, iru, ird
 use cstnum, only: epzero, pi
 
 !===============================================================================
@@ -493,71 +493,64 @@ else
         call rayive(tauv, dtauv, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
         dfir(i) = dfir(i)-(1.d0-(1.d0+fn*(taul-1.d0))*(tauv-aco2(i,k)))      &
                  *dt4dz(k)*dz0(k-1)
-       enddo
+      enddo
 
-       qqqqv = xqqvinf-qqqv(i)
-       qqqqc = xqqcinf-qqqc(i)
-       call rayive(tauv, dtauv, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
+      qqqqv = xqqvinf-qqqv(i)
+      qqqqc = xqqcinf-qqqc(i)
+      call rayive(tauv, dtauv, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
 
-       dfir(i) = sig*(dfir(i)+t4zt*(1.d0-(1.d0+fn*(taul-1.d0))*(tauv-acsup(i))))
+      dfir(i) = sig*(dfir(i)+t4zt*(1.d0-(1.d0+fn*(taul-1.d0))*(tauv-acsup(i))))
 
-       ! upward fluxes
-       if (i.gt.k1) then
-         do k = k1+1, i
-           ! cloud fraction estimation (we take the maximum)
-           fn = max(fn,fnerir(k))
-           qqqqv = qqqv(i)-qqv(k)
-           qqqqc = qqqc(i)-qqc(k)
-           qqqql = qqql(i)-qql(k)
+      ! upward fluxes
+      if (i.gt.k1) then
+        do k = k1+1, i
+          ! cloud fraction estimation (we take the maximum)
+          fn = max(fn,fnerir(k))
+          qqqqv = qqqv(i)-qqv(k)
+          qqqqc = qqqc(i)-qqc(k)
+          qqqql = qqql(i)-qql(k)
 
-           if (fn.lt.1.d-3) then
-             fn = 0.d0
-             taul = 0.d0
-           else
-             taul = exp(-kliq(k)*qqqql/fn)
-           endif
+          if (fn.lt.1.d-3) then
+            fn = 0.d0
+            taul = 0.d0
+          else
+            taul = exp(-kliq(k)*qqqql/fn)
+          endif
 
-           call rayive(tauv, dtauv, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
-           ufir(i) = ufir(i)+(1.d0-(1.d0+fn*(taul-1.d0))*(tauv-aco2(i,k)))    &
-                     *dt4dz(k)*dz0(k-1)
-         enddo
-       endif
+          call rayive(tauv, dtauv, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
+          ufir(i) = ufir(i)+(1.d0-(1.d0+fn*(taul-1.d0))*(tauv-aco2(i,k)))    &
+                    *dt4dz(k)*dz0(k-1)
+        enddo
+      endif
 
-       ! contribution of the upward flux reflected at the gound
-       ! Modification of Ponnulakshmi and al. (2009)
-       a3 = 0.d0
-       do k = k1+1, kmray
-         qqqqv = qqqv(i) + qqv(k)
-         qqqqc = qqqc(i) + qqc(k)
-         qqqql = qqql(i) + qql(k)
+      ! contribution of the upward flux reflected at the gound
+      ! Modification of Ponnulakshmi and al. (2009)
+      a3 = 0.d0
+      do k = k1+1, kmray
+        qqqqv = qqqv(i) + qqv(k)
+        qqqqc = qqqc(i) + qqc(k)
+        qqqql = qqql(i) + qql(k)
 
-         call rayive(tauv, dtauv, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
+        call rayive(tauv, dtauv, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
 
-         if(fn.lt.1.d-3) then
-           fn = 0.d0
-           taul = 0.d0
-         else
-           taul = exp(-kliq(k)*qqqql/fn)
-         endif
-         a3 = a3 - (1.d0-(1.d0+fn*(taul-1.d0))*(tauv-aco2s(i,k)))           &
-                  *dt4dz(k)*dz0(k-1)
-       enddo
-
-       qqqqv = qqqv(i) + xqqvinf
-       qqqqc = qqqc(i) + xqqcinf
-
-       call rayive(tvsups, dtvsups, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
-       foirs = sig*(a3+(1.-(1.+fn*(taul-1.))*(tvsups-acsups(i)))*t4zt)
-
-       ! upward fluxes estimation (sum of direct part and reflected part)
-       if (i.gt.k1) then
-        if (fn.lt.1.d-3) then
+        if(fn.lt.1.d-3) then
           fn = 0.d0
           taul = 0.d0
         else
-          taul = exp(-kliq(k)*qqql(i)/fn)
+          taul = exp(-kliq(k)*qqqql/fn)
         endif
+        a3 = a3 - (1.d0-(1.d0+fn*(taul-1.d0))*(tauv-aco2s(i,k)))           &
+          *dt4dz(k)*dz0(k-1)
+      enddo
 
+      qqqqv = qqqv(i) + xqqvinf
+      qqqqc = qqqc(i) + xqqcinf
+
+      call rayive(tvsups, dtvsups, qqqqv, qv0(i), qqqqc, qc(i), romray(i))
+      foirs = sig*(a3+(1.-(1.+fn*(taul-1.))*(tvsups-acsups(i)))*t4zt)
+
+      ! upward fluxes estimation (sum of direct part and reflected part)
+      if (i.gt.k1) then
         call rayive(tauv, dtauv, qqqv(i), qv0(k1), qqqc(i), qc(k1), romray(k1))
 
         ufir(i) = sig*ufir(i)+emis*sig*t41+(1.-emis)*foirs

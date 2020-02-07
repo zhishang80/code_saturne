@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -59,7 +59,6 @@ use pointe
 use albase
 use alstru
 use alaste
-use ihmpre
 use parall
 use period
 use mesh
@@ -88,11 +87,25 @@ integer, allocatable, dimension(:) :: lstfac, idfloc, idnloc
 
 !===============================================================================
 
+!===============================================================================
+! Interfaces
+!===============================================================================
+
+interface
+
+  subroutine cs_ast_coupling_initialize(nalimx, epalim) &
+    bind(C, name='cs_ast_coupling_initialize')
+    use, intrinsic :: iso_c_binding
+    implicit none
+    integer(c_int), value :: nalimx
+    real(kind=c_double), value :: epalim
+  end subroutine cs_ast_coupling_initialize
+
+end interface
 
 !===============================================================================
 ! 1. INITIALISATION
 !===============================================================================
-
 
 do istr = 1, nstrmx
   dtstr(istr) = dt(1)
@@ -128,22 +141,18 @@ enddo
 
 ! Internal structures
 
-if (iihmpr.eq.1) then
-
-  call uistr1 &
+call uistr1 &
 ( idfstr, mbstru,          &
   aexxst, bexxst, cfopre,  &
   ihistr,                  &
   xstp, xstreq, xpstr )
-
-endif
 
 call usstr1                                                       &
  ( idfstr ,                                                       &
    aexxst , bexxst , cfopre ,                                     &
    xstp   , xpstr  , xstreq )
 
-! External structures: Code_Saturne / Code_Aster coupling
+! External structures: Code_Saturne / code_aster coupling
 
 call uiaste(idfstr, asddlf)
 call usaste(idfstr)
@@ -219,7 +228,7 @@ if (nbaste.gt.0) then
   nbfast = 0
   nbnast = 0
 
-!       Calcul du nombre de faces et noeuds couples avec Code_Aster
+!       Calcul du nombre de faces et noeuds couples avec code_aster
   do ifac = 1, nfabor
     istr = idfstr(ifac)
     if (istr.lt.0) then
@@ -259,12 +268,10 @@ if (nbaste.gt.0) then
   enddo
   nbnast = indast
 
-  ! Free memory
+  ! Exchange code_aster coupling parameters
+  call cs_ast_coupling_initialize(nalimx, epalim)
 
-!       Recuperation des parametres commun du couplage
-  call astpar(ntmabs, nalimx, epalim, ttpabs, dtref)
-
-!       Envoi des donnees geometriques a Code_Aster
+  ! Send geometric information to code_aster
   call astgeo(nbfast, lstfac, idfloc, idnloc, almax)
 
   ! Free memory

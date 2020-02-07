@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -46,6 +46,7 @@
 
 #include "cs_base.h"
 #include "cs_timer.h"
+#include "cs_time_step.h"
 
 /*----------------------------------------------------------------------------
  *  Header for the current file
@@ -832,7 +833,7 @@ void CS_PROCF (tpsini, TPSINI)
   char *file_prefix = cs_base_string_f_to_c_create(tplpre, *lpre);
   bool use_iteration = false;
 
-  if (*idtvar < 0 || *idtvar == 2)
+  if (*idtvar == CS_STEADY || *idtvar == CS_LOCAL_TIME_STEP)
     use_iteration = true;
 
   /* Main processing */

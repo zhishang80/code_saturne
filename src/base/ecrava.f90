@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -178,7 +178,7 @@ write(nfecra,1000)
 
 ilecec = 2
 
-ficsui = 'main'
+ficsui = 'main.csc'
 call restart_create(ficsui, '', 1, rp)
 
 !===============================================================================
@@ -305,7 +305,7 @@ if (iecaux.eq.1) then
   write(nfecra,2000)
 
   ilecec = 2
-  ficsui = 'auxiliary'
+  ficsui = 'auxiliary.csc'
   call restart_create(ficsui, '', 1, rp)
 
   write(nfecra,1100)
@@ -535,16 +535,9 @@ if (iecaux.eq.1) then
     call restart_write_field_vals(rp, f_id, 0)
   endif
 
-! ---> Pression hydrostatique predite
-
-  if (iphydr.eq.2) then
-    call field_get_id('hydrostatic_pressure_prd', f_id)
-    call restart_write_field_vals(rp, f_id, 0)
-  endif
-
 !----------------------------------------------------------------
 ! ---> Wall temperature associated to the condensation model
-!      with or wihtout the 1D thermal model tag1D
+!      with or without the 1D thermal model tag1D
 !----------------------------------------------------------------
 
   if (icondb.eq.0) then

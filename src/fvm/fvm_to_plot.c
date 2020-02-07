@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -455,6 +455,9 @@ void
 fvm_to_plot_export_nodal(void               *writer,
                          const fvm_nodal_t  *mesh)
 {
+  CS_UNUSED(writer);
+  CS_UNUSED(mesh);
+
 #if 0
   if (fvm_nodal_get_max_entity_dim(mesh) == 0) {
 

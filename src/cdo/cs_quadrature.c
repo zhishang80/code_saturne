@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -490,15 +490,15 @@ cs_quadrature_tet_15pts(const cs_real_3_t   v1,
  *                     \ref CS_FLAG_EDGE plus \ref CS_FLAG_PRIMAL or
  *                     \ref CS_FLAG_DUAL
  *
- * \return  metadata stored in a \ref cs_flag_t to build a \ref cs_cell_mesh_t
+ * \return  metadata stored in a \ref cs_eflag_t to build a \ref cs_cell_mesh_t
  */
 /*----------------------------------------------------------------------------*/
 
-cs_flag_t
-cs_quadrature_get_flag(const cs_quadrature_type_t qtype,
-                       const cs_flag_t            loc)
+cs_eflag_t
+cs_quadrature_get_flag(const cs_quadrature_type_t  qtype,
+                       const cs_flag_t             loc)
 {
-  cs_flag_t ret_flag = 0;
+  cs_eflag_t ret_flag = 0;
 
   /* If necessary, enrich the mesh flag to account for the property */
   switch (qtype) {
@@ -517,7 +517,7 @@ cs_quadrature_get_flag(const cs_quadrature_type_t qtype,
 
   } /* Switch */
 
-  if (cs_flag_test(loc, CS_FLAG_CELL | CS_FLAG_PRIMAL)) {
+  if (cs_flag_test(loc, cs_flag_primal_cell)) {
 
     switch (qtype) {
 
@@ -536,7 +536,7 @@ cs_quadrature_get_flag(const cs_quadrature_type_t qtype,
     } /* Switch */
 
   } /* Primal cells */
-  else if (cs_flag_test(loc, CS_FLAG_FACE | CS_FLAG_PRIMAL)) {
+  else if (cs_flag_test(loc, cs_flag_primal_face)) {
 
     switch (qtype) {
 
@@ -556,14 +556,13 @@ cs_quadrature_get_flag(const cs_quadrature_type_t qtype,
     } /* Switch */
 
   } /* Primal faces */
-  else if (cs_flag_test(loc, CS_FLAG_EDGE | CS_FLAG_PRIMAL) ||
-           cs_flag_test(loc, CS_FLAG_FACE | CS_FLAG_DUAL)) {
+  else if (cs_flag_test(loc, cs_flag_dual_face)) {
 
     switch (qtype) {
 
     case CS_QUADRATURE_HIGHER:
     case CS_QUADRATURE_HIGHEST:
-      ret_flag |= CS_FLAG_COMP_DFQ | CS_FLAG_COMP_EFQ;
+      ret_flag |= CS_FLAG_COMP_DFQ | CS_FLAG_COMP_SEF;
       /* No break, pass to the following too */
     case CS_QUADRATURE_BARY_SUBDIV:
       ret_flag |= CS_FLAG_COMP_EF | CS_FLAG_COMP_DFQ | CS_FLAG_COMP_PEQ |
@@ -576,7 +575,24 @@ cs_quadrature_get_flag(const cs_quadrature_type_t qtype,
 
     } /* Switch */
 
-  } /* Primal edge or dual faces */
+  } /* Dual faces */
+  else if (cs_flag_test(loc, cs_flag_primal_edge)) {
+
+    switch (qtype) {
+
+    case CS_QUADRATURE_HIGHER:
+    case CS_QUADRATURE_HIGHEST:
+    case CS_QUADRATURE_BARY_SUBDIV:
+      ret_flag |= CS_FLAG_COMP_PEQ;
+      break;
+
+    default:
+      /* Nothing to do */
+      break;
+
+    } /* Switch */
+
+  } /* Primal edge */
 
   return ret_flag;
 }

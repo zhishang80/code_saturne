@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -123,9 +123,9 @@ typedef void
  *
  * parameters:
  *   mesh                 <-- pointer to nodal mesh structure
+ *   min_export_dim       <-- minimum dimension of sections to export
  *   group_by_type        <-- if true, group sections of same type
  *   group_all            <-- if true, all sections continue previous ones
- *   min_export_dim       <-- minimum dimension of sections to export
  *   discard_polygons     <-- ignore polygonal sections
  *   discard_polyhedra    <-- ignore polyhedral sections
  *   divide_polygons      <-- tesselate polygonal sections

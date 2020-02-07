@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -39,26 +39,26 @@ import fnmatch
 # Application modules import
 #-------------------------------------------------------------------------------
 
-from cs_exec_environment import get_shell_type, enquote_arg
-from cs_compile import files_to_compile, compile_and_link
-import cs_create
-from cs_create import set_executable
-import cs_runcase
+from code_saturne.cs_exec_environment import get_shell_type, enquote_arg
+from code_saturne.cs_compile import files_to_compile, compile_and_link
+from code_saturne import cs_create
+from code_saturne.cs_create import set_executable
+from code_saturne import cs_runcase
 
 from code_saturne.model import XMLengine
 from code_saturne.studymanager.cs_studymanager_pathes_model import PathesModel
 
-from studymanager.cs_studymanager_parser import Parser
-from studymanager.cs_studymanager_texmaker import Report1, Report2
+from code_saturne.studymanager.cs_studymanager_parser import Parser
+from code_saturne.studymanager.cs_studymanager_texmaker import Report1, Report2
 
 try:
-    from studymanager.cs_studymanager_drawing import Plotter
+    from code_saturne.studymanager.cs_studymanager_drawing import Plotter
 except Exception:
     print("Warning: import studymanager Plotter failed. Plotting disabled.\n")
     pass
 
-from studymanager.cs_studymanager_run import run_studymanager_command
-from studymanager.cs_studymanager_xml_init import smgr_xml_init
+from code_saturne.studymanager.cs_studymanager_run import run_studymanager_command
+from code_saturne.studymanager.cs_studymanager_xml_init import smgr_xml_init
 
 #-------------------------------------------------------------------------------
 # log config.
@@ -131,9 +131,8 @@ def isStudy(dirpath):
     """Try to determine if dirpath is a Code_Saturne study directory.
     """
 
-    postd = os.path.join(dirpath, 'POST')
     meshd = os.path.join(dirpath, 'MESH')
-    is_study = os.path.isdir(postd) and os.path.isdir(meshd)
+    is_study = os.path.isdir(meshd)
 
     return is_study
 
@@ -192,18 +191,38 @@ class Case(object):
 
         coupling = os.path.join(self.__repo, self.label, "coupling_parameters.py")
         if os.path.isfile(coupling):
-            import cs_case_coupling
+
+            from code_saturne import cs_case_coupling
             try:
                 exec(compile(open(coupling).read(), '<string>', 'exec'))
             except Exception:
                 execfile(coupling)
+
             run_ref = os.path.join(self.__repo, self.label, "runcase")
             self.exe, self.pkg = self.__get_exe(pkg, run_ref)
             self.subdomains = []
             for d in locals()['domains']:
-                if d['solver'] == self.pkg.code_name:
+                if d['solver'].lower() in ('code_saturne', 'neptune_cfd'):
                     self.subdomains.append(d['domain'])
+                elif d['solver'].lower() == "syrthes":
+                    syrthes = True
+
             self.resu = 'RESU_COUPLING'
+
+            # insert syrthes path
+            if syrthes:
+                syrthes_insert = cs_create.syrthes_path_line(pkg)
+                if syrthes_insert:
+                    fd = open(coupling)
+                    fd_lines = fd.readlines()
+                    fd.close()
+                    fd = open(coupling, 'w')
+                    for line in fd_lines:
+                        if "sys.path.insert" in line:
+                            fd.write(syrthes_insert)
+                        else:
+                            fd.write(line)
+                    fd.close()
 
         else:
             run_ref = os.path.join(self.__repo, self.label, "SCRIPTS", "runcase")
@@ -222,9 +241,9 @@ class Case(object):
         runcase = cs_runcase.runcase(run_ref)
 
         if runcase.cmd_name == "code_saturne":
-            from cs_package import package
+            from code_saturne.cs_package import package
         elif runcase.cmd_name == "neptune_cfd":
-            from nc_package import package
+            from neptune_cfd.nc_package import package
         pkg = package()
 
         return runcase.cmd_name, pkg
@@ -238,12 +257,12 @@ class Case(object):
         # 1) Load the xml file of parameters in order to update it
         #    with the __backwardCompatibility method.
 
-        from model.XMLengine import Case
+        from code_saturne.model.XMLengine import Case
 
         if self.exe == "code_saturne":
-            from model.XMLinitialize import XMLinit as solver_xml_init
+            from code_saturne.model.XMLinitialize import XMLinit as solver_xml_init
         elif self.exe == "neptune_cfd":
-            from model.XMLinitializeNeptune import XMLinit as solver_xml_init
+            from code_saturne.model.XMLinitializeNeptune import XMLinit as solver_xml_init
 
         for fn in os.listdir(os.path.join(self.__repo, subdir, "DATA")):
             fp = os.path.join(self.__repo, subdir, "DATA", fn)
@@ -267,14 +286,14 @@ class Case(object):
                     case.xmlSaveDocument()
 
 
-        # 2) Create RESU and SRC directory if needed
+        # 2) Recreate missing directories which are compulsory
+        # git removes these usually empty directories
         if not xmlonly:
-            r = os.path.join(self.__repo, subdir, "RESU")
-            if not os.path.isdir(r):
-                os.makedirs(r)
-            r = os.path.join(self.__repo, subdir, "SRC")
-            if not os.path.isdir(r):
-                os.makedirs(r)
+            git_rm_dirs = ["RESU", "SRC"]
+            for gd in git_rm_dirs:
+                r = os.path.join(self.__repo, subdir, gd)
+                if not os.path.isdir(r):
+                    os.makedirs(r)
 
         # 3) Update the GUI script from the Repository
         data_subdir = os.path.join(self.__repo, subdir, "DATA")
@@ -374,11 +393,16 @@ class Case(object):
         for d in cdirs:
             self.__update_domain(d, xmlonly)
 
-        # Update the runcase script from the Repository in case of coupling
+        # Update the runcase script from the repository in case of coupling
 
         if self.subdomains:
             case_dir = os.path.join(self.__repo, self.label)
             self.update_runcase_path(case_dir, None, xmlonly)
+            # recreate possibly missing but compulsory directory
+            r = os.path.join(case_dir, "RESU_COUPLING")
+            if not os.path.isdir(r):
+                os.makedirs(r)
+
 
     #---------------------------------------------------------------------------
 
@@ -440,8 +464,8 @@ class Case(object):
         """
         Update the command line in the launcher C{runcase}.
         """
-        from cs_exec_environment import separate_args, \
-                                 get_command_single_value
+        from code_saturne.cs_exec_environment import separate_args, \
+            get_command_single_value
 
         # Prepare runcase path
         scripts_repo = os.path.join(self.__repo, self.label)
@@ -863,6 +887,10 @@ class Study(object):
                     shutil.copytree(ref, node, symlinks=True)
                 else:
                     shutil.copy2(ref, node)
+                    if node == 'coupling_parameters.py':
+                        resu_coupling = 'RESU_COUPLING'
+                        if not os.path.isdir(resu_coupling):
+                            os.mkdir(resu_coupling)
             c.update_runcase_path(c.label, destdir=self.__dest)
             os.chdir(self.__dest)
         else:
@@ -885,12 +913,11 @@ class Study(object):
 
         # Create study if necessary
         if not os.path.isdir(self.__dest):
-            # build instance of study class from cs_create
+            # build instance of study class
             cr_study = cs_create.Study(self.__package,
                                        self.label,
                                        [],   # cases
                                        [],   # syrthes cases
-                                       None, # aster cases
                                        None, # cathare case
                                        None, # python case
                                        None, # copy
@@ -1116,15 +1143,15 @@ class Studies(object):
             init_xml_file_with_study(smgr, studyp)
 
         elif options.create_xml and not is_study:
-            print("Can not create XML file of parameter:\n" \
-                  + "current directory is not a study.")
-            sys.exit(1)
+            msg =   "Can not create XML file of parameter:\n" \
+                  + "current directory is apparently not a study (no MESH directory).\n"
+            sys.exit(msg)
 
         if filename == None:
-            print("A file of parameters must be specified or created " \
-                  "for studymanager to run.\n"
-                  "See help message and use '--file' or '--create-xml' option.")
-            sys.exit(1)
+            msg =    "A file of parameters must be specified or created " \
+                   + "for studymanager to run.\n" \
+                   + "See help message and use '--file' or '--create-xml' option.\n"
+            sys.exit(msg)
 
         # create a first xml parser only for
         #   the repository verification and
@@ -1133,8 +1160,8 @@ class Studies(object):
         if os.path.isfile(filename):
             self.__parser = Parser(filename)
         else:
-            print("Specified XML parameter file for studymanager does not exist.")
-            sys.exit(1)
+            msg = "Specified XML parameter file for studymanager does not exist.\n"
+            sys.exit(msg)
 
         # call smgr xml backward compatibility
 
@@ -1142,9 +1169,9 @@ class Studies(object):
             smgr = XMLengine.Case(package=pkg, file_name=filename, studymanager=True)
             smgr['xmlfile'] = filename
 
-        # minimal modification of xml for now
-        smgr_xml_init(smgr).initialize(reinit_indices = False)
-        smgr.xmlSaveDocument(prettyString=False)
+            # minimal modification of xml for now
+            smgr_xml_init(smgr).initialize(reinit_indices = False)
+            smgr.xmlSaveDocument(prettyString=False)
 
         self.__xmlupdate = options.update_xml
 
@@ -1164,9 +1191,10 @@ class Studies(object):
                 self.__parser.setRepository(os.path.join(studyp,".."))
                 self.__repo = self.__parser.getRepository()
             else:
-                msg="Parser.getRepository() >> No repository set.\n"
-                msg+="Add a path to the *.xml file or use the command "
-                msg+="line argument.\n"
+                msg =   "Can not set a default repository directory:\n" \
+                      + "current directory is apparently not a study (no MESH directory).\n" \
+                      + "Add a repository path to the parameter file or use the command " \
+                      + "line option (--repo=..).\n"
                 sys.exit(msg)
 
         # set destination
@@ -1184,10 +1212,11 @@ class Studies(object):
                                                               "../RUN_"+studyd))
                     self.__dest = self.__parser.getDestination()
                 else:
-                    msg="Parser.getDestination() >> No destination set.\n"
-                    msg+="Add a path to the *.xml file or use the command "
-                    msg+="line argument.\n"
-                    sys.exit(msg)
+                  msg =   "Can not set a default destination directory:\n" \
+                        + "current directory is apparently not a study (no MESH directory).\n" \
+                        + "Add a destination path to the parameter file or use the command " \
+                        + "line option (--dest=..).\n"
+                  sys.exit(msg)
 
         # create if necessary the destination directory
 
@@ -1486,7 +1515,7 @@ class Studies(object):
                 if self.__running:
                     if case.compute == 'on' and case.is_compiled != "KO":
 
-                        if self.__n_iter:
+                        if self.__n_iter is not None:
                             if case.subdomains:
                                 case_dir = os.path.join(self.__dest, s.label, case.label,
                                                         case.subdomains[0], "DATA")

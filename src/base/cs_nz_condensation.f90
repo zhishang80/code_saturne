@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -56,9 +56,9 @@ module cs_nz_condensation
   integer, save :: nzones
 
   !> \anchor izzftcd
-  !> list on the zones associated to the faces where a condensation source terms
+  !> list of the zones associated to the faces where a condensation source term
   !> is imposed. On each zone a specific wall temperature and material properties
-  !> can be specify be the user.
+  !> can be specified by the user.
   integer, allocatable, dimension(:) :: izzftcd
 
   !> \anchor izcophc

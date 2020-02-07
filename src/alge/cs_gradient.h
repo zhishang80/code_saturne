@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -34,6 +34,8 @@
 #include "cs_base.h"
 #include "cs_halo.h"
 #include "cs_internal_coupling.h"
+#include "cs_mesh.h"
+#include "cs_mesh_quantities.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -53,13 +55,30 @@ BEGIN_C_DECLS
 
 typedef enum {
 
-  CS_GRADIENT_ITER,              /* Iterative */
-  CS_GRADIENT_LSQ,               /* Least-squares */
-  CS_GRADIENT_LSQ_ITER,          /* conservative gradient reconstructed
-                                    with LSQ */
-  CS_GRADIENT_ITER_OLD           /* Iterative (old) */
+  CS_GRADIENT_GREEN_ITER,        /*!< Iterative */
+  CS_GRADIENT_LSQ,               /*!< Least-squares */
+  CS_GRADIENT_GREEN_LSQ,         /*!< Green-Gauss reconstruction with
+                                   least squares gradient face values */
+  CS_GRADIENT_GREEN_VTX          /*!< Green-Gauss with vertex interpolation */
 
 } cs_gradient_type_t;
+
+/*----------------------------------------------------------------------------
+ * Gradient limiter mode
+ *----------------------------------------------------------------------------*/
+
+typedef enum {
+
+  CS_GRADIENT_LIMIT_NONE = -1,   /*!< no limiter */
+  CS_GRADIENT_LIMIT_CELL = 0,    /*!< cell values extrapolated by cell gradient
+                                   to neighbor cells can not exceed the
+                                   limiting factor  times the actual value */
+  CS_GRADIENT_LIMIT_FACE = 1,    /*!< cell values extrapolated by face gradient
+                                   (mean of cell gradients) extrapolated to
+                                   neighbor cells can not exceed the limiting
+                                   factor times the actual value */
+
+} cs_gradient_limit_t;
 
 /*============================================================================
  *  Global variables
@@ -72,6 +91,7 @@ extern const char *cs_gradient_type_name[];
 /*============================================================================
  * Public function prototypes for Fortran API
  *============================================================================*/
+
 /*----------------------------------------------------------------------------
  * Compute the steady balance due to porous modelling for the pressure
  * gradient
@@ -104,7 +124,7 @@ void CS_PROCF (cgdcel, CGDCEL)
                                              calculation                      */
  const cs_real_t  *const extrap,      /* <-- extrapolate gradient at boundary */
  const cs_real_t  *const climgp,      /* <-- clipping coefficient             */
-       cs_real_3_t       f_ext[],      /* <-- exterior force generating the
+       cs_real_3_t       f_ext[],     /* <-- exterior force generating the
                                              hydrostatic pressure             */
  const cs_real_t         coefap[],    /* <-- boundary condition term          */
  const cs_real_t         coefbp[],    /* <-- boundary condition term          */
@@ -144,7 +164,7 @@ void CS_PROCF (cgdts, CGDTS)
  const cs_int_t         *const f_id,
  const cs_int_t         *const imrgra,    /* <-- gradient computation mode    */
  const cs_int_t         *const inc,       /* <-- 0 or 1: increment or not     */
- const cs_int_t         *const n_r_sweeps,    /* <-- >1: with reconstruction      */
+ const cs_int_t         *const n_r_sweeps,    /* <-- >1: with reconstruction  */
  const cs_int_t         *const iwarnp,    /* <-- verbosity level              */
  const cs_int_t         *const imligp,    /* <-- type of clipping             */
  const cs_real_t        *const epsrgp,    /* <-- precision for iterative
@@ -176,57 +196,72 @@ cs_gradient_initialize(void);
 void
 cs_gradient_finalize(void);
 
-/*----------------------------------------------------------------------------
- * Compute cell gradient of scalar field or component of vector or
- * tensor field.
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Free saved gradient quantities.
  *
- * parameters:
- *   var_name        <-- variable name
- *   gradient_type   <-- gradient type
- *   halo_type       <-- halo type
- *   inc             <-- if 0, solve on increment; 1 otherwise
- *   recompute_cocg  <-- should COCG FV quantities be recomputed ?
- *   n_r_sweeps      <-- if > 1, number of reconstruction sweeps
- *   tr_dim          <-- 2 for tensor with periodicity of rotation,
- *                       0 otherwise
- *   hyd_p_flag      <-- flag for hydrostatic pressure
- *   w_stride        <-- stride for weighting coefficient
- *   verbosity       <-- verbosity level
- *   clip_mode       <-- clipping mode
- *   epsilon         <-- precision for iterative gradient calculation
- *   extrap          <-- boundary gradient extrapolation coefficient
- *   clip_coeff      <-- clipping coefficient
- *   f_ext           <-- exterior force generating the hydrostatic pressure
- *   bc_coeff_a      <-- boundary condition term a
- *   bc_coeff_b      <-- boundary condition term b
- *   var             <-> gradient's base variable
- *   c_weight        <-> weighted gradient coefficient variable, or NULL
- *   cpl             <-> structure associated with internal coupling, or NULL
- *   grad            --> gradient
- *----------------------------------------------------------------------------*/
+ * This is required when the mesh changes, so that the on-demand computation
+ * will be updated.
+ */
+/*----------------------------------------------------------------------------*/
 
 void
-cs_gradient_scalar(const char                *var_name,
-                   cs_gradient_type_t         gradient_type,
-                   cs_halo_type_t             halo_type,
-                   int                        inc,
-                   bool                       recompute_cocg,
-                   int                        n_r_sweeps,
-                   int                        tr_dim,
-                   int                        hyd_p_flag,
-                   int                        w_stride,
-                   int                        verbosity,
-                   int                        clip_mode,
-                   double                     epsilon,
-                   double                     extrap,
-                   double                     clip_coeff,
-                   cs_real_3_t                f_ext[],
-                   const cs_real_t            bc_coeff_a[],
-                   const cs_real_t            bc_coeff_b[],
-                   cs_real_t        *restrict var,
-                   cs_real_t        *restrict c_weight,
-                   cs_internal_coupling_t    *cpl,
-                   cs_real_3_t      *restrict grad);
+cs_gradient_free_quantities(void);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute cell gradient of scalar field or component of vector or
+ *         tensor field.
+ *
+ * \param[in]       var_name       variable name
+ * \param[in]       gradient_type  gradient type
+ * \param[in]       halo_type      halo type
+ * \param[in]       inc            if 0, solve on increment; 1 otherwise
+ * \param[in]       recompute_cocg should COCG FV quantities be recomputed ?
+ * \param[in]       n_r_sweeps     if > 1, number of reconstruction sweeps
+ *                                 (only used by CS_GRADIENT_ITER)
+ * \param[in]       tr_dim         2 for tensor with periodicity of rotation,
+ *                                 0 otherwise
+ * \param[in]       hyd_p_flag     flag for hydrostatic pressure
+ * \param[in]       w_stride       stride for weighting coefficient
+ * \param[in]       verbosity      verbosity level
+ * \param[in]       clip_mode      clipping mode
+ * \param[in]       epsilon        precision for iterative gradient calculation
+ * \param[in]       extrap         boundary gradient extrapolation coefficient
+ * \param[in]       clip_coeff     clipping coefficient
+ * \param[in]       f_ext          exterior force generating the
+ *                                 hydrostatic pressure
+ * \param[in]       bc_coeff_a     boundary condition term a
+ * \param[in]       bc_coeff_b     boundary condition term b
+ * \param[in, out]  var            gradient's base variable
+ * \param[in, out]  c_weight       cell variable weight, or NULL
+ * \param[in]       cpl            associated internal coupling, or NULL
+ * \param[out]      grad           gradient
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_gradient_scalar(const char                    *var_name,
+                   cs_gradient_type_t             gradient_type,
+                   cs_halo_type_t                 halo_type,
+                   int                            inc,
+                   bool                           recompute_cocg,
+                   int                            n_r_sweeps,
+                   int                            tr_dim,
+                   int                            hyd_p_flag,
+                   int                            w_stride,
+                   int                            verbosity,
+                   cs_gradient_limit_t            clip_mode,
+                   double                         epsilon,
+                   double                         extrap,
+                   double                         clip_coeff,
+                   cs_real_3_t                    f_ext[],
+                   const cs_real_t                bc_coeff_a[],
+                   const cs_real_t                bc_coeff_b[],
+                   cs_real_t                      var[restrict],
+                   cs_real_t            *restrict c_weight,
+                   const cs_internal_coupling_t  *cpl,
+                   cs_real_t                      grad[restrict][3]);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -237,6 +272,7 @@ cs_gradient_scalar(const char                *var_name,
  * \param[in]       halo_type       halo type
  * \param[in]       inc             if 0, solve on increment; 1 otherwise
  * \param[in]       n_r_sweeps      if > 1, number of reconstruction sweeps
+ *                                  (only used by CS_GRADIENT_ITER)
  * \param[in]       verbosity       verbosity level
  * \param[in]       clip_mode       clipping mode
  * \param[in]       epsilon         precision for iterative gradient calculation
@@ -244,31 +280,29 @@ cs_gradient_scalar(const char                *var_name,
  * \param[in]       bc_coeff_a      boundary condition term a
  * \param[in]       bc_coeff_b      boundary condition term b
  * \param[in, out]  var             gradient's base variable
- * \param[in, out]  c_weight        weighted gradient coefficient variable,
- *                                  or NULL
- * \param[in, out]  cpl             structure associated with internal coupling,
- *                                  or NULL
+ * \param[in, out]  c_weight        cell variable weight, or NULL
+ * \param[in]       cpl             associated internal coupling, or NULL
  * \param[out]      gradv           gradient
                                     (\f$ \der{u_i}{x_j} \f$ is gradv[][i][j])
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_gradient_vector(const char                *var_name,
-                   cs_gradient_type_t         gradient_type,
-                   cs_halo_type_t             halo_type,
-                   int                        inc,
-                   int                        n_r_sweeps,
-                   int                        verbosity,
-                   int                        clip_mode,
-                   double                     epsilon,
-                   double                     clip_coeff,
-                   const cs_real_3_t          bc_coeff_a[],
-                   const cs_real_33_t         bc_coeff_b[],
-                   cs_real_3_t      *restrict var,
-                   cs_real_t        *restrict c_weight,
-                   cs_internal_coupling_t    *cpl,
-                   cs_real_33_t     *restrict gradv);
+cs_gradient_vector(const char                    *var_name,
+                   cs_gradient_type_t             gradient_type,
+                   cs_halo_type_t                 halo_type,
+                   int                            inc,
+                   int                            n_r_sweeps,
+                   int                            verbosity,
+                   cs_gradient_limit_t            clip_mode,
+                   double                         epsilon,
+                   double                         clip_coeff,
+                   const cs_real_t                bc_coeff_a[][3],
+                   const cs_real_t                bc_coeff_b[][3][3],
+                   cs_real_t                      var[restrict][3],
+                   cs_real_t        *restrict     c_weight,
+                   const cs_internal_coupling_t  *cpl,
+                   cs_real_t                      gradv[restrict][3][3]);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -279,6 +313,7 @@ cs_gradient_vector(const char                *var_name,
  * \param[in]       halo_type       halo type
  * \param[in]       inc             if 0, solve on increment; 1 otherwise
  * \param[in]       n_r_sweeps      if > 1, number of reconstruction sweeps
+ *                                  (only used by CS_GRADIENT_ITER)
  * \param[in]       verbosity       verbosity level
  * \param[in]       clip_mode       clipping mode
  * \param[in]       epsilon         precision for iterative gradient calculation
@@ -298,7 +333,7 @@ cs_gradient_tensor(const char                *var_name,
                    int                        inc,
                    int                        n_r_sweeps,
                    int                        verbosity,
-                   int                        clip_mode,
+                   cs_gradient_limit_t        clip_mode,
                    double                     epsilon,
                    double                     clip_coeff,
                    const cs_real_6_t          bc_coeff_a[],
@@ -315,31 +350,30 @@ cs_gradient_tensor(const char                *var_name,
  * values for input arrays (var and optionally c_weight)
  * have already been synchronized.
  *
- * \param[in]       var_name        variable name
- * \param[in]       gradient_type   gradient type
- * \param[in]       halo_type       halo type
- * \param[in]       inc             if 0, solve on increment; 1 otherwise
- * \param[in]       recompute_cocg  should COCG FV quantities be recomputed ?
- * \param[in]       n_r_sweeps      if > 1, number of reconstruction sweeps
- * \param[in]       tr_dim          2 for tensor with periodicity of rotation,
- *                                  0 otherwise
- * \param[in]       hyd_p_flag      flag for hydrostatic pressure
- * \param[in]       w_stride        stride for weighting coefficient
- * \param[in]       verbosity       verbosity level
- * \param[in]       clip_mode       clipping mode
- * \param[in]       epsilon         precision for iterative gradient calculation
- * \param[in]       extrap          boundary gradient extrapolation coefficient
- * \param[in]       clip_coeff      clipping coefficient
- * \param[in]       f_ext           exterior force generating
- *                                  the hydrostatic pressure
- * \param[in]       bc_coeff_a      boundary condition term a
- * \param[in]       bc_coeff_b      boundary condition term b
- * \param[in]       var             gradient's base variable
- * \param[in]       c_weight        weighted gradient coefficient variable,
- *                                  or NULL
- * \param[in, out]  cpl             structure associated with internal coupling,
- *                                  or NULL
- * \param[out]      grad            gradient
+ * \param[in]   var_name        variable name
+ * \param[in]   gradient_type   gradient type
+ * \param[in]   halo_type       halo type
+ * \param[in]   inc             if 0, solve on increment; 1 otherwise
+ * \param[in]   recompute_cocg  should COCG FV quantities be recomputed ?
+ * \param[in]   n_r_sweeps      if > 1, number of reconstruction sweeps
+ *                              (only used by CS_GRADIENT_ITER)
+ * \param[in]   tr_dim          2 for tensor with periodicity of rotation,
+ *                              0 otherwise
+ * \param[in]   hyd_p_flag      flag for hydrostatic pressure
+ * \param[in]   w_stride        stride for weighting coefficient
+ * \param[in]   verbosity       verbosity level
+ * \param[in]   clip_mode       clipping mode
+ * \param[in]   epsilon         precision for iterative gradient calculation
+ * \param[in]   extrap          boundary gradient extrapolation coefficient
+ * \param[in]   clip_coeff      clipping coefficient
+ * \param[in]   f_ext           exterior force generating the
+ *                              hydrostatic pressure
+ * \param[in]   bc_coeff_a      boundary condition term a
+ * \param[in]   bc_coeff_b      boundary condition term b
+ * \param[in]   var             gradient's base variable
+ * \param[in]   c_weight        cell variable weight, or NULL
+ * \param[in]   cpl             associated internal coupling, or NULL
+ * \param[out]  grad            gradient
  */
 /*----------------------------------------------------------------------------*/
 
@@ -354,7 +388,7 @@ cs_gradient_scalar_synced_input(const char                 *var_name,
                                 int                         hyd_p_flag,
                                 int                         w_stride,
                                 int                         verbosity,
-                                int                         clip_mode,
+                                cs_gradient_limit_t         clip_mode,
                                 double                      epsilon,
                                 double                      extrap,
                                 double                      clip_coeff,
@@ -374,24 +408,23 @@ cs_gradient_scalar_synced_input(const char                 *var_name,
  * values for input arrays (var and optionally c_weight)
  * have already been synchronized.
  *
- * \param[in]       var_name        variable name
- * \param[in]       gradient_type   gradient type
- * \param[in]       halo_type       halo type
- * \param[in]       inc             if 0, solve on increment; 1 otherwise
- * \param[in]       n_r_sweeps      if > 1, number of reconstruction sweeps
- * \param[in]       verbosity       verbosity level
- * \param[in]       clip_mode       clipping mode
- * \param[in]       epsilon         precision for iterative gradient calculation
- * \param[in]       clip_coeff      clipping coefficient
- * \param[in]       bc_coeff_a      boundary condition term a
- * \param[in]       bc_coeff_b      boundary condition term b
- * \param[in, out]  var             gradient's base variable
- * \param[in, out]  c_weight        weighted gradient coefficient variable,
- *                                  or NULL
- * \param[in, out]  cpl             structure associated with internal coupling,
- *                                  or NULL
- * \param[out]      gradv           gradient
-                                    (\f$ \der{u_i}{x_j} \f$ is gradv[][i][j])
+ * \param[in]   var_name        variable name
+ * \param[in]   gradient_type   gradient type
+ * \param[in]   halo_type       halo type
+ * \param[in]   inc             if 0, solve on increment; 1 otherwise
+ * \param[in]   n_r_sweeps      if > 1, number of reconstruction sweeps
+ *                              (only used by CS_GRADIENT_ITER)
+ * \param[in]   verbosity       verbosity level
+ * \param[in]   clip_mode       clipping mode
+ * \param[in]   epsilon         precision for iterative gradient calculation
+ * \param[in]   clip_coeff      clipping coefficient
+ * \param[in]   bc_coeff_a      boundary condition term a
+ * \param[in]   bc_coeff_b      boundary condition term b
+ * \param[in]   var             gradient's base variable
+ * \param[in]   c_weight        cell variable weight, or NULL
+ * \param[in]   cpl             associated internal coupling, or NULL
+ * \param[out]  gradv           gradient
+                                (\f$ \der{u_i}{x_j} \f$ is gradv[][i][j])
  */
 /*----------------------------------------------------------------------------*/
 
@@ -402,7 +435,7 @@ cs_gradient_vector_synced_input(const char                *var_name,
                                 int                        inc,
                                 int                        n_r_sweeps,
                                 int                        verbosity,
-                                int                        clip_mode,
+                                cs_gradient_limit_t        clip_mode,
                                 double                     epsilon,
                                 double                     clip_coeff,
                                 const cs_real_t            bc_coeff_a[][3],
@@ -416,11 +449,16 @@ cs_gradient_vector_synced_input(const char                *var_name,
 /*!
  * \brief  Compute cell gradient of tensor.
  *
+ * This variant of the \ref cs_gradient_tensor function assumes ghost cell
+ * values for input arrays (var and optionally c_weight)
+ * have already been synchronized.
+ *
  * \param[in]       var_name        variable name
  * \param[in]       gradient_type   gradient type
  * \param[in]       halo_type       halo type
  * \param[in]       inc             if 0, solve on increment; 1 otherwise
  * \param[in]       n_r_sweeps      if > 1, number of reconstruction sweeps
+ *                                  (only used by CS_GRADIENT_ITER)
  * \param[in]       verbosity       verbosity level
  * \param[in]       clip_mode       clipping mode
  * \param[in]       epsilon         precision for iterative gradient calculation
@@ -440,13 +478,121 @@ cs_gradient_tensor_synced_input(const char                *var_name,
                                 int                        inc,
                                 int                        n_r_sweeps,
                                 int                        verbosity,
-                                int                        clip_mode,
+                                cs_gradient_limit_t        clip_mode,
                                 double                     epsilon,
                                 double                     clip_coeff,
                                 const cs_real_t            bc_coeff_a[][6],
                                 const cs_real_t            bc_coeff_b[][6][6],
                                 const cs_real_t            var[restrict][6],
                                 cs_real_63_t     *restrict grad);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the gradient of a scalar field at a given cell
+ *         using least-squares reconstruction.
+ *
+ * This assumes ghost cell values which might be used are already
+ * synchronized.
+ *
+ * When boundary conditions are provided, both the bc_coeff_a and bc_coeff_b
+ * arrays must be given. If boundary values are known, bc_coeff_a
+ * can point to the boundary values array, and bc_coeff_b set to NULL.
+ * If bc_coeff_a is NULL, bc_coeff_b is ignored.
+ *
+ * \param[in]   m               pointer to associated mesh structure
+ * \param[in]   fvq             pointer to associated finite volume quantities
+ * \param[in]   c_id            cell id
+ * \param[in]   halo_type       halo type
+ * \param[in]   bc_coeff_a      boundary condition term a, or NULL
+ * \param[in]   bc_coeff_b      boundary condition term b, or NULL
+ * \param[in]   var             gradient's base variable
+ * \param[in]   c_weight        cell variable weight, or NULL
+ * \param[out]  grad            gradient
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_gradient_scalar_cell(const cs_mesh_t             *m,
+                        const cs_mesh_quantities_t  *fvq,
+                        cs_lnum_t                    c_id,
+                        cs_halo_type_t               halo_type,
+                        const cs_real_t              bc_coeff_a[],
+                        const cs_real_t              bc_coeff_b[],
+                        const cs_real_t              var[],
+                        const cs_real_t              c_weight[],
+                        cs_real_t                    grad[3]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the gradient of a vector field at a given cell
+ *         using least-squares reconstruction.
+ *
+ * This assumes ghost cell values which might be used are already
+ * synchronized.
+ *
+ * When boundary conditions are provided, both the bc_coeff_a and bc_coeff_b
+ * arrays must be given. If boundary values are known, bc_coeff_a
+ * can point to the boundary values array, and bc_coeff_b set to NULL.
+ * If bc_coeff_a is NULL, bc_coeff_b is ignored.
+ *
+ * \param[in]   m               pointer to associated mesh structure
+ * \param[in]   fvq             pointer to associated finite volume quantities
+ * \param[in]   c_id            cell id
+ * \param[in]   halo_type       halo type
+ * \param[in]   bc_coeff_a      boundary condition term a, or NULL
+ * \param[in]   bc_coeff_b      boundary condition term b, or NULL
+ * \param[in]   var             gradient's base variable
+ * \param[in]   c_weight        cell variable weight, or NULL
+ * \param[out]  grad            gradient
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_gradient_vector_cell(const cs_mesh_t             *m,
+                        const cs_mesh_quantities_t  *fvq,
+                        cs_lnum_t                    c_id,
+                        cs_halo_type_t               halo_type,
+                        const cs_real_t              bc_coeff_a[][3],
+                        const cs_real_t              bc_coeff_b[][3][3],
+                        const cs_real_t              var[restrict][3],
+                        const cs_real_t              c_weight[],
+                        cs_real_t                    grad[3][3]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Compute the gradient of a tensor field at a given cell
+ *         using least-squares reconstruction.
+ *
+ * This assumes ghost cell values which might be used are already
+ * synchronized.
+ *
+ * When boundary conditions are provided, both the bc_coeff_a and bc_coeff_b
+ * arrays must be given. If boundary values are known, bc_coeff_a
+ * can point to the boundary values array, and bc_coeff_b set to NULL.
+ * If bc_coeff_a is NULL, bc_coeff_b is ignored.
+ *
+ * \param[in]   m               pointer to associated mesh structure
+ * \param[in]   fvq             pointer to associated finite volume quantities
+ * \param[in]   c_id            cell id
+ * \param[in]   halo_type       halo type
+ * \param[in]   bc_coeff_a      boundary condition term a, or NULL
+ * \param[in]   bc_coeff_b      boundary condition term b, or NULL
+ * \param[in]   var             gradient's base variable
+ * \param[in]   c_weight        cell variable weight, or NULL
+ * \param[out]  grad            gradient
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_gradient_tensor_cell(const cs_mesh_t             *m,
+                        const cs_mesh_quantities_t  *fvq,
+                        cs_lnum_t                    c_id,
+                        cs_halo_type_t               halo_type,
+                        const cs_real_t              bc_coeff_a[][6],
+                        const cs_real_t              bc_coeff_b[][6][6],
+                        const cs_real_t              var[restrict][6],
+                        const cs_real_t              c_weight[],
+                        cs_real_t                    grad[6][3]);
 
 /*----------------------------------------------------------------------------
  * Determine gradient type by Fortran "imrgra" value

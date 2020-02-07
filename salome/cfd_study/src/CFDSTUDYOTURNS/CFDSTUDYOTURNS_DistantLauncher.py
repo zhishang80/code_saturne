@@ -3,7 +3,7 @@
 #
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -64,6 +64,7 @@ class CFDSTUDY_DistantLauncher:
                                             self.host_build_name,
                                             'bin')
 
+        self.dist_wdir       = self.cfg.get('batch_parameters', 'distant_workdir')
         self.package_name    = self.cfg.get('study_parameters', 'code_name')
         self.paramfile       = self.cfg.get('study_parameters', 'xmlfile')
         self.results_file    = "cs_uncertain_output.dat"
@@ -73,7 +74,10 @@ class CFDSTUDY_DistantLauncher:
             self.run_prefix = run_prefix + "_"
 
         self.run_id = None
+        tmp = os.getcwd()
+        os.chdir(self.case_dir)
         self.__setRunId__()
+        os.chdir(tmp)
 
         self.job_params = self.__getJobParameters__()
 
@@ -136,7 +140,7 @@ class CFDSTUDY_DistantLauncher:
         """
 
         test_name = os.path.join(self.job_params.result_directory,
-                                 "status.exceeded_time_limit")
+                                 "run_status.exceeded_time_limit")
 
         not_finished = os.path.isfile(test_name)
 
@@ -174,9 +178,6 @@ class CFDSTUDY_DistantLauncher:
 
         # ---------------------------------
         resManager = salome.lcc.getResourcesManager()
-        rdef       = resManager.GetResourceDefinition(self.host)
-
-        dist_wdir  = os.path.split(rdef.working_directory)[0]
 
         job_params = salome.JobParameters()
         # ---------------------------------
@@ -187,15 +188,20 @@ class CFDSTUDY_DistantLauncher:
         job_params.resource_required.nb_proc = int(self.cfg.get('batch_parameters', 'nprocs'))
         job_params.resource_required.type    = 'rsync'
 
-        job_params.maximum_duration = self.cfg.get('batch_parameters',
-                                                   'wall_clock')
+        # Jobmanager wall clock format is hh:mm !
+        wall_clock = self.cfg.get('batch_parameters','wall_clock')
+        days, hms = wall_clock.split("-")
+        wch, wcm, wcs = hms.split(':')
+
+        jp_wc = "%d:%s:%s" % (int(days)*24+int(wch), wcm, wcs)
+        job_params.maximum_duration = jp_wc
 
         job_params.wckey            = self.cfg.get('batch_parameters', 'wckey')
         job_params.job_name         = "CS_OT"
         # ---------------------------------
 
         # ---------------------------------
-        job_params.work_directory   = os.path.join(dist_wdir,
+        job_params.work_directory   = os.path.join(self.dist_wdir,
                                                    self.study_name,
                                                    self.case_name)
 
@@ -215,7 +221,7 @@ class CFDSTUDY_DistantLauncher:
 
         # ---------------------------------
         job_params.out_files = []
-        for f in (self.results_file, 'status.exceeded_time_limit'):
+        for f in (self.results_file, 'run_status.exceeded_time_limit'):
             df = os.path.join(job_params.work_directory,
                               'RESU',
                               self.run_id,

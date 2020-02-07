@@ -4,7 +4,7 @@
 
 /* This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -345,8 +345,7 @@ void CS_PROCF (divrij, DIVRIJ)
  * \param[in]     itypfl        indicator (take rho into account or not)
  *                               - 1 compute \f$ \rho\vect{u}\cdot\vect{s} \f$
  *                               - 0 compute \f$ \vect{u}\cdot\vect{s} \f$
- * \param[in]     iflmb0        the mass flux is set to 0 on walls and
- *                               symmetries if = 1
+ * \param[in]     iflmb0        the mass flux is set to 0 on symmetries if = 1
  * \param[in]     init          the mass flux is initialized to 0 if > 0
  * \param[in]     inc           indicator
  *                               - 0 solve an increment
@@ -444,7 +443,7 @@ cs_mass_flux(const cs_mesh_t          *m,
   const cs_real_3_t *restrict dofij
     = (const cs_real_3_t *restrict)fvq->dofij;
 
-  char var_name[32];
+  char var_name[64];
 
   cs_real_3_t *qdm, *f_momentum, *coefaq;
   cs_real_33_t *grdqdm;
@@ -462,7 +461,7 @@ cs_mass_flux(const cs_mesh_t          *m,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -470,13 +469,14 @@ cs_mass_flux(const cs_mesh_t          *m,
 
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
-    snprintf(var_name, 31, "%s", f->name); var_name[31] = '\0';
+    snprintf(var_name, 63, "%s", f->name);
   }
   else {
-    strcpy(var_name, "Work array"); var_name[31] = '\0';
+    strncpy(var_name, "[momentum]", 63);
   }
+  var_name[63] = '\0';
 
-  /* ---> Momentum computation */
+  /* Momentum computation */
 
   if (init == 1) {
 #   pragma omp parallel for
@@ -602,19 +602,21 @@ cs_mass_flux(const cs_mesh_t          *m,
           f_momentum[face_id][isou] = romb[face_id]*vel[cell_id][isou];
         }
       }
-      /* With porosity */
-    } else if (porosi != NULL && porosf == NULL) {
+    } /* With porosity */
+    else if (porosi != NULL && porosf == NULL) {
 #     pragma omp parallel for if(m->n_b_faces > CS_THR_MIN)
       for (cs_lnum_t face_id = 0; face_id < m->n_b_faces; face_id++) {
         cs_lnum_t cell_id = b_face_cells[face_id];
         for (int isou = 0; isou < 3; isou++) {
           coefaq[face_id][isou] = romb[face_id]
                                  *coefav[face_id][isou]*porosi[cell_id];
-          f_momentum[face_id][isou] = romb[face_id]*vel[cell_id][isou]*porosi[cell_id];
+          f_momentum[face_id][isou] =  romb[face_id]*vel[cell_id][isou]
+                                      *porosi[cell_id];
         }
       }
-      /* With anisotropic porosity */
-    } else if (porosi != NULL && porosf != NULL) {
+
+    } /* With anisotropic porosity */
+    else if (porosi != NULL && porosf != NULL) {
 #     pragma omp parallel for if(m->n_b_faces > CS_THR_MIN)
       for (cs_lnum_t face_id = 0; face_id < m->n_b_faces; face_id++) {
         cs_lnum_t cell_id = b_face_cells[face_id];
@@ -658,8 +660,8 @@ cs_mass_flux(const cs_mesh_t          *m,
           f_momentum[face_id][isou] = vel[cell_id][isou];
         }
       }
-      /* With porosity */
-    } else if (porosi != NULL && porosf == NULL) {
+    } /* With porosity */
+    else if (porosi != NULL && porosf == NULL) {
 #     pragma omp parallel for if(m->n_b_faces > CS_THR_MIN)
       for (cs_lnum_t face_id = 0; face_id < m->n_b_faces; face_id++) {
         cs_lnum_t cell_id = b_face_cells[face_id];
@@ -668,8 +670,8 @@ cs_mass_flux(const cs_mesh_t          *m,
           f_momentum[face_id][isou] = vel[cell_id][isou]*porosi[cell_id];
         }
       }
-      /* With anisotropic porosity */
-    } else if (porosi != NULL && porosf != NULL) {
+    } /* With anisotropic porosity */
+    else if (porosi != NULL && porosf != NULL) {
 #     pragma omp parallel for if(m->n_b_faces > CS_THR_MIN)
       for (cs_lnum_t face_id = 0; face_id < m->n_b_faces; face_id++) {
         cs_lnum_t cell_id = b_face_cells[face_id];
@@ -754,7 +756,7 @@ cs_mass_flux(const cs_mesh_t          *m,
   }
 
   /*==========================================================================
-    4. Compute mass flux with reconstruction technics if the mesh is
+    4. Compute mass flux with reconstruction method if the mesh is
        non orthogonal
     ==========================================================================*/
 
@@ -762,8 +764,7 @@ cs_mass_flux(const cs_mesh_t          *m,
 
     BFT_MALLOC(grdqdm, n_cells_ext, cs_real_33_t);
 
-
-    /* Computation of qdm gradient
+    /* Computation of momentum gradient
        (vectorial gradient, the periodicity has already been treated) */
 
     cs_gradient_vector(var_name,
@@ -899,8 +900,7 @@ cs_mass_flux(const cs_mesh_t          *m,
  * \param[in]     itypfl        indicator (take rho into account or not)
  *                               - 1 compute \f$ \rho\vect{u}\cdot\vect{s} \f$
  *                               - 0 compute \f$ \vect{u}\cdot\vect{s} \f$
- * \param[in]     iflmb0        the mass flux is set to 0 on walls and
- *                               symmetries if = 1
+ * \param[in]     iflmb0        the mass flux is set to 0 on symmetries if = 1
  * \param[in]     init          the mass flux is initialized to 0 if > 0
  * \param[in]     inc           indicator
  *                               - 0 solve an increment
@@ -980,7 +980,7 @@ cs_tensor_face_flux(const cs_mesh_t          *m,
 
   /* Local variables */
 
-  char var_name[32];
+  char var_name[64];
 
   cs_real_6_t *c_mass_var, *b_mass_var, *coefaq;
 
@@ -997,7 +997,7 @@ cs_tensor_face_flux(const cs_mesh_t          *m,
   /* Choose gradient type */
 
   cs_halo_type_t halo_type = CS_HALO_STANDARD;
-  cs_gradient_type_t gradient_type = CS_GRADIENT_ITER;
+  cs_gradient_type_t gradient_type = CS_GRADIENT_GREEN_ITER;
 
   cs_gradient_type_by_imrgra(imrgra,
                              &gradient_type,
@@ -1005,11 +1005,12 @@ cs_tensor_face_flux(const cs_mesh_t          *m,
 
   if (f_id != -1) {
     f = cs_field_by_id(f_id);
-    snprintf(var_name, 31, "%s", f->name); var_name[31] = '\0';
+    snprintf(var_name, 63, "%s", f->name);
   }
   else {
-    strcpy(var_name, "Work array"); var_name[31] = '\0';
+    strncpy(var_name, "[tensor face flux]", 63);
   }
+  var_name[63] = '\0';
 
   /* ---> Momentum computation */
 
@@ -1278,19 +1279,19 @@ cs_tensor_face_flux(const cs_mesh_t          *m,
     /* Computation of c_mass_var gradient
        (tensor gradient, the periodicity has already been treated) */
 
-    cs_gradient_tensor(var_name,
-                       gradient_type,
-                       halo_type,
-                       inc,
-                       nswrgu,
-                       iwarnu,
-                       imligu,
-                       epsrgu,
-                       climgu,
-                       coefaq,
-                       coefbv,
-                       c_mass_var,
-                       c_grad_mvar);
+    cs_gradient_tensor_synced_input(var_name,
+                                    gradient_type,
+                                    halo_type,
+                                    inc,
+                                    nswrgu,
+                                    iwarnu,
+                                    imligu,
+                                    epsrgu,
+                                    climgu,
+                                    (const cs_real_6_t *)coefaq,
+                                    (const cs_real_66_t *)coefbv,
+                                    (const cs_real_6_t *)c_mass_var,
+                                    c_grad_mvar);
 
     /* Mass flow through interior faces */
 
@@ -1647,7 +1648,6 @@ cs_ext_force_flux(const cs_mesh_t          *m,
     = (const cs_lnum_2_t *restrict)m->i_face_cells;
   const cs_lnum_t *restrict b_face_cells
     = (const cs_lnum_t *restrict)m->b_face_cells;
-  const cs_real_t *restrict weight = fvq->weight;
   const cs_real_t *restrict i_dist = fvq->i_dist;
   const cs_real_t *restrict b_dist = fvq->b_dist;
   const cs_real_t *restrict i_f_face_surf = fvq->i_f_face_surf;
@@ -1674,8 +1674,8 @@ cs_ext_force_flux(const cs_mesh_t          *m,
   if (f_i_poro_duq_0 != NULL) {
     is_p = 1;
     i_poro_duq_0 = f_i_poro_duq_0->val;
-    i_poro_duq_1 = cs_field_by_name_try("i_poro_duq_1")->val;
-    b_poro_duq = cs_field_by_name_try("b_poro_duq")->val;
+    i_poro_duq_1 = cs_field_by_name("i_poro_duq_1")->val;
+    b_poro_duq = cs_field_by_name("b_poro_duq")->val;
   } else {
     i_poro_duq_0 = &_f_ext;
     i_poro_duq_1 = &_f_ext;

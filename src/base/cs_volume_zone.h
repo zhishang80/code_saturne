@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -350,6 +350,14 @@ cs_volume_zone_n_type_cells(int  type_flag);
 void
 cs_volume_zone_select_type_cells(int        type_flag,
                                  cs_lnum_t  cell_ids[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Print volume zones information to listing file
+ */
+/*----------------------------------------------------------------------------*/
+void
+cs_volume_zone_print_info(void);
 
 /*----------------------------------------------------------------------------*/
 

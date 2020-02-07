@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -308,6 +308,9 @@ static cs_fluid_properties_t  _fluid_properties = {
   .t0       = 293.15,
   .cp0      = 1017.24,
   .cv0      = 0.,
+  .r_pg_cnst = 287.058, /* dry air pperfect gas constant J/mol/K */
+  .rvsra    = 1.607768, /* Note: Rv = 461.52272377 J/mol/K */
+  .clatev   = 2.501e6,
   .xmasmr   = 0.028966, /* air molar mass */
   .ipthrm   = 0,
   .pther    = 1.013e5,
@@ -325,11 +328,11 @@ static cs_fluid_properties_t  _fluid_properties = {
 
 /*! Ideal gas constant (\f$J.mol^{-1}.K^{-1}\f$) */
 
-const double cs_physical_constants_r = 8.31446;
+const double cs_physical_constants_r = 8.31446261815324;
 
 /*! Boltzmann constant (\f$J.K^{-1}\f$) */
 
-const double cs_physical_constants_kb = 1.38e-23;
+const double cs_physical_constants_kb = 1.380649e-23;
 
 /*! Conversion from Celsius to Kelvin: 275.15   */
 
@@ -373,6 +376,9 @@ cs_f_fluid_properties_get_pointers(int     **ixyzp0,
                                    double  **t0,
                                    double  **cp0,
                                    double  **cv0,
+                                   double  **rair,
+                                   double  **rvsra,
+                                   double  **clatev,
                                    double  **xmasmr,
                                    int     **ipthrm,
                                    double  **pther,
@@ -436,6 +442,9 @@ cs_f_physical_constants_get_pointers(double  **gx,
  *   t0       --> pointer to cs_glob_fluid_properties->t0
  *   cp0      --> pointer to cs_glob_fluid_properties->cp0
  *   cv0      --> pointer to cs_glob_fluid_properties->cv0
+ *   rair     --> pointer to cs_glob_fluid_properties->r_pg_cnst
+ *   rvsra    --> pointer to cs_glob_fluid_properties->rvsra
+ *   clatev   --> pointer to cs_glob_fluid_properties->clatev
  *   xmasmr   --> pointer to cs_glob_fluid_properties->xmasmr
  *   ipthrm   --> pointer to cs_glob_fluid_properties->ipthrm
  *   pther    --> pointer to cs_glob_fluid_properties->pther
@@ -461,6 +470,9 @@ cs_f_fluid_properties_get_pointers(int     **ixyzp0,
                                    double  **t0,
                                    double  **cp0,
                                    double  **cv0,
+                                   double  **rair,
+                                   double  **rvsra,
+                                   double  **clatev,
                                    double  **xmasmr,
                                    int     **ipthrm,
                                    double  **pther,
@@ -484,6 +496,9 @@ cs_f_fluid_properties_get_pointers(int     **ixyzp0,
   *t0       = &(_fluid_properties.t0);
   *cp0      = &(_fluid_properties.cp0);
   *cv0      = &(_fluid_properties.cv0);
+  *rair     = &(_fluid_properties.r_pg_cnst);
+  *rvsra    = &(_fluid_properties.rvsra);
+  *clatev   = &(_fluid_properties.clatev);
   *xmasmr   = &(_fluid_properties.xmasmr);
   *ipthrm   = &(_fluid_properties.ipthrm);
   *pther    = &(_fluid_properties.pther);
@@ -502,7 +517,7 @@ cs_f_fluid_properties_get_pointers(int     **ixyzp0,
 
 /*----------------------------------------------------------------------------
  *!
- * \brief Provide acces to cs_glob_physical_constants
+ * \brief Provide access to cs_glob_physical_constants
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/
@@ -515,7 +530,7 @@ cs_get_glob_physical_constants(void)
 
 /*----------------------------------------------------------------------------
  *!
- * \brief Provide acces to cs_glob_fluid_properties
+ * \brief Provide access to cs_glob_fluid_properties
  *
  * needed to initialize structure with GUI
  *----------------------------------------------------------------------------*/

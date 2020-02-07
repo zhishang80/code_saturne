@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -31,11 +31,11 @@
  *----------------------------------------------------------------------------*/
 
 #include "cs_cdo_connect.h"
-#include "cs_cdo_local.h"
 #include "cs_matrix.h"
 #include "cs_matrix_assembler.h"
 #include "cs_param.h"
 #include "cs_param_cdo.h"
+#include "cs_sdm.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -57,10 +57,11 @@ typedef struct _cs_equation_assemble_t  cs_equation_assemble_t;
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Block or no block versions are handled
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -68,7 +69,8 @@ typedef struct _cs_equation_assemble_t  cs_equation_assemble_t;
 /*----------------------------------------------------------------------------*/
 
 typedef void
-(cs_equation_assembly_t)(const cs_cell_sys_t                    *csys,
+(cs_equation_assembly_t)(const cs_sdm_t                         *m,
+                         const cs_lnum_t                        *dof_ids,
                          const cs_range_set_t                   *rset,
                          cs_equation_assemble_t                 *eqa,
                          cs_matrix_assembler_values_t           *mav);
@@ -111,18 +113,21 @@ cs_equation_assemble_get(int    t_id);
  *         the type of discretization used for this simulation
  *
  * \param[in]  connect      pointer to a cs_cdo_connect_t structure
- * \param[in]  vb_flag      metadata for Vb schemes
- * \param[in]  vcb_flag     metadata for V+C schemes
- * \param[in]  fb_flag      metadata for Fb schemes
+ * \param[in]  time_step    pointer to a time step structure
+ * \param[in]  eb_flag      metadata for Edge-based schemes
+ * \param[in]  fb_flag      metadata for Face-based schemes
+ * \param[in]  vb_flag      metadata for Vertex-based schemes
+ * \param[in]  vcb_flag     metadata for Vertex+Cell-basde schemes
  * \param[in]  hho_flag     metadata for HHO schemes
  */
 /*----------------------------------------------------------------------------*/
 
 void
 cs_equation_assemble_init(const cs_cdo_connect_t       *connect,
+                          cs_flag_t                     eb_flag,
+                          cs_flag_t                     fb_flag,
                           cs_flag_t                     vb_flag,
                           cs_flag_t                     vcb_flag,
-                          cs_flag_t                     fb_flag,
                           cs_flag_t                     hho_flag);
 
 /*----------------------------------------------------------------------------*/
@@ -154,10 +159,11 @@ cs_equation_assemble_set(cs_param_space_scheme_t    scheme,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Scalar-valued case. Parallel and with openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to a matrix assembler buffers
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -165,17 +171,19 @@ cs_equation_assemble_set(cs_param_space_scheme_t    scheme,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_matrix_mpit(const cs_cell_sys_t              *csys,
+cs_equation_assemble_matrix_mpit(const cs_sdm_t                   *m,
+                                 const cs_lnum_t                  *dof_ids,
                                  const cs_range_set_t             *rset,
                                  cs_equation_assemble_t           *eqa,
                                  cs_matrix_assembler_values_t     *mav);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Scalar-valued case. Parallel without openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to a matrix assembler buffers
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -183,7 +191,8 @@ cs_equation_assemble_matrix_mpit(const cs_cell_sys_t              *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_matrix_mpis(const cs_cell_sys_t              *csys,
+cs_equation_assemble_matrix_mpis(const cs_sdm_t                   *m,
+                                 const cs_lnum_t                  *dof_ids,
                                  const cs_range_set_t             *rset,
                                  cs_equation_assemble_t           *eqa,
                                  cs_matrix_assembler_values_t     *mav);
@@ -192,10 +201,11 @@ cs_equation_assemble_matrix_mpis(const cs_cell_sys_t              *csys,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Scalar-valued case. Sequential and with openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to a matrix assembler buffers
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -203,17 +213,19 @@ cs_equation_assemble_matrix_mpis(const cs_cell_sys_t              *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_matrix_seqt(const cs_cell_sys_t             *csys,
+cs_equation_assemble_matrix_seqt(const cs_sdm_t                  *m,
+                                 const cs_lnum_t                 *dof_ids,
                                  const cs_range_set_t            *rset,
                                  cs_equation_assemble_t          *eqa,
                                  cs_matrix_assembler_values_t    *mav);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system
- *         Scalar-valued case. Sequential and without openMP threading.
+ * \brief  Assemble a cellwise matrix into the global matrix
+ *         Scalar-valued case. Sequential and without openMP.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to a matrix assembler buffers
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -221,18 +233,20 @@ cs_equation_assemble_matrix_seqt(const cs_cell_sys_t             *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_matrix_seqs(const cs_cell_sys_t              *csys,
-                                 const cs_range_set_t             *rset,
-                                 cs_equation_assemble_t           *eqa,
-                                 cs_matrix_assembler_values_t     *mav);
+cs_equation_assemble_matrix_seqs(const cs_sdm_t                  *m,
+                                 const cs_lnum_t                 *dof_ids,
+                                 const cs_range_set_t            *rset,
+                                 cs_equation_assemble_t          *eqa,
+                                 cs_matrix_assembler_values_t    *mav);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system.
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Case of a block 3x3 entries. Expand each row.
  *         Sequential run without openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -240,18 +254,20 @@ cs_equation_assemble_matrix_seqs(const cs_cell_sys_t              *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock33_matrix_seqs(const cs_cell_sys_t           *csys,
-                                          const cs_range_set_t          *rset,
-                                          cs_equation_assemble_t        *eqa,
-                                          cs_matrix_assembler_values_t  *mav);
+cs_equation_assemble_eblock33_matrix_seqs(const cs_sdm_t               *m,
+                                          const cs_lnum_t              *dof_ids,
+                                          const cs_range_set_t         *rset,
+                                          cs_equation_assemble_t       *eqa,
+                                          cs_matrix_assembler_values_t *mav);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system.
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Case of a block 3x3 entries. Expand each row.
  *         Sequential run with openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -259,7 +275,8 @@ cs_equation_assemble_eblock33_matrix_seqs(const cs_cell_sys_t           *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock33_matrix_seqt(const cs_cell_sys_t           *csys,
+cs_equation_assemble_eblock33_matrix_seqt(const cs_sdm_t                *m,
+                                          const cs_lnum_t               *dof_ids,
                                           const cs_range_set_t          *rset,
                                           cs_equation_assemble_t        *eqa,
                                           cs_matrix_assembler_values_t  *mav);
@@ -268,11 +285,12 @@ cs_equation_assemble_eblock33_matrix_seqt(const cs_cell_sys_t           *csys,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system.
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Case of a block 3x3 entries. Expand each row.
  *         Parallel run without openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -280,18 +298,20 @@ cs_equation_assemble_eblock33_matrix_seqt(const cs_cell_sys_t           *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock33_matrix_mpis(const cs_cell_sys_t           *csys,
+cs_equation_assemble_eblock33_matrix_mpis(const cs_sdm_t                *m,
+                                          const cs_lnum_t               *dof_ids,
                                           const cs_range_set_t          *rset,
                                           cs_equation_assemble_t        *eqa,
                                           cs_matrix_assembler_values_t  *mav);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system.
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Case of a block 3x3 entries. Expand each row.
  *         Parallel run with openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -299,20 +319,22 @@ cs_equation_assemble_eblock33_matrix_mpis(const cs_cell_sys_t           *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock33_matrix_mpit(const cs_cell_sys_t           *csys,
-                                          const cs_range_set_t          *rset,
-                                          cs_equation_assemble_t        *eqa,
-                                          cs_matrix_assembler_values_t  *mav);
+cs_equation_assemble_eblock33_matrix_mpit(const cs_sdm_t               *m,
+                                          const cs_lnum_t              *dof_ids,
+                                          const cs_range_set_t         *rset,
+                                          cs_equation_assemble_t       *eqa,
+                                          cs_matrix_assembler_values_t *mav);
 
 #endif /* defined(HAVE_MPI) */
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system.
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Case of a block NxN entries. Expand each row.
  *         Sequential run without openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -320,7 +342,8 @@ cs_equation_assemble_eblock33_matrix_mpit(const cs_cell_sys_t           *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock_matrix_seqs(const cs_cell_sys_t           *csys,
+cs_equation_assemble_eblock_matrix_seqs(const cs_sdm_t                *m,
+                                        const cs_lnum_t               *dof_ids,
                                         const cs_range_set_t          *rset,
                                         cs_equation_assemble_t        *eqa,
                                         cs_matrix_assembler_values_t  *mav);
@@ -331,7 +354,8 @@ cs_equation_assemble_eblock_matrix_seqs(const cs_cell_sys_t           *csys,
  *         Case of a block NxN entries. Expand each row.
  *         Sequential run with openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -339,7 +363,8 @@ cs_equation_assemble_eblock_matrix_seqs(const cs_cell_sys_t           *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock_matrix_seqt(const cs_cell_sys_t           *csys,
+cs_equation_assemble_eblock_matrix_seqt(const cs_sdm_t                *m,
+                                        const cs_lnum_t               *dof_ids,
                                         const cs_range_set_t          *rset,
                                         cs_equation_assemble_t        *eqa,
                                         cs_matrix_assembler_values_t  *mav);
@@ -348,11 +373,12 @@ cs_equation_assemble_eblock_matrix_seqt(const cs_cell_sys_t           *csys,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system.
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Case of a block NxN entries. Expand each row.
  *         Parallel run without openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -360,18 +386,20 @@ cs_equation_assemble_eblock_matrix_seqt(const cs_cell_sys_t           *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock_matrix_mpis(const cs_cell_sys_t           *csys,
+cs_equation_assemble_eblock_matrix_mpis(const cs_sdm_t                *m,
+                                        const cs_lnum_t               *dof_ids,
                                         const cs_range_set_t          *rset,
                                         cs_equation_assemble_t        *eqa,
                                         cs_matrix_assembler_values_t  *mav);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Assemble a cellwise system into the global algebraic system.
+ * \brief  Assemble a cellwise matrix into the global matrix
  *         Case of a block NxN entries. Expand each row.
  *         Parallel run with openMP threading.
  *
- * \param[in]      csys     cellwise view of the algebraic system
+ * \param[in]      m        cellwise view of the algebraic system
+ * \param[in]      dof_ids  local DoF numbering
  * \param[in]      rset     pointer to a cs_range_set_t structure
  * \param[in, out] eqa      pointer to an equation assembly structure
  * \param[in, out] mav      pointer to a matrix assembler structure
@@ -379,7 +407,8 @@ cs_equation_assemble_eblock_matrix_mpis(const cs_cell_sys_t           *csys,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_equation_assemble_eblock_matrix_mpit(const cs_cell_sys_t           *csys,
+cs_equation_assemble_eblock_matrix_mpit(const cs_sdm_t                *m,
+                                        const cs_lnum_t               *dof_ids,
                                         const cs_range_set_t          *rset,
                                         cs_equation_assemble_t        *eqa,
                                         cs_matrix_assembler_values_t  *mav);

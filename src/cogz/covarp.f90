@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -61,7 +61,6 @@ use ppthch
 use coincl
 use cpincl
 use ppincl
-use ihmpre
 use field
 
 !===============================================================================
@@ -176,8 +175,8 @@ if (ippmod(icoebu).ge.0) then
   endif
 endif
 
-! 1.3 Flamme de premelange : modele BML A DEVELOPPER
-! ==================================================
+! 1.3 Flamme de premelange : modele BML A DEVELOPER
+! =================================================
 
 ! 1.4 Flamme de premelange : modele LWC
 ! =====================================

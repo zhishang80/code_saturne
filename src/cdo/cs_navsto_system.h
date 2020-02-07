@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -34,9 +34,11 @@
 #include "cs_field.h"
 #include "cs_param.h"
 #include "cs_property.h"
+#include "cs_maxwell.h"
 #include "cs_mesh.h"
 #include "cs_navsto_param.h"
 #include "cs_time_step.h"
+#include "cs_thermal_system.h"
 #include "cs_xdef.h"
 
 /*----------------------------------------------------------------------------*/
@@ -54,7 +56,7 @@ BEGIN_C_DECLS
  *============================================================================*/
 
 /*============================================================================
- * Type definitions
+ * Function pointer definitions
  *============================================================================*/
 
 /*----------------------------------------------------------------------------*/
@@ -129,7 +131,7 @@ typedef void
                       void                         *scheme_context);
 
 /*=============================================================================
- * Local Macro definitions and structure definitions
+ * Structure definitions
  *============================================================================*/
 
 /*! \struct cs_navsto_system_t
@@ -142,15 +144,15 @@ typedef struct {
   /*! \var param
    *  Set of parameters to handle the Navier-Stokes system
    */
-  cs_navsto_param_t     *param;
+  cs_navsto_param_t          *param;
 
   /*! \var boundary_type
    * Array storing the type of boundary for each boundary face
    */
-  cs_boundary_type_t    *bf_type;
+  cs_boundary_type_t         *bf_type;
 
   /*!
-   * @name Fields
+   * @name Variable fields
    * Set of fields (resolved variables): fields are created according to the
    * choice of model for Navier-Stokes
    * @{
@@ -160,46 +162,116 @@ typedef struct {
    *  Advection field, pointer to \ref cs_adv_field_t
    */
 
-  cs_adv_field_t       *adv_field;
+  cs_adv_field_t             *adv_field;
 
   /*! \var velocity
    *  Velocity, vector-valued, pointer to \ref cs_field_t
    */
 
-  cs_field_t           *velocity;
-
-  /*! \var velocity_divergence
-   *  Divergence of the velocity fied, scalar-valued
-   *  pointer to \ref cs_field_t
-   */
-
-  cs_field_t           *velocity_divergence;
+  cs_field_t                 *velocity;
 
   /*! \var pressure
    *  Pressure, scalar-valued, pointer to \ref cs_field_t
    */
 
-  cs_field_t           *pressure;
+  cs_field_t                 *pressure;
 
-  /*! \var temperature
-   *  Temperature, scalar-var, pointer to \ref cs_field_t. NULL if no
-   *  energy-like equation is defined
+  /*!
+   * @}
+   * @name Related systems of equations
+   * According to the modelling choice other systems of equations can
+   * be solved in a more or less coupled manner. For instance, the
+   * energy equation (with the thermal system) or the magneto-hydrodynamic
+   * equations (with the Maxwell system of equations)
+   * @{
    */
 
-  cs_field_t           *temperature;
+  /*! \var thm
+   *  Structure storing all settings, fields or properties related to the
+   *  thermal system of equation(s)
+   */
+
+  cs_thermal_system_t        *thm;
+
+  /*! \var mxl
+   *  Structure storing all settings, fields or properties related to the
+   *  Maxwell system of equation(s)
+   */
+
+  cs_maxwell_t               *mxl;
+
+  /*!
+   * @}
+   * @name Post-processing fields
+   * Set of fields which are induced by the variable fields and which have
+   * meaningful information for understanding the flow
+   * @{
+   */
+
+  /*! \var velocity_divergence
+   *  Divergence of the velocity fied.
+   *  Pointer to a scalar-valued \ref cs_field_t
+   */
+
+  cs_field_t                 *velocity_divergence;
+
+  /*! \var kinetic_energy
+   *  Kinetic energy defined as 1/2 velocity \cdot velocity
+   *  Pointer to a scalar-valued \ref cs_field_t
+   */
+
+  cs_field_t                 *kinetic_energy;
+
+  /*! \var vorticity
+   *  Vorticity of the velocity fied defined as curl(velocity)
+   *  Pointer to a vector-valued \ref cs_field_t
+   */
+  cs_field_t                 *vorticity;
+
+  /*! \var helicity
+   *  Helicity is defined as \int_c velocity \cdot vorticity
+   *  Pointer to a scalar-valued \ref cs_field_t
+   */
+  cs_field_t                 *helicity;
+
+  /*! \var enstrophy
+   *  Enstrophy is defined as \int_c vorticity \cdot vorticity
+   *  Pointer to a scalar-valued \ref cs_field_t
+   */
+  cs_field_t                 *enstrophy;
+
+  /*! \var velocity_gradient
+   *  Pointer to a tensor-valued \ref cs_field_t
+   */
+  cs_field_t                 *velocity_gradient;
+
+  /*! \var stream_function_eq
+   *  Pointer to a \ref cs_equation_t structure related to the computation
+   *  of the stream function -Laplacian(psi) = vorticity_z where psi is the
+   *  scalar-valued stream function. This is relevant only for a 2D
+   *  computation
+   */
+  cs_equation_t              *stream_function_eq;
+
+  /*!
+   * @}
+   * @name Context structures to get a greater flexibility in what can be done
+   *       in the given framework
+   * @{
+   */
 
   /*! \var coupling_context
    * Additional structure storing information according to the way equations
    * of model for the Navier-Stokes system are coupled and thus solved
    */
-  void                 *coupling_context;
+  void                       *coupling_context;
 
   /*! \var scheme_context
    * Additional structure storing information according to the space
    * discretization scheme used for solving the model for the Navier-Stokes
    * system
    */
-  void                 *scheme_context;
+  void                       *scheme_context;
 
   /*!
    * @}
@@ -269,8 +341,9 @@ cs_navsto_system_is_activated(void);
  *
  * \param[in] boundaries     pointer to the domain boundaries
  * \param[in] model          type of model related to the NS system
- * \param[in] time_state     state of the time for the NS equations
  * \param[in] algo_coupling  algorithm used for solving the NS system
+ * \param[in] option_flag    additional high-level numerical options
+ * \param[in] post_flag      predefined post-processings
  *
  * \return a pointer to a new allocated cs_navsto_system_t structure
  */
@@ -279,8 +352,9 @@ cs_navsto_system_is_activated(void);
 cs_navsto_system_t *
 cs_navsto_system_activate(const cs_boundary_t           *boundaries,
                           cs_navsto_param_model_t        model,
-                          cs_navsto_param_time_state_t   time_state,
-                          cs_navsto_param_coupling_t     algo_coupling);
+                          cs_navsto_param_coupling_t     algo_coupling,
+                          cs_flag_t                      option_flag,
+                          cs_flag_t                      post_flag);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -355,6 +429,7 @@ cs_navsto_system_set_sles(void);
 /*!
  * \brief  Initialize the context structure used to build the algebraic system
  *         This is done after the setup step.
+ *         Set an initial value for the velocity and pressure field if needed
  *
  * \param[in]  mesh      pointer to a cs_mesh_t structure
  * \param[in]  connect   pointer to a cs_cdo_connect_t structure
@@ -371,17 +446,39 @@ cs_navsto_system_initialize(const cs_mesh_t             *mesh,
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * \brief  Update variables and related quantities when a new state of the
+ *         Navier-Stokes system has been computed
+ *
+ * \param[in] mesh       pointer to a cs_mesh_t structure
+ * \param[in] time_step  structure managing the time stepping
+ * \param[in] connect    pointer to a cs_cdo_connect_t structure
+ * \param[in] cdoq       pointer to a cs_cdo_quantities_t structure
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_navsto_system_update(const cs_mesh_t             *mesh,
+                        const cs_time_step_t        *time_step,
+                        const cs_cdo_connect_t      *connect,
+                        const cs_cdo_quantities_t   *cdoq);
+
+/*----------------------------------------------------------------------------*/
+/*!
  * \brief  Build, solve and update the Navier-Stokes system in case of a
  *         steady-state approach
  *
  * \param[in] mesh       pointer to a cs_mesh_t structure
  * \param[in] time_step  structure managing the time stepping
+ * \param[in] connect    pointer to a cs_cdo_connect_t structure
+ * \param[in] cdoq       pointer to a cs_cdo_quantities_t structure
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_navsto_system_compute_steady_state(const cs_mesh_t        *mesh,
-                                      const cs_time_step_t   *time_step);
+cs_navsto_system_compute_steady_state(const cs_mesh_t             *mesh,
+                                      const cs_time_step_t        *time_step,
+                                      const cs_cdo_connect_t      *connect,
+                                      const cs_cdo_quantities_t   *cdoq);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -389,25 +486,33 @@ cs_navsto_system_compute_steady_state(const cs_mesh_t        *mesh,
  *
  * \param[in] mesh       pointer to a cs_mesh_t structure
  * \param[in] time_step  structure managing the time stepping
+ * \param[in] connect    pointer to a cs_cdo_connect_t structure
+ * \param[in] cdoq       pointer to a cs_cdo_quantities_t structure
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_navsto_system_compute(const cs_mesh_t         *mesh,
-                         const cs_time_step_t    *time_step);
+cs_navsto_system_compute(const cs_mesh_t             *mesh,
+                         const cs_time_step_t        *time_step,
+                         const cs_cdo_connect_t      *connect,
+                         const cs_cdo_quantities_t   *cdoq);
 
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief  Predefined extra-operations for the Navier-Stokes system
  *
+ * \param[in]  mesh      pointer to a cs_mesh_t structure
  * \param[in]  connect   pointer to a cs_cdo_connect_t structure
  * \param[in]  cdoq      pointer to a cs_cdo_quantities_t structure
+ * \param[in]  ts        pointer to a cs\time_step_t structure
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_navsto_system_extra_op(const cs_cdo_connect_t      *connect,
-                          const cs_cdo_quantities_t   *cdoq);
+cs_navsto_system_extra_op(const cs_mesh_t             *mesh,
+                          const cs_cdo_connect_t      *connect,
+                          const cs_cdo_quantities_t   *cdoq,
+                          const cs_time_step_t        *ts);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -416,7 +521,7 @@ cs_navsto_system_extra_op(const cs_cdo_connect_t      *connect,
  *         pointer defined in cs_post.h (\ref cs_post_time_mesh_dep_output_t)
  *
  * \param[in, out] input        pointer to a optional structure (here a
- *                              cs_gwf_t structure)
+ *                              cs_navsto_system_t structure)
  * \param[in]      mesh_id      id of the output mesh for the current call
  * \param[in]      cat_id       category id of the output mesh for this call
  * \param[in]      ent_flag     indicate global presence of cells (ent_flag[0]),

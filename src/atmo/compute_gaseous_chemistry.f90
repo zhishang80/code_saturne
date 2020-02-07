@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -118,7 +118,7 @@ do iel = 1, ncel
     source(ii) = 0.0d0
   enddo
 
-  if ((isepchemistry.eq.1).or.(ntcabs.eq.1)) then
+  if ((isepchemistry.eq.1).or.(ntcabs.lt.ntinit)) then
     ! -----------------------------
     ! -- splitted Rosenbrock solver
     ! -----------------------------
@@ -150,7 +150,7 @@ do iel = 1, ncel
         call fexchem_3 (nespg,nrg,dlconc,rk,source,conv_factor,dchema)
       endif
     else if (ichemistry.eq.4) then
-      call fexchem (nespg,nrg,dlconc,rk,source,conv_factor,dchema)
+      call fexchem_4 (nespg,nrg,dlconc,rk,source,conv_factor,dchema)
     endif
 
     ! Explicit contribution from dynamics as a source term:

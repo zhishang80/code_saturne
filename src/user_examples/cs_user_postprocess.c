@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -36,34 +36,10 @@
 #include "string.h"
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_mem.h"
-#include "bft_error.h"
-
-#include "cs_base.h"
-#include "cs_field.h"
-#include "cs_geom.h"
-#include "cs_interpolate.h"
-#include "cs_mesh.h"
-#include "cs_selector.h"
-#include "cs_parall.h"
-#include "cs_post.h"
-#include "cs_post_util.h"
-#include "cs_probe.h"
-#include "cs_time_plot.h"
-
-#include "cs_field_pointer.h"
-#include "cs_parameters.h"
-#include "cs_physical_constants.h"
-#include "cs_turbulence_model.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -632,51 +608,58 @@ cs_user_postprocess_values(const char            *mesh_name,
                            const cs_lnum_t        vertex_list[],
                            const cs_time_step_t  *ts)
 {
-  /* Output of k=1/2(R11+R22+R33) for the Rij-epsilon model
+  /* Output of k = 1/2 (R11+R22+R33) for the Rij-epsilon model
      ------------------------------------------------------ */
 
   /*< [postprocess_values_ex_1] */
-  if (cat_id == CS_POST_MESH_VOLUME && cs_glob_turb_model->itytur == 3) {
+  if (cat_id == CS_POST_MESH_VOLUME) { /* filter: only for volume
+                                          postprocessing mesh */
 
-    cs_real_t *s_cell;
-    BFT_MALLOC(s_cell, n_cells, cs_real_t);
+    if (cs_glob_turb_model->itytur == 3) {
 
-    if (cs_glob_turb_rans_model->irijco) {
-      const cs_real_6_t *cvar_r = (const cs_real_6_t *)(CS_F_(rij)->val);
-      for (cs_lnum_t i = 0; i < n_cells; i++) {
-        cs_lnum_t cell_id = cell_list[i];
-        s_cell[i] = 0.5* (  cvar_r[cell_id][0]
-                          + cvar_r[cell_id][1]
-                          + cvar_r[cell_id][2]);
+      cs_real_t *s_cell;
+      BFT_MALLOC(s_cell, n_cells, cs_real_t);
+
+      if (cs_glob_turb_rans_model->irijco) {
+        const cs_real_6_t *cvar_r = (const cs_real_6_t *)(CS_F_(rij)->val);
+        for (cs_lnum_t i = 0; i < n_cells; i++) {
+          cs_lnum_t cell_id = cell_list[i];
+          s_cell[i] = 0.5* (  cvar_r[cell_id][0]
+                            + cvar_r[cell_id][1]
+                            + cvar_r[cell_id][2]);
+        }
       }
+
+      else {
+        const cs_real_t *cvar_r11 = CS_F_(r11)->val;
+        const cs_real_t *cvar_r22 = CS_F_(r22)->val;
+        const cs_real_t *cvar_r33 = CS_F_(r33)->val;
+
+        for (cs_lnum_t i = 0; i < n_cells; i++) {
+          cs_lnum_t cell_id = cell_list[i];
+          s_cell[i] = 0.5* (  cvar_r11[cell_id]
+                            + cvar_r22[cell_id]
+                            + cvar_r33[cell_id]);
+        }
+
+      }
+
+      cs_post_write_var(mesh_id,
+                        CS_POST_WRITER_ALL_ASSOCIATED,  /* writer id filter */
+                        "Turb energy",                  /* var_name */
+                        1,                              /* var_dim */
+                        true,                           /* interlace, */
+                        false,                          /* use_parent */
+                        CS_POST_TYPE_cs_real_t,         /* var_type */
+                        s_cell,                         /* cel_vals */
+                        NULL,                           /* i_face_vals */
+                        NULL,                           /* b_face_vals */
+                        ts);
+
+      BFT_FREE(s_cell);
+
     }
 
-    else {
-      const cs_real_t *cvar_r11 = CS_F_(r11)->val;
-      const cs_real_t *cvar_r22 = CS_F_(r22)->val;
-      const cs_real_t *cvar_r33 = CS_F_(r33)->val;
-
-      for (cs_lnum_t i = 0; i < n_cells; i++) {
-        cs_lnum_t cell_id = cell_list[i];
-        s_cell[i] = 0.5* (  cvar_r11[cell_id]
-                          + cvar_r22[cell_id]
-                          + cvar_r33[cell_id]);
-      }
-    }
-
-    cs_post_write_var(mesh_id,
-                      CS_POST_WRITER_ALL_ASSOCIATED,  /* writer id filter */
-                      "Turb energy",                  /* var_name */
-                      1,                              /* var_dim */
-                      true,                           /* interlace, */
-                      false,                          /* use_parent */
-                      CS_POST_TYPE_cs_real_t,         /* var_type */
-                      s_cell,                         /* cel_vals */
-                      NULL,                           /* i_face_vals */
-                      NULL,                           /* b_face_vals */
-                      ts);
-
-    BFT_FREE(s_cell);
   }
   /*< [postprocess_values_ex_1] */
 

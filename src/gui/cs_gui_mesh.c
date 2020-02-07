@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -169,6 +169,8 @@ _get_periodicity_rotation(cs_tree_node_t  *node,
     }
 
   }
+  else
+    *angle = 0.0;
 
 #if _XML_DEBUG_
   bft_printf("==> %s\n", __func__);
@@ -247,9 +249,6 @@ _get_periodicity_mixed(cs_tree_node_t  *node,
 void
 cs_gui_mesh_warping(void)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const char path0[] = "solution_domain/faces_cutting";
 
   cs_tree_node_t *tn = cs_tree_get_node(cs_glob_tree, path0);
@@ -288,9 +287,6 @@ cs_gui_mesh_warping(void)
 void
 cs_gui_mesh_define_joinings(void)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const int *v_i = NULL;
   const cs_real_t *v_r = NULL;
 
@@ -343,9 +339,6 @@ cs_gui_mesh_define_joinings(void)
 void
 cs_gui_mesh_define_periodicities(void)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const int *v_i = NULL;
   const cs_real_t *v_r = NULL;
 
@@ -444,9 +437,6 @@ cs_gui_mesh_define_periodicities(void)
 void
 cs_gui_mesh_smoothe(cs_mesh_t  *mesh)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const char path0[] = "solution_domain/mesh_smoothing";
 
   cs_tree_node_t *tn = cs_tree_get_node(cs_glob_tree, path0);
@@ -498,9 +488,6 @@ cs_gui_mesh_smoothe(cs_mesh_t  *mesh)
 void
 cs_gui_mesh_boundary(cs_mesh_t  *mesh)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const char path0[] = "/solution_domain/thin_walls/thin_wall";
 
   for (cs_tree_node_t *tn = cs_tree_get_node(cs_glob_tree, path0);
@@ -541,9 +528,6 @@ cs_gui_mesh_boundary(cs_mesh_t  *mesh)
 void
 cs_gui_mesh_extrude(cs_mesh_t  *mesh)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const int *v_i = NULL;
   const cs_real_t *v_r = NULL;
 
@@ -602,9 +586,6 @@ cs_gui_mesh_extrude(cs_mesh_t  *mesh)
 void
 cs_gui_mesh_save_if_modified(cs_mesh_t  *mesh)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   const char path0[] = "solution_domain/save_mesh_if_modified";
 
   cs_tree_node_t *tn = cs_tree_get_node(cs_glob_tree, path0);

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -47,6 +47,7 @@
 #include "bft_printf.h"
 
 #include "cs_gui_util.h"
+#include "cs_log.h"
 #include "cs_map.h"
 #include "cs_parameters.h"
 
@@ -119,7 +120,7 @@ static cs_map_name_to_id_t *_entry_map = NULL;
  */
 /*----------------------------------------------------------------------------*/
 
-_cs_notebook_entry_t *
+static _cs_notebook_entry_t *
 cs_notebook_entry_by_name(const char *name)
 {
   int id = cs_map_name_to_id_try(_entry_map, name);
@@ -149,9 +150,9 @@ cs_notebook_entry_by_name(const char *name)
 /*----------------------------------------------------------------------------*/
 
 static _cs_notebook_entry_t *
-_entry_create(const char *name,
-              int         uncertain,
-              bool        editable)
+_entry_create(const char  *name,
+              int          uncertain,
+              bool         editable)
 {
   size_t l = strlen(name);
   const char *addr_0 = NULL, *addr_1 = NULL;
@@ -284,33 +285,37 @@ _entry_set_value(_cs_notebook_entry_t *e,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief dump the notebook structure to the listing file
- *
- * Dumps the notebook structure information to the listing file
- *
+ * \brief Output the notebook info to the setup log.
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_notebook_dump_info(void)
+cs_notebook_log(void)
 {
   if (_n_entries == 0)
     return;
 
-  bft_printf(" --------------------------- \n");
-  bft_printf("     NOTEBOOK PARAMETERS \n");
-  bft_printf(" --------------------------- \n");
-  for (int i = 0; i < _n_entries; i++) {
-    bft_printf(" Entry #%d\n", i);
-    bft_printf(" Name        : %s\n", _entries[i]->name);
-    bft_printf(" Description : %s\n", _entries[i]->description);
-    bft_printf(" Uncertain   : %d\n", _entries[i]->uncertain);
-    bft_printf(" Editable    : %d\n", _entries[i]->editable);
-    bft_printf(" Value       : %f\n", _entries[i]->val);
-    bft_printf_flush();
-  }
-  bft_printf(" --------------------------- \n");
-  bft_printf_flush();
+  cs_log_t l = CS_LOG_SETUP;
+
+  cs_log_printf(l, _("Notebook:\n"
+                     "---------\n"));
+  for (int i = 0; i < _n_entries; i++)
+    cs_log_printf(l, _("\n"
+                       "  Entry #%d\n"
+                       "    name:         %s\n"
+                       "    description:  %s\n"
+                       "    uncertain:    %d\n"
+                       "    editable:     %d\n"
+                       "    value:        %f\n"),
+                  i,
+                  _entries[i]->name,
+                  _entries[i]->description,
+                  _entries[i]->uncertain,
+                  _entries[i]->editable,
+                  _entries[i]->val);
+
+  cs_log_printf(l, "\n");
+  cs_log_separator(l);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -325,6 +330,7 @@ cs_notebook_dump_info(void)
 void
 cs_notebook_load_from_file(void)
 {
+  const char na[] = "NA";
 
   cs_tree_node_t *tnb = cs_tree_get_node(cs_glob_tree,
                                          "physical_properties/notebook");
@@ -338,26 +344,41 @@ cs_notebook_load_from_file(void)
     const char *c_val  = cs_tree_node_get_tag(n, "value");
     const char *c_edit = cs_tree_node_get_tag(n, "editable");
 
-    if (d == NULL || d == "")
-      d = "NA";
+    if (d == NULL)
+      d = na;
+    else if (strlen(d) == 0)
+      d = na;
 
     int uncertain = -1;
+    const char *uncertain_c = "No";
     if (oturns != NULL) {
-      if (strcmp(oturns, "Yes: Input") == 0)
+      if (strcmp(oturns, "Yes: Input") == 0) {
         uncertain = 0;
-      else if (strcmp(oturns, "Yes: Output") == 0)
+        uncertain_c = "Input";
+      } else if (strcmp(oturns, "Yes: Output") == 0) {
         uncertain = 1;
+        uncertain_c = "Output";
+      }
     }
     bool editable = false;
     if (c_edit != NULL)
       if (strcmp(c_edit, "Yes") == 0)
         editable = true;
 
-    /* If the variable is an uncertain output, it has to be modified
-     * by the code, hence editable=true
+    /* If the variable is uncertain then :
+     * - an input cannot be modifed, hence editable = false
+     * - an output has to be modified by the code, hence editable=true
+     *
+     * If the user specified a different status, a warning is printed
      */
-    if (uncertain == 1)
-      editable = true;
+    if (uncertain > -1) {
+      if (editable != uncertain)
+        bft_printf(_(" Warning: You defined the parameter %s as an uncertain "
+                     "of type %s with an incompatbile editable state of %d.\n"
+                     " Editable state is set to %d\n"),
+                   name, uncertain_c, editable, uncertain);
+      editable = uncertain;
+    }
 
     _cs_notebook_entry_t *e = _entry_create(name, uncertain, editable);
 
@@ -366,8 +387,7 @@ cs_notebook_load_from_file(void)
     _entry_set_value(e, val);
 
   }
-  cs_notebook_dump_info();
-
+  cs_notebook_log();
 }
 
 /*----------------------------------------------------------------------------*/

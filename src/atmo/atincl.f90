@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -50,6 +50,13 @@ double precision, allocatable, dimension(:) :: tmmet
 
 !> altitudes of the dynamic profiles (read in the input meteo file)
 double precision, allocatable, dimension(:) :: zdmet
+
+!> Pressure drop integrated over a time step (used for automatic open boundaries)
+double precision, allocatable, dimension(:) :: dpdt_met
+
+!> Momentum for each level (used for automatic open boundaries)
+double precision, allocatable, dimension(:,:) :: mom_met
+double precision, allocatable, dimension(:,:) :: mom
 
 !> altitudes of the temperature profile (read in the input meteo file)
 double precision, allocatable, dimension(:) :: ztmet
@@ -107,8 +114,8 @@ double precision, allocatable, dimension(:) :: nn
 ! 1.2 Pointers for the positions of the variables
 !------------------------------------------------
 !   Variables specific to the atmospheric physics:
-!> itotwt---> total water content (for humid atmosphere)
-integer, save :: itotwt
+!> total water content (for humid atmosphere)
+integer, save :: iymw
 !> intdrp---> total number of droplets (for humid atmosphere)
 integer, save :: intdrp
 
@@ -162,6 +169,7 @@ integer, allocatable, dimension(:) :: iautom
 integer, save :: initmeteo
 
 !> add a momentum source term based on the meteo profile
+!> for automatic open boundaries
 integer, save :: iatmst
 
 !> flag for meteo velocity field interpolation
@@ -177,14 +185,8 @@ integer, save :: theo_interp
 !> reference pressure (to compute potential temp: 1.0d+5)
 double precision, save:: ps
 
-!> ratio gaz constant h2o/ dry air: 1.608d0
-double precision, save:: rvsra
-
 !> ratio Cp h2o/ dry air: 1.866d0
 double precision, save:: cpvcpa
-
-!> latent heat of evaporation: 2.501d+6
-double precision, save:: clatev
 
 !> temperature gradient for the standard atmosphere (-6.5d-03 K/m)
 double precision, save:: gammat
@@ -196,25 +198,25 @@ double precision, save:: rvap
 !-------------------------------------------------------------------------------
 
 !> starting year
-integer, save:: syear
+integer(c_int), pointer, save:: syear
 
 !> starting quantile
-integer, save:: squant
+integer(c_int), pointer, save:: squant
 
 !> starting hour
-integer, save:: shour
+integer(c_int), pointer, save:: shour
 
 !> starting min
-integer, save:: smin
+integer(c_int), pointer, save:: smin
 
 !> starting second
-double precision, save :: ssec
+real(c_double), pointer, save :: ssec
 
 !> longitude of the domain origin
-double precision, save:: xlon
+real(c_double), pointer, save:: xlon
 
 !> latitude of the domain origin
-double precision, save:: xlat
+real(c_double), pointer, save:: xlat
 
 ! 2.3 Data specific to the meteo profile above the domain
 !--------------------------------------------------------
@@ -366,13 +368,13 @@ integer, save::  moddis
 !>  - modnuc = 2 : Cohard et al. 1998,1999
 !>  - modnuc = 3 : Abdul-Razzak et al. 1998,2000
 !>  logaritmic standard deviation of the log-normal law of the droplet spectrum
-integer, save::  modnuc
+integer(c_int), pointer, save:: modnuc
 
 !> sedimentation flag
-integer, save::  modsedi
+integer(c_int), pointer, save:: modsedi
 
 !> deposition flag
-integer, save:: moddep
+integer(c_int), pointer, save:: moddep
 
 !> adimensional :  sigc=0.53 other referenced values are 0.28, 0.15
 double precision, save:: sigc
@@ -385,6 +387,121 @@ integer, save :: init_at_chem
 integer, save :: kopint
 
 !> \}
+
+!=============================================================================
+
+  interface
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Calculation of the specific enthalpy of liquid water
+
+    !> \return specific enthalpy of liquid water
+
+    !> \param[in]  t_l  liquid water temperature (in Celsius)
+
+    function cs_liq_t_to_h(t_l) result(h_l) &
+        bind(C, name='cs_liq_t_to_h')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      real(c_double), value :: t_l
+      real(c_double) :: h_l
+    end function cs_liq_t_to_h
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Calculation of the absolute humidity at saturation for a given temperature.
+
+    !> \param[in]  t_c  temperature (in Celsius)
+    !> \param[in]  p    pressure
+
+    function cs_air_x_sat(t_c, p) result(x_s) &
+        bind(C, name='cs_air_x_sat')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      real(c_double), value :: t_c, p
+      real(c_double) :: x_s
+    end function cs_air_x_sat
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Calculation of the air water mass fraction at saturation for a given temperature.
+
+    !> \param[in]  t_c  temperature (in Celsius)
+    !> \param[in]  p    pressure
+
+    function cs_air_yw_sat(t_c, p) result(x_s) &
+        bind(C, name='cs_air_yw_sat')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      real(c_double), value :: t_c, p
+      real(c_double) :: x_s
+    end function cs_air_yw_sat
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Computes the saturation water vapour pressure function of the temperature (C).
+
+    !> \param[in]  t_c  temperature (in Celsius)
+
+    function cs_air_pwv_sat(t_c) result(x_s) &
+        bind(C, name='cs_air_pwv_sat')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      real(c_double), value :: t_c
+      real(c_double) :: x_s
+    end function cs_air_pwv_sat
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Convert the absolute humidity of humid air to the air water mass fraction.
+
+    !> \param[in]  x  absolute humidity of humid air
+
+    function cs_air_x_to_yw(x) result(qw) &
+        bind(C, name='cs_air_x_to_yw')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      real(c_double), value :: x
+      real(c_double) :: qw
+    end function cs_air_x_to_yw
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Convert the air water mass fraction to the absolute humidity of humid air.
+
+    !> \param[in]  qw  air water mass fraction
+
+    function cs_air_yw_to_x(qw) result(x) &
+        bind(C, name='cs_air_yw_to_x')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      real(c_double), value :: qw
+      real(c_double) :: x
+    end function cs_air_yw_to_x
+
+    !---------------------------------------------------------------------------
+
+    !> \brief Calculation of the density of humid air.
+
+    !> \param[in]  ywm           air water mass fraction
+    !> \param[in]  t_liq         pressure
+    !> \param[in]  p             pressure
+    !> \param[out] yw_liq        liquid water mass fraction
+    !> \param[out] t_h           temperature of humid air in Celsius
+    !> \param[out] rho_h         density of humid air
+
+    subroutine cs_rho_humidair(ywm, t_liq, p, yw_liq, t_h, rho_h) &
+        bind(C, name='cs_rho_humidair')
+      use, intrinsic :: iso_c_binding
+      implicit none
+      real(c_double), value :: ywm, t_liq, p
+      real(c_double), intent(out) :: yw_liq, t_h, rho_h
+    end subroutine cs_rho_humidair
+
+    !=============================================================================
+
+  end interface
 
 contains
 
@@ -402,10 +519,28 @@ contains
 
     ! Local variables
     type(c_ptr) :: c_compute_z_ground, c_model, c_nrg, c_nespg
+    type(c_ptr) :: c_sedimentation_model, c_deposition_model, c_nucleation_model
+    type(c_ptr) :: c_syear, c_squant, c_shour, c_smin, c_ssec
+    type(c_ptr) :: c_longitude, c_latitude
 
-    call cs_f_atmo_get_pointers(c_compute_z_ground, c_model, c_nespg, c_nrg)
+    call cs_f_atmo_get_pointers( &
+      c_syear, c_squant, c_shour, c_smin, c_ssec, &
+      c_longitude, c_latitude,                    &
+      c_compute_z_ground,                         &
+      c_sedimentation_model, c_deposition_model, c_nucleation_model, &
+      c_model, c_nespg, c_nrg)
 
+    call c_f_pointer(c_syear, syear)
+    call c_f_pointer(c_squant, squant)
+    call c_f_pointer(c_shour, shour)
+    call c_f_pointer(c_smin, smin)
+    call c_f_pointer(c_ssec, ssec)
+    call c_f_pointer(c_longitude, xlon)
+    call c_f_pointer(c_latitude, xlat)
     call c_f_pointer(c_compute_z_ground, compute_z_ground)
+    call c_f_pointer(c_sedimentation_model, modsedi)
+    call c_f_pointer(c_deposition_model, moddep)
+    call c_f_pointer(c_nucleation_model, modnuc)
     call c_f_pointer(c_model, ichemistry)
     call c_f_pointer(c_nespg, nespg)
     call c_f_pointer(c_nrg, nrg)
@@ -440,6 +575,9 @@ if (imeteo.gt.0) then
   ! NB : only ztmet,ttmet,qvmet,ncmet are extended to 11000m if iatr1=1
   !           rmet,tpmet,phmet
   allocate(tmmet(nbmetm), zdmet(nbmetd), ztmet(nbmaxt))
+  allocate(dpdt_met(nbmetd))
+  allocate(mom(3, nbmetd))
+  allocate(mom_met(3, nbmetd))
   allocate(umet(nbmetd,nbmetm), vmet(nbmetd,nbmetm), wmet(nbmetd,nbmetm))
   allocate(ekmet(nbmetd,nbmetm), epmet(nbmetd,nbmetm))
   allocate(ttmet(nbmaxt,nbmetm), qvmet(nbmaxt,nbmetm), ncmet(nbmaxt,nbmetm))
@@ -505,6 +643,7 @@ endif
 if (imeteo.gt.0) then
 
   deallocate(tmmet, zdmet, ztmet)
+  deallocate(mom, mom_met, dpdt_met)
   deallocate(umet, vmet, wmet)
   deallocate(ekmet, epmet)
   deallocate(ttmet, qvmet, ncmet)

@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -36,35 +36,10 @@
 #include "string.h"
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_mem.h"
-#include "bft_error.h"
-
-#include "cs_base.h"
-#include "cs_field.h"
-#include "cs_geom.h"
-#include "cs_interpolate.h"
-#include "cs_mesh.h"
-#include "cs_selector.h"
-#include "cs_parall.h"
-#include "cs_post.h"
-#include "cs_post_util.h"
-#include "cs_probe.h"
-#include "cs_time_plot.h"
-
-#include "cs_field_pointer.h"
-#include "cs_field_operator.h"
-#include "cs_parameters.h"
-#include "cs_physical_constants.h"
-#include "cs_turbulence_model.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -312,8 +287,10 @@ cs_user_postprocess_values(const char            *mesh_name,
 
       /* Reynolds stresses */
 
-      const cs_turb_model_t *turb_mdl = cs_glob_turb_model;
+      const cs_turb_model_t  *turb_mdl = cs_get_glob_turb_model();
+      assert(turb_mdl != NULL);
       const cs_turb_rans_model_t *turb_rans_mdl = cs_glob_turb_rans_model;
+      assert(turb_rans_mdl != NULL);
 
       cs_real_6_t *rij = NULL;
       BFT_MALLOC(rij, n_cells, cs_real_6_t);
@@ -346,7 +323,7 @@ cs_user_postprocess_values(const char            *mesh_name,
         cs_real_6_t *cvar_rij = (cs_real_6_t *)CS_F_(rij)->val;
         for (cs_lnum_t i = 0; i < n_cells; i++) {
           cs_lnum_t c_id = cell_list[i];
-          for (cs_lnum_t j = 0; i < 6; i++)
+          for (cs_lnum_t j = 0; j < 6; j++)
             rij[i][j] = cvar_rij[c_id][j];
         }
 

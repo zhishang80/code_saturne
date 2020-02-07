@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -31,7 +31,7 @@ This module defines the following classes:
 - NewCaseDialogView
 - MainView
 
-    @copyright: 1998-2019 EDF S.A., France
+    @copyright: 1998-2020 EDF S.A., France
     @author: U{EDF<mailto:saturne-support@edf.fr>}
     @license: GNU GPL v2 or later, see COPYING for details.
 """
@@ -61,10 +61,10 @@ from code_saturne.Base.QtWidgets import *
 # Application modules
 #-------------------------------------------------------------------------------
 
-import cs_info
-from cs_exec_environment import \
+from code_saturne import cs_info
+from code_saturne.cs_exec_environment import \
     separate_args, update_command_single_value, assemble_args, enquote_arg
-import cs_runcase
+from code_saturne import cs_runcase
 
 try:
     from code_saturne.Base.MainForm import Ui_MainForm
@@ -91,6 +91,8 @@ except:
 from code_saturne.Pages.WelcomeView import WelcomeView
 from code_saturne.model.IdentityAndPathesModel import IdentityAndPathesModel
 from code_saturne.Pages.XMLEditorView import XMLEditorView
+from code_saturne.Pages.BatchRunningDialogView import BatchRunningDialogView
+from code_saturne.Pages.OpenTurnsDialogView import OpenTurnsDialogView
 from code_saturne.model.ScriptRunningModel import ScriptRunningModel
 from code_saturne.model.SolutionDomainModel import getRunType
 from code_saturne.Base.QtPage import getexistingdirectory
@@ -373,6 +375,8 @@ class MainView(object):
         self.openTextEditorAction.triggered.connect(self.fileEditorOpen)
         self.openResultsFileAction.triggered.connect(self.fileViewerOpen)
         self.testUserCompilationAction.triggered.connect(self.testUserFilesCompilation)
+
+        self.runOrSubmitAction.triggered.connect(self.runOrSubmit)
 
         self.openXtermAction.triggered.connect(self.openXterm)
         self.displayCaseAction.triggered.connect(self.displayCase)
@@ -829,7 +833,11 @@ class MainView(object):
 
         title += self.tr(package.code_name)
 
-        if package.code_name == "NEPTUNE_CFD":
+        module_name = 'code_saturne'
+        if hasattr(self, 'case'):
+            module_name = self.case.module_name()
+
+        if module_name == "NEPTUNE_CFD":
             icon = QIcon(QPixmap(icondir+"logoneptune.png"))
         else:
             icon = QIcon(QPixmap(icondir+"MONO-bulle-HD.png"))
@@ -907,7 +915,7 @@ class MainView(object):
                         open_editor = False
 
         if not open_editor:
-            title = self.tr("WARNING")
+            title = self.tr("Warning")
             msg   = self.tr("Warning: you can only manage user files for a "\
                             "Code_Saturne CASE with an xml file.")
             QMessageBox.warning(self, title, msg)
@@ -949,7 +957,7 @@ class MainView(object):
                         open_viewer = False
 
         if not open_viewer:
-            title = self.tr("WARNING")
+            title = self.tr("Warning")
             msg   = self.tr("Warning: you can only view log files for a "\
                             "Code_Saturne CASE with an xml file.")
             QMessageBox.warning(self, title, msg)
@@ -998,7 +1006,12 @@ class MainView(object):
             out = open('comp.out', 'w')
             err = open('comp.err', 'w')
 
+            solver = "cs_solver" + self.package.config.exeext
+            if self.case.module_name() == 'neptune_cfd':
+                solver = "nc_solver" + self.package.config.exeext
+
             state = cs_compile.compile_and_link(self.case['package'],
+                                                solver,
                                                 src_dir,
                                                 destdir=None,
                                                 stdout=out,
@@ -1082,7 +1095,7 @@ class MainView(object):
             dialog.show()
 
 
-    def fileSave(self, renew_page=True):
+    def fileSave(self):
         """
         public slot
 
@@ -1118,9 +1131,12 @@ class MainView(object):
         self.updateTitleBar()
         self.case.xmlSaveDocument()
         self.batchFileSave()
-        self.saveUserFormulaInC()
+        meg_state = self.saveUserFormulaInC()
+        if meg_state == -1:
+            return
 
         # force to blank after save
+        self.case['saved'] = 'yes'
         self.case['undo'] = []
         self.case['redo'] = []
 
@@ -1130,19 +1146,6 @@ class MainView(object):
 
         msg = self.tr("%s saved" % file_name)
         self.statusbar.showMessage(msg, 2000)
-
-        if renew_page:
-            if self.case['current_page'] == 'Calculation management':
-                p = displaySelectedPage(self.case['current_page'],
-                                        self,
-                                        self.case,
-                                        stbar=self.statusbar,
-                                        tree=self.Browser)
-                # Side effects of page display may mark as not saved
-                # based on queried models, so force saved here to avoid
-                # issues with saved state detection.
-                self.case['saved'] = 'yes'
-                self.scrollArea.setWidget(p)
 
 
     def fileSaveAs(self):
@@ -1314,6 +1317,37 @@ class MainView(object):
         self.case['runcase'].save()
 
 
+    def runOrSubmit(self):
+        """
+        public slot
+
+        print the case (xml file) on the current terminal
+        """
+        if hasattr(self, 'case'):
+            dialog = BatchRunningDialogView(self, self.case)
+            dialog.show()
+
+
+    def runOTMode(self):
+        """
+        public slot
+
+        CFD to OpenTURNS mode
+        """
+        # Test if pydefx is available for the OpenTURNS coupling.
+        # Needed for Salome 9.3
+        try:
+            from pydefx import Parameters
+        except:
+            ydefx_root=os.environ['YDEFX_ROOT_DIR']
+            sys.path.insert(0, os.path.join(ydefx_root, 'lib/salome'))
+            sys.path.insert(0, os.path.join(ydefx_root, 'lib/python3.6/site-packages/salome'))
+
+        if hasattr(self, 'case'):
+            dialog = OpenTurnsDialogView(self, self.case)
+            dialog.show()
+
+
     def displayNewPage(self, index):
         """
         private slot
@@ -1359,9 +1393,23 @@ class MainView(object):
         """
         Save user defined laws with MEI to C functions
         """
+        state = 0
         if self.case['run_type'] == 'standard':
             mci = mei_to_c_interpreter(self.case)
-            state = mci.save_all_functions()
+
+            mci_state = mci.save_all_functions()
+
+            state = mci_state['state']
+
+            if state == -1:
+                msg = ''
+                title = self.tr("Save error")
+                msg = "Expressions are missing !\n"
+                for i, d in enumerate(mci_state['exps']):
+                    msg += "(%d/%d) %s %s is not provided or zone %s\n" % (i+1, mci_state['nexps'], d['var'], d['func'], d['zone'])
+                QMessageBox.critical(self, title, msg)
+                msg = self.tr("Saving aborted")
+                self.statusbar.showMessage(msg, 2000)
 
             if state == 1:
                 title = self.tr("Warning!")
@@ -1375,10 +1423,9 @@ class MainView(object):
                 msg = self.tr("Saving was done within a RESU folder and not in CASE.")
                 self.statusbar.showMessage(msg, 2000)
                 self.updateTitleBar()
-                return
 
-            else:
-                return
+
+        return state
 
 
 
@@ -1472,8 +1519,6 @@ class MainView(object):
             if self.palette_default:
                 app.setPalette(self.palette_default)
             if self.font_default:
-                print(self.font_default)
-                print(self.font())
                 self.setFont(self.font_default)
                 app.setFont(self.font_default)
             settings = QSettings()
@@ -1758,11 +1803,11 @@ class MainViewSaturne(QMainWindow, Ui_MainForm, MainView):
         open the user manual
         """
         if self.package.name == 'neptune_cfd':
-            self.displayManual(self.package, 'doxygen')
+            self.displayManual(self.package, 'Doxygen')
         else:
             from neptune_cfd.nc_package import package as nc_package
             pkg = nc_package()
-            self.displayManual(pkg, 'doxygen')
+            self.displayManual(pkg, 'Doxygen')
 
 
     def slotUndo(self):
@@ -1848,7 +1893,7 @@ class MainViewSaturne(QMainWindow, Ui_MainForm, MainView):
 
 def isAlive(qobj):
     """
-    return True if the object qobj exist
+    return True if the object qobj exists
 
     @param qobj: the name of the attribute
     @return: C{True} or C{False}

@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -33,7 +33,6 @@ subroutine atini1
 
 use paramx
 use dimens
-use ihmpre
 use numvar
 use optcal
 use cstphy
@@ -87,9 +86,7 @@ endif
 !    (see definition in atincl.h):
 
 ps = 1.0d5
-rvsra = 1.608d0
 cpvcpa = 1.866d0
-clatev = 2.501d6
 gammat = -6.5d-03
 rvap = rvsra*rair
 

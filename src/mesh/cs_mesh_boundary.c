@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -1088,7 +1088,7 @@ _split_vertices_vtx_min_cell_num(cs_mesh_t       *mesh,
 }
 
 /*----------------------------------------------------------------------------
- * Seperate vertices at inserted boundary faces based on their cell adjacency.
+ * Separate vertices at inserted boundary faces based on their cell adjacency.
  *
  * parameters:
  *   mesh         <-> pointer to mesh structure

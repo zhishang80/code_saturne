@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -61,10 +61,8 @@ BEGIN_C_DECLS
  *  - Discretes Ordinates Methods (DOM)
  *  - P-1 approximation (only recommended for pulverized coal)
  *
+ *  \param[in]       verbosity     verbosity level
  *  \param[in, out]  bc_type       boundary face types
- *  \param[in]       nclacp        number of pulverized coal classes
- *  \param[in]       nclafu        number of fuel classes
- *  \param[in]       dt            time step (per cell)
  *  \param[in]       cp2fol        fuel oil liquid CP
  *  \param[in]       cp2ch         pulverized coal CP's
  *  \param[in]       ichcor        pulverized coal indirection
@@ -72,10 +70,8 @@ BEGIN_C_DECLS
 /*----------------------------------------------------------------------------*/
 
 void
-cs_rad_transfer_solve(int               bc_type[],
-                      int               nclacp,
-                      int               nclafu,
-                      const cs_real_t   dt[],
+cs_rad_transfer_solve(int               verbosity,
+                      int               bc_type[],
                       cs_real_t         cp2fol,
                       const cs_real_t   cp2ch[],
                       const int         ichcor[]);

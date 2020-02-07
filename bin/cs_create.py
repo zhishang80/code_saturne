@@ -5,7 +5,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -51,8 +51,8 @@ try:
 except Exception:
     import configparser  # Python3
 
-import cs_exec_environment
-import cs_runcase
+from code_saturne import cs_exec_environment
+from code_saturne import cs_runcase
 
 #-------------------------------------------------------------------------------
 # Process the passed command line arguments
@@ -102,10 +102,6 @@ def process_cmd_line(argv, pkg):
                       metavar="<syr_cases>", action="append",
                       help="create new SYRTHES case(s).")
 
-    parser.add_option("--aster", dest="ast_case_name", type="string",
-                      metavar="<ast_case>",
-                      help="create a new Code_Aster case.")
-
     parser.add_option("--cathare", dest="cat_case_name", type="string",
                       metavar="<cat_case>",
                       help="create a new Cathare2 case.")
@@ -122,7 +118,6 @@ def process_cmd_line(argv, pkg):
     parser.set_defaults(import_only=False)
     parser.set_defaults(n_sat=1)
     parser.set_defaults(syr_case_names=[])
-    parser.set_defaults(ast_case_name=None)
     parser.set_defaults(cat_case_name=None)
     parser.set_defaults(py_case_name=None)
 
@@ -141,7 +136,6 @@ def process_cmd_line(argv, pkg):
                  options.study_name,
                  options.case_names,
                  options.syr_case_names,
-                 options.ast_case_name,
                  options.cat_case_name,
                  options.py_case_name,
                  options.copy,
@@ -222,7 +216,7 @@ def syrthes_path_line(pkg):
 
 class Study:
 
-    def __init__(self, package, name, cases, syr_case_names, ast_case_name,
+    def __init__(self, package, name, cases, syr_case_names,
                  cat_case_name, py_case_name,
                  copy, import_only, use_ref, verbose):
         """
@@ -250,8 +244,6 @@ class Study:
         for c in syr_case_names:
             self.syr_case_names.append(c)
 
-        self.ast_case_name = ast_case_name
-
         self.cat_case_name = cat_case_name
 
         self.py_case_name = py_case_name
@@ -259,6 +251,11 @@ class Study:
         if self.import_only:
             self.use_ref = False
             self.copy = None
+
+            # Options is now deprecated, print info
+            sys.stdout.write("  o '%s create --import-only' is deprecated.\n" % \
+                    self.package.name)
+            sys.stdout.write("  o Use '%s update' instead\n\n" % self.package.name)
 
 
     def create(self):
@@ -291,17 +288,6 @@ class Study:
         if len(self.syr_case_names) > 0:
             self.create_syrthes_cases(repbase)
 
-        # Creating Code_Aster case
-        if self.ast_case_name is not None:
-            config = configparser.ConfigParser()
-            config.read(self.package.get_configfiles())
-            if config.has_option('install', 'aster'):
-                self.create_aster_case(repbase)
-
-            else:
-                sys.stderr.write("Cannot locate Code_Aster installation.")
-                sys.exit(1)
-
         # Creating Cathare case
         if self.cat_case_name is not None:
             config = configparser.ConfigParser()
@@ -317,7 +303,7 @@ class Study:
             self.create_python_case(repbase)
 
         # Creating coupling structure
-        if len(self.cases) + len(self.syr_case_names) > 1 or self.ast_case_name \
+        if len(self.cases) + len(self.syr_case_names) > 1 \
            or self.cat_case_name or self.py_case_name:
             self.create_coupling(repbase)
 
@@ -343,30 +329,6 @@ class Study:
                 sys.exit(1)
 
         os_environ = os_env_save
-
-
-    def create_aster_case(self, repbase):
-        """
-        Create and initialize Code_Aster case directory.
-        """
-
-        if self.verbose > 0:
-            sys.stdout.write("  o Creating Code_Aster case  '%s'...\n" %
-                             self.ast_case_name)
-
-        c = os.path.join(repbase, self.ast_case_name)
-
-        if not self.import_only:
-            os.mkdir(c)
-
-        datadir = self.package.get_dir("pkgdatadir")
-        try:
-            shutil.copy(os.path.join(datadir, 'salome', 'fsi.export'),
-                        os.path.join(repbase, self.ast_case_name))
-        except:
-            sys.stderr.write("Cannot copy fsi.export file: " + \
-                             os.path.join(datadir, 'salome', 'fsi.export') + ".\n")
-            sys.exit(1)
 
 
     def create_cathare_case(self, repbase, cathare_path):
@@ -444,7 +406,7 @@ class Study:
 
 # A coupling case is defined by a dictionnary, containing the following:
 
-# Solver type ('Code_Saturne', 'SYRTHES', 'NEPTUNE_CFD' or 'Code_Aster')
+# Solver type ('Code_Saturne', 'SYRTHES', or 'NEPTUNE_CFD')
 # Domain directory name
 # Run parameter setting file
 # Number of processors (or None for automatic setting)
@@ -505,30 +467,6 @@ domains = [
             template = re.sub(e_dom, base_c, template)
             dict_str += template
 
-        if self.ast_case_name is not None:
-
-            template = \
-"""
-    ,
-    {'solver': 'Code_Aster',
-     'domain': 'DOMAIN',
-     'script': 'fsi.export'}
-"""
-            template = re.sub(e_dom, self.ast_case_name, template)
-            dict_str += template
-
-            template = \
-"""
-    ,
-    {'coupler': 'FSI_coupler',
-     'max_time_steps': 10,
-     'n_sub_iterations': 1,
-     'time_step': 0.0001,
-     'start_time': 0.0,
-     'epsilon': 0.00001}
-"""
-            dict_str += template
-
         if self.cat_case_name is not None:
 
             c = os.path.normpath(self.cat_case_name)
@@ -564,7 +502,7 @@ domains = [
     ,
     {'solver': 'PYTHON_CODE',
      'domain': 'DOMAIN',
-     'py_code': 'pycode.py',
+     'script': 'pycode.py',
      'command_line': '',
      'n_procs_weight': None,
      'n_procs_min': 1,
@@ -604,7 +542,7 @@ domains = [
         if self.cat_case_name is not None:
             config = configparser.ConfigParser()
             config.read(self.package.get_configfiles())
-            cathare_libpath=os.path.join(config.get('install', 'cathare'), 'lib')
+            cathare_libpath=config.get('install', 'cathare')
         else:
             cathare_libpath=None
 
@@ -641,12 +579,21 @@ domains = [
 
         os.chdir(casedirname)
 
+        if self.copy is not None:
+            if not (os.path.exists(os.path.join(self.copy, 'DATA', 'REFERENCE')) \
+                    or os.path.exists(os.path.join(self.copy, 'SRC', 'REFERENCE'))):
+                self.use_ref = False
+
         # Data directory
 
         data = 'DATA'
 
         if not self.import_only:
             os.mkdir(data)
+            abs_setup_distpath = os.path.join(data_distpath, 'setup.xml')
+            if os.path.isfile(abs_setup_distpath) and not self.copy:
+                shutil.copy(abs_setup_distpath, data)
+                unset_executable(data)
 
         if self.use_ref:
 
@@ -654,7 +601,7 @@ domains = [
             ref           = os.path.join(data, 'REFERENCE')
             os.mkdir(ref)
             for f in ['dp_C3P', 'dp_C3PSJ', 'dp_C4P', 'dp_ELE',
-                      'dp_FUE', 'dp_transfo', 'meteo']:
+                      'dp_FUE', 'dp_transformers', 'meteo']:
                 abs_f = os.path.join(thch_distpath, f)
                 if os.path.isfile(abs_f):
                     shutil.copy(abs_f, ref)
@@ -810,13 +757,16 @@ domains = [
         # If a cathare LIBPATH is given, it is added to LD_LIBRARY_PATH.
         # This modification is needed for the dlopen of the cathare .so file
         if cathare_path:
-            new_line="export LD_PATH_LIBRARY="+cathare_path+":$LD_LIBRARY_PATH"
+            v25_3_line="export v25_3=%s" % cathare_path
+            new_line="export LD_PATH_LIBRARY=$v25_3/%s/"+":$LD_LIBRARY_PATH"
             il=0
             for line in runcase.lines:
                 il+=1
                 if 'export PATH' in line:
-                    runcase.lines.insert(il, new_line)
-                    runcase.run_cmd_line_id += 1
+                    runcase.lines.insert(il, new_line % ("lib/ICoCo"))
+                    runcase.lines.insert(il, new_line % ("lib"))
+                    runcase.lines.insert(il, v25_3_line)
+                    runcase.run_cmd_line_id += 3
                     break
 
         runcase.save()
@@ -839,8 +789,6 @@ domains = [
             print("SYRTHES instances:")
             for c in self.syr_case_names:
                 print("  " + c)
-        if self.ast_case_name != None:
-            print("Code_Aster instance:", self.ast_case_name)
         if self.py_case_name != None:
             print("Python script instances:")
             for c in self.py_case_name:

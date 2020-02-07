@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -23,7 +23,7 @@
 subroutine cplph1 &
  ( ncelet , ncel   ,                                              &
    nitbcp , nrtbcp , nitbmc , nrtbmc , nitbwo , nrtbwo ,          &
-   f1m    , f2m    , f3m    , f4m    , f3p2m  , f4p2m  ,          &
+   f1m    , f2m    , f3m    , f4m    , f4p2m  ,                   &
    enth   ,                                                       &
    rom1   )
 

@@ -4,7 +4,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -163,7 +163,7 @@ end subroutine usphyv
 !> Turbulent viscosity \f$ \mu_T \f$ (kg/(m s)) can be modified.
 !>
 !> A modification of the turbulent viscosity can lead to very
-!> significant differences betwwen solutions and even give wrong
+!> significant differences between solutions and even give wrong
 !> results.
 !>
 !> This subroutine is therefore reserved to expert users.
@@ -334,86 +334,6 @@ end subroutine ussmag
 
 
 !===============================================================================
-
-!===============================================================================
-!> \brief User subroutine dedicated the use of ALE
-!>  (Arbitrary Lagrangian Eulerian Method): fills mesh viscosity arrays.
-!>
-!> Here one can modify mesh viscosity value to prevent cells and nodes
-!> from huge displacements in awkward areas, such as boundary layer for example.
-!>
-!> This subroutine is called once per computation, before restart files
-!> are read, so the mesh is always in the initial position at this stage.
-!>
-!> Note that by default, the mesh viscosity is initialized to a uniform
-!> value of 1.
-!
-!-------------------------------------------------------------------------------
-
-!-------------------------------------------------------------------------------
-! Arguments
-!______________________________________________________________________________.
-!  mode           name          role                                           !
-!______________________________________________________________________________!
-!_______________________________________________________________________________
-
-subroutine usvima
-
-!===============================================================================
-
-!===============================================================================
-! Module files
-!===============================================================================
-
-use paramx
-use pointe
-use numvar
-use optcal
-use cstphy
-use entsor
-use parall
-use period
-use albase
-use field
-use mesh
-use cs_c_bindings
-
-!===============================================================================
-
-implicit none
-
-! Arguments
-
-! Local
-
-integer           idftnp
-
-double precision, dimension(:), pointer :: cpro_vism_s
-double precision, dimension(:,:), pointer :: cpro_vism_v
-
-type(var_cal_opt) :: vcopt
-
-!===============================================================================
-
-call field_get_key_struct_var_cal_opt(ivarfl(iuma), vcopt)
-idftnp = vcopt%idften
-
-if (iand(idftnp, ISOTROPIC_DIFFUSION).ne.0) then
-  call field_get_val_s(ivisma, cpro_vism_s)
-else if (iand(idftnp, ANISOTROPIC_LEFT_DIFFUSION).ne.0) then
-  call field_get_val_v(ivisma, cpro_vism_v)
-endif
-
-!----
-! Formats
-!----
-
-!----
-! End
-!----
-
-return
-end subroutine usvima
 
 !===============================================================================
 ! Purpose:

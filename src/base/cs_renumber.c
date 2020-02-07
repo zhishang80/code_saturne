@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -3408,7 +3408,7 @@ _get_coord_extents(int               dim,
 {
   size_t  i, j;
 
-  /* Get global min/max coordinates */
+  /* Get local min/max coordinates */
 
   for (j = 0; j < (size_t)dim; j++) {
     extents[j]       = DBL_MAX;
@@ -3419,7 +3419,7 @@ _get_coord_extents(int               dim,
     for (j = 0; j < (size_t)dim; j++) {
       if (coords[i*dim + j] < extents[j])
         extents[j] = coords[i*dim + j];
-      else if (coords[i*dim + j] > extents[j + dim])
+      if (coords[i*dim + j] > extents[j + dim])
         extents[j + dim] = coords[i*dim + j];
     }
   }
@@ -4292,7 +4292,7 @@ _renum_cells_rcm(const cs_mesh_t  *mesh,
                           (const cs_lnum_t  *)(mesh->i_face_cells));
 
   cs_lnum_t l_s = 0, l_e = 0;
-  _Bool  boot = false;
+  bool   boot = false;
 
   if (_cells_adjacent_to_halo_last) {
 
@@ -4416,8 +4416,27 @@ _renum_cells_rcm(const cs_mesh_t  *mesh,
     }
 
     /* Generate next set */
-    if (l_e >= mesh->n_cells || l_e == l_s)
+    if (l_e >= mesh->n_cells)
       break;
+    else if (l_e == l_s) {
+      /* Disjoint set ? Find next starting cell, similar to boot
+         (could be improved, but avoids failure) */
+      cs_lnum_t  id_min = mesh->n_cells, nn_min = mesh->n_cells;
+      for (cs_lnum_t i = 0; i < mesh->n_cells; i++) {
+        cs_lnum_t nn = a->idx[i+1] - a->idx[i];
+        if (nn <= nn_min && cell_class[i] == 0) {
+          id_min = i;
+          nn_min = nn;
+        }
+      }
+      assert(id_min < mesh->n_cells);
+      cell_class[id_min] = level;
+      keys[l_e*3  ] = a->idx[id_min+1]- a->idx[id_min];
+      keys[l_e*3+1] = id_min;
+      keys[l_e*3+2] = id_min;
+      rl[l_e] = id_min;
+      l_e += 1;
+    }
 
     cs_lnum_t n = 0;
     for (cs_lnum_t l_id = l_s; l_id < l_e; l_id++) {

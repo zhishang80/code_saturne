@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -137,14 +137,12 @@ cs_notebook_destroy_all(void);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief dump the notebook structure to the listing file
- *
- * Dumps the notebook structure information to the main log file
+ * \brief Output the notebook info to the setup log.
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_notebook_dump_info(void);
+cs_notebook_log(void);
 
 /*----------------------------------------------------------------------------*/
 /*!

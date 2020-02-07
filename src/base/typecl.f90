@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -32,7 +32,6 @@
 !------------------------------------------------------------------------------
 !> \param[in]     nvar          total number of variables
 !> \param[in]     nscal         total number of scalars
-!> \param[in]     iterns        iteration number on Navier-Stokes equations
 !> \param[in]     init          partial treatment (before time loop) if true
 !> \param[in,out] itypfb        boundary face types
 !> \param[out]    itrifb        tab d'indirection pour tri des faces
@@ -69,7 +68,7 @@
 !______________________________________________________________________________
 
 subroutine typecl &
- ( nvar   , nscal  , iterns , init   ,                            &
+ ( nvar   , nscal  , init   ,                                     &
    itypfb , itrifb , icodcl , isostd ,                            &
    rcodcl )
 
@@ -102,7 +101,7 @@ implicit none
 
 ! Arguments
 
-integer          nvar   , nscal, iterns
+integer          nvar   , nscal
 logical          init
 
 integer          icodcl(ndimfb,nvar)
@@ -121,6 +120,7 @@ integer          iut  , ivt   , iwt, ialt, iscal
 integer          keyvar, keycpl
 integer          iivar, icpl
 integer          f_id, i_dim, f_type, nfld, f_dim, f_id_yplus, f_id_z_ground
+integer          modntl
 
 double precision pref
 double precision flumbf, flumty(ntypmx)
@@ -756,8 +756,8 @@ if (itbslb.gt.0.and.iilagr.ne.3) then
 
   call grdpor(inc)
 
-  call field_gradient_potential(ivarfl(ipr), iprev, imrgra, inc,      &
-                                iccocg, iphydr,                       &
+  call field_gradient_potential(ivarfl(ipr), iprev, 0, inc,      &
+                                iccocg, iphydr,                  &
                                 frcxt, grad)
 
   ! Put in pripb the value at I' or F (depending on iphydr) of the
@@ -984,40 +984,44 @@ do f_id = 0, nfld - 1
 
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-    call field_get_dim (f_id, f_dim)
-    call field_get_key_int(f_id, keyvar, ivar)
+    ! Is this field not managed by CDO
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
 
-    ! Loop over faces
-    do ii = ideb, ifin
-      ifac = itrifb(ii)
-      ! Special treatment for uncoupled version of Rij models,
-      ! will be removed with the coupled solver
-      if (icodcl(ifac,ivar).eq.0.and.irijco.eq.0.and.        &
-          (ivar.eq.ir11.or.ivar.eq.ir22.or.ivar.eq.ir33.or.  &
-           ivar.eq.ir12.or.ivar.eq.ir13.or.ivar.eq.ir23)) then
-        icodcl(ifac,ivar)   = 4
-        rcodcl(ifac,ivar,1) = 0.d0
-        rcodcl(ifac,ivar,2) = rinfin
-        rcodcl(ifac,ivar,3) = 0.d0
-      endif
+      call field_get_dim (f_id, f_dim)
+      call field_get_key_int(f_id, keyvar, ivar)
 
-      ! Homogeneous Neumann on scalars
-      if (f_dim.eq.1.and.icodcl(ifac,ivar).eq.0) then
-        icodcl(ifac,ivar)   = 3
-        rcodcl(ifac,ivar,1) = 0.d0
-        rcodcl(ifac,ivar,2) = rinfin
-        rcodcl(ifac,ivar,3) = 0.d0
+      ! Loop over faces
+      do ii = ideb, ifin
+        ifac = itrifb(ii)
+        ! Special treatment for uncoupled version of Rij models,
+        ! will be removed with the coupled solver
+        if (icodcl(ifac,ivar).eq.0.and.irijco.eq.0.and.        &
+            (ivar.eq.ir11.or.ivar.eq.ir22.or.ivar.eq.ir33.or.  &
+            ivar.eq.ir12.or.ivar.eq.ir13.or.ivar.eq.ir23)) then
+          icodcl(ifac,ivar)   = 4
+          rcodcl(ifac,ivar,1) = 0.d0
+          rcodcl(ifac,ivar,2) = rinfin
+          rcodcl(ifac,ivar,3) = 0.d0
+        endif
 
-      ! Symmetry BC if nothing is set by the user on vector and tensors
-      else if (icodcl(ifac,ivar).eq.0) then
-        do i_dim = 0, f_dim - 1
-          icodcl(ifac,ivar + i_dim)    = 4
-          rcodcl(ifac,ivar + i_dim, 1) = 0.d0
-          rcodcl(ifac,ivar + i_dim, 2) = rinfin
-          rcodcl(ifac,ivar + i_dim, 3) = 0.d0
-        enddo
-      endif
-    enddo
+        ! Homogeneous Neumann on scalars
+        if (f_dim.eq.1.and.icodcl(ifac,ivar).eq.0) then
+          icodcl(ifac,ivar)   = 3
+          rcodcl(ifac,ivar,1) = 0.d0
+          rcodcl(ifac,ivar,2) = rinfin
+          rcodcl(ifac,ivar,3) = 0.d0
+
+          ! Symmetry BC if nothing is set by the user on vector and tensors
+        else if (icodcl(ifac,ivar).eq.0) then
+          do i_dim = 0, f_dim - 1
+            icodcl(ifac,ivar + i_dim)    = 4
+            rcodcl(ifac,ivar + i_dim, 1) = 0.d0
+            rcodcl(ifac,ivar + i_dim, 2) = rinfin
+            rcodcl(ifac,ivar + i_dim, 3) = 0.d0
+          enddo
+        endif
+      enddo
+    endif
   endif
 enddo
 
@@ -1532,20 +1536,23 @@ do f_id = 0, nfld - 1
   call field_get_type(f_id, f_type)
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-    call field_get_dim (f_id, f_dim)
-    call field_get_key_int(f_id, keyvar, ivar)
+    ! Is this field not managed by CDO
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
+      call field_get_dim (f_id, f_dim)
+      call field_get_key_int(f_id, keyvar, ivar)
 
-    do ii = ideb, ifin
-      ifac = itrifb(ii)
-      if(icodcl(ifac,ivar).eq.0) then
-        do i_dim = 0, f_dim-1
-          icodcl(ifac,ivar+i_dim) = 3
-          rcodcl(ifac,ivar+i_dim,1) = 0.d0
-          rcodcl(ifac,ivar+i_dim,2) = rinfin
-          rcodcl(ifac,ivar+i_dim,3) = 0.d0
-        enddo
-      endif
-    enddo
+      do ii = ideb, ifin
+        ifac = itrifb(ii)
+        if(icodcl(ifac,ivar).eq.0) then
+          do i_dim = 0, f_dim-1
+            icodcl(ifac,ivar+i_dim) = 3
+            rcodcl(ifac,ivar+i_dim,1) = 0.d0
+            rcodcl(ifac,ivar+i_dim,2) = rinfin
+            rcodcl(ifac,ivar+i_dim,3) = 0.d0
+          enddo
+        endif
+      enddo
+    endif
   endif
 enddo
 
@@ -1563,20 +1570,22 @@ do f_id = 0, nfld - 1
   call field_get_type(f_id, f_type)
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-    call field_get_dim (f_id, f_dim)
-    call field_get_key_int(f_id, keyvar, ivar)
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
+      call field_get_dim (f_id, f_dim)
+      call field_get_key_int(f_id, keyvar, ivar)
 
-    do ii = ideb, ifin
-      ifac = itrifb(ii)
-      if(icodcl(ifac,ivar).eq.0) then
-        do i_dim = 0, f_dim-1
-          icodcl(ifac,ivar+i_dim) = 3
-          rcodcl(ifac,ivar+i_dim,1) = 0.d0
-          rcodcl(ifac,ivar+i_dim,2) = rinfin
-          rcodcl(ifac,ivar+i_dim,3) = 0.d0
-        enddo
-      endif
-    enddo
+      do ii = ideb, ifin
+        ifac = itrifb(ii)
+        if(icodcl(ifac,ivar).eq.0) then
+          do i_dim = 0, f_dim-1
+            icodcl(ifac,ivar+i_dim) = 3
+            rcodcl(ifac,ivar+i_dim,1) = 0.d0
+            rcodcl(ifac,ivar+i_dim,2) = rinfin
+            rcodcl(ifac,ivar+i_dim,3) = 0.d0
+          enddo
+        endif
+      enddo
+    endif
   endif
 enddo
 
@@ -1588,17 +1597,44 @@ do f_id = 0, nfld - 1
   call field_get_type(f_id, f_type)
   ! Is the field of type FIELD_VARIABLE?
   if (iand(f_type, FIELD_VARIABLE).eq.FIELD_VARIABLE) then
-    call field_get_dim (f_id, f_dim)
-    call field_get_key_int(f_id, keycpl, icpl)
+    if (iand(f_type, FIELD_CDO)/=FIELD_CDO) then
+      call field_get_dim (f_id, f_dim)
+      call field_get_key_int(f_id, keycpl, icpl)
 
-    if (f_dim.gt.1.and.icpl.eq.1) then
-      call field_get_key_int(f_id, keyvar, ivar)
-      do ifac = 1, nfabor
-        do i_dim = 1, f_dim-1
-          icodcl(ifac,ivar+i_dim) = icodcl(ifac,ivar)
+      if (f_dim.gt.1.and.icpl.eq.1) then
+        call field_get_key_int(f_id, keyvar, ivar)
+        do ifac = 1, nfabor
+          do i_dim = 1, f_dim-1
+            icodcl(ifac,ivar+i_dim) = icodcl(ifac,ivar)
+          enddo
         enddo
-      enddo
+      endif
     endif
+  endif
+enddo
+
+! Ensure that for all scalars without diffusion
+! wall values ignore diffusion
+
+do iscal = 1, nscal
+  ivar = isca(iscal)
+  f_id = ivarfl(ivar)
+  ! Name of the scalar ivar
+  call field_get_type(f_id, f_type)
+  if (iand(f_type, FIELD_CDO) .ne. 0) cycle
+  call field_get_key_struct_var_cal_opt(f_id, vcopt)
+  if (vcopt%idiff .eq. 0) then
+    call field_get_dim (f_id, f_dim)
+    do i_dim = 0, f_dim-1
+      do ifac = 1, nfabor
+        if (icodcl(ifac,ivar+i_dim).eq.5 .or. icodcl(ifac,ivar+i_dim).eq.6) then
+          icodcl(ifac,ivar+i_dim) = 3
+          rcodcl(ifac,ivar+i_dim,3) = 0
+        else if (icodcl(ifac,ivar+i_dim).eq.3) then
+          rcodcl(ifac,ivar+i_dim,3) = 0
+        endif
+      enddo
+    enddo
   endif
 enddo
 
@@ -1645,9 +1681,20 @@ enddo
 call field_get_key_struct_var_cal_opt(ivarfl(iu), vcopt)
 
 ! Writings: mass flux if verbosity or when log is on, and at the first two
-! iterations and the two last iteration. Only the first iteration on navstv.
-if (vcopt%iwarni.ge.1 .or. (iterns.eq.1.and.(mod(ntcabs,ntlist).eq.0 &
-  .or.(ntcabs.le.ntpabs+2).or.(ntcabs.ge.ntmabs-1)))) then
+! iterations and the two last iterations. Only the first iteration on navstv.
+
+! Always print 2 first iterations and the last 2 iterations
+if (ntcabs - ntpabs.le.2.or.(ntcabs.ge.ntmabs-1).or.vcopt%iwarni.ge.1) then
+  modntl = 0
+else if (ntlist.gt.0) then
+  modntl = mod(ntcabs,ntlist)
+
+! No outpout
+else
+  modntl = 1
+endif
+
+if (modntl.eq.0) then
 
   ! Header
   write(nfecra,7010)

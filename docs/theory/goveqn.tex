@@ -2,7 +2,7 @@
 
 % This file is part of Code_Saturne, a general-purpose CFD tool.
 %
-% Copyright (C) 1998-2019 EDF S.A.
+% Copyright (C) 1998-2020 EDF S.A.
 %
 % This program is free software; you can redistribute it and/or modify it under
 % the terms of the GNU General Public License as published by the Free Software
@@ -60,8 +60,8 @@ $A= \rho$, where $\rho$ denotes the density:
 \end{array}
  \end{equation}
 the second line is obtained using Green relation. In \eqref{eq:goveqn:leibnitz_th_mass}, the term
-$\DP{} \left( \int_{\vol{} }\rho \dd \vol{}\right) $ is zero because\footnote{
-it can be non-zero in some rare cases when fluid is created by a chemical reaction for instance.
+$\DP{} \left( \int_{\vol{} }\rho \dd \vol{}\right) $ is zero because\footnote{%
+It can be non-zero in some rare cases when fluid is created by a chemical reaction for instance.
 }
  it is the variation of the mass of a fluid volume. This equality is true for any fluid volume, so
  if the density field and the velocity field are sufficiently regular then the \textbf{continuity} equation holds:

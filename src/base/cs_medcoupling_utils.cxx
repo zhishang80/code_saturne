@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -599,6 +599,30 @@ cs_medcoupling_mesh_copy_from_base(cs_mesh_t              *csmesh,
                       pmmesh->med_mesh);
 
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/*!
+ * \brief Destroy a cs_medcoupling_mesh_t
+ *
+ * \param[in] mesh  cs_medcoupling_mesh_t pointer
+ *
+ */
+/* -------------------------------------------------------------------------- */
+
+void
+cs_medcoupling_mesh_destroy(cs_medcoupling_mesh_t *mesh)
+{
+
+  BFT_FREE(mesh->sel_criteria);
+  BFT_FREE(mesh->elt_list);
+  BFT_FREE(mesh->new_to_old);
+  BFT_FREE(mesh->med_mesh);
+  BFT_FREE(mesh->bbox);
+
+  BFT_FREE(mesh);
+
+  return;
 }
 
 /*----------------------------------------------------------------------------*/

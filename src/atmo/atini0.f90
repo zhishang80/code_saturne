@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -29,7 +29,6 @@ subroutine atini0
 !===============================================================================
 use paramx
 use dimens
-use ihmpre
 use numvar
 use optcal
 use cstphy
@@ -61,9 +60,7 @@ implicit none
 !    (see definition in atincl.f90):
 
 ps = 1.0d5
-rvsra = 1.608d0
 cpvcpa = 1.866d0
-clatev = 2.501d6
 gammat = -6.5d-03
 rvap = rvsra*rair
 
@@ -121,15 +118,6 @@ modsub = 0
 !  moddis = 1 : all or nothing
 !  moddis = 2 : Gaussian distribution
 moddis = 1
-
-!  modnuc = 0 : without nucleation
-!  modnuc = 1 : Pruppacher and Klett 1997
-!  modnuc = 2 : Cohard et al. 1998,1999
-!  modnuc = 3 : Abdul-Razzak et al. 1998,2000 NOT IMPLEMENTED YET
-modnuc = 0
-
-! sedimentation flag
-modsedi = 0
 
 ! logaritmic standard deviation of the log-normal law of the droplet spectrum
 ! adimensional

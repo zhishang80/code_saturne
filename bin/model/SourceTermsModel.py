@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -107,7 +107,9 @@ dSwdu = 0;\ndSwdv = 0;\ndSwdw = 0;\n"""
                ('dSwdw', "z component z velocity derivative")]
         sym = [('x', 'cell center coordinate'),
                ('y', 'cell center coordinate'),
-               ('z', 'cell center coordinate')]
+               ('z', 'cell center coordinate'),
+               ('t', 'current time'),
+               ('volume', 'Source terms zone volume')]
 
         sym.append( ("velocity[0]", 'x velocity component'))
         sym.append( ("velocity[1]", 'y velocity component'))
@@ -158,7 +160,9 @@ dSwdu = 0;\ndSwdv = 0;\ndSwdw = 0;\n"""
                ('dS', 'species source term derivative')]
         sym = [('x', 'cell center coordinate'),
                ('y', 'cell center coordinate'),
-               ('z', 'cell center coordinate')]
+               ('z', 'cell center coordinate'),
+               ('t', 'current time'),
+               ('volume', 'Source terms zone volume')]
         name = self.th_sca.getScalarName(species)
         sym.append((name, 'current species'))
 
@@ -207,13 +211,16 @@ dSwdu = 0;\ndSwdv = 0;\ndSwdw = 0;\n"""
 
         exp = self.getGroundWaterSpeciesFormula(zone, species)
         if not exp:
-            exp = """Q = 0;"""
+            exp = """Q = 0;\nlambda = 0;"""
 
-        req = [('Q', 'species source term')]
+        req = [('Q',      'species source term'),
+               ('lambda', 'radioactive decay')]
+
         sym = [('x', 'cell center coordinate'),
                ('y', 'cell center coordinate'),
                ('z', 'cell center coordinate'),
-               ('t', 'current time')]
+               ('t', 'current time'),
+               ('volume', 'Source terms zone volume')]
 
         name = self.th_sca.getScalarName(species)
         sym.append((name, 'current species'))
@@ -268,7 +275,8 @@ dSwdu = 0;\ndSwdv = 0;\ndSwdw = 0;\n"""
         sym = [('x', 'cell center coordinate'),
                ('y', 'cell center coordinate'),
                ('z', 'cell center coordinate'),
-               ('t', 'current time')]
+               ('t', 'current time'),
+               ('volume', 'Source terms zone volume')]
 
         for (nme, val) in self.notebook.getNotebookList():
             sym.append((nme, 'value (notebook) = ' + str(val)))
@@ -316,16 +324,18 @@ dSwdu = 0;\ndSwdv = 0;\ndSwdw = 0;\n"""
                ('dS', 'thermal source term derivative')]
         sym = [('x', 'cell center coordinate'),
                ('y', 'cell center coordinate'),
-               ('z', 'cell center coordinate')]
+               ('z', 'cell center coordinate'),
+               ('t', 'current time'),
+               ('volume', 'Source terms zone volume')]
 
-        if self.case['package'].name == 'code_saturne':
+        if self.case.module_name() == 'code_saturne':
             if self.therm.getThermalScalarModel() == 'enthalpy':
                 sym.append(('enthalpy', 'thermal scalar'))
             if self.therm.getThermalScalarModel() == 'total_energy':
                 sym.append(('total_energy', 'thermal scalar'))
             else:
                 sym.append(('temperature', 'thermal scalar'))
-        else:
+        elif self.case.module_name() == 'neptune_cfd':
             sym.append(('enthalpy', 'Enthalpy'))
 
         for (nme, val) in self.notebook.getNotebookList():

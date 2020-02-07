@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -157,7 +157,7 @@ _invert_tensor(cs_real_3_t          *tens,
   }
 #endif
 
-  if (type == CS_PROPERTY_ISO || type == CS_PROPERTY_ORTHO)
+  if (type & CS_PROPERTY_ISO || type & CS_PROPERTY_ORTHO)
     for (int k = 0; k < 3; k++)
       tens[k][k] /= 1.0;
 
@@ -216,6 +216,27 @@ _create_property(const char           *name,
                  int                   id,
                  cs_property_type_t    type)
 {
+  /* Check the sanity of type */
+  if (type & CS_PROPERTY_ISO) {
+    if (type & CS_PROPERTY_ANISO)
+      bft_error(__FILE__, __LINE__, 0,
+                "%s: Detection of a wrong type for property %s\n"
+                "Set to CS_PROPERTY_ISO and CS_PROPERTY_ANISO.",
+                __func__, name);
+    if (type & CS_PROPERTY_ORTHO)
+      bft_error(__FILE__, __LINE__, 0,
+                "%s: Detection of a wrong type for property %s\n"
+                "Set to CS_PROPERTY_ISO and CS_PROPERTY_ORTHO.",
+                __func__, name);
+  }
+  else if (type & CS_PROPERTY_ORTHO) {
+    if (type & CS_PROPERTY_ANISO)
+      bft_error(__FILE__, __LINE__, 0,
+                "%s: Detection of a wrong type for property %s\n"
+                "Set to CS_PROPERTY_ORTHO and CS_PROPERTY_ANISO.",
+                __func__, name);
+  }
+
   cs_property_t  *pty = NULL;
 
   BFT_MALLOC(pty, 1, cs_property_t);
@@ -229,6 +250,8 @@ _create_property(const char           *name,
   pty->type = type;
   pty->state_flag = 0;
   pty->process_flag = 0;
+
+  pty->ref_value = 1.0;         /* default setting */
 
   pty->n_definitions = 0;
   pty->defs = NULL;
@@ -498,43 +521,57 @@ cs_property_finalize_setup(void)
     else if (pty->n_definitions == 1) {
 
       if (pty->defs[0]->type == CS_XDEF_BY_VALUE)
-        pty->state_flag |= CS_FLAG_STATE_UNIFORM;
+        pty->state_flag |= CS_FLAG_STATE_UNIFORM | CS_FLAG_STATE_STEADY;
 
     }
     else {
 
-      switch (pty->type) {
+      pty->state_flag |= CS_FLAG_STATE_UNIFORM | CS_FLAG_STATE_STEADY;
 
-      case CS_PROPERTY_ISO:
-        cs_property_def_iso_by_value(pty, NULL, 1.0);
-        break;
-      case CS_PROPERTY_ORTHO:
-        {
-          cs_real_t unity[3] =  {1, 1, 1};
-          cs_property_def_ortho_by_value(pty, NULL, unity);
-        }
-        break;
-      case CS_PROPERTY_ANISO:
-        {
-          cs_real_t unity[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
-          cs_property_def_aniso_by_value(pty, NULL, unity);
-        }
-        break;
-
-      default:
+      if (pty->type & CS_PROPERTY_ISO)
+        cs_property_def_iso_by_value(pty, NULL, pty->ref_value);
+      else if (pty->type & CS_PROPERTY_ORTHO) {
+        cs_real_t  ref[3] =  {pty->ref_value, pty->ref_value, pty->ref_value};
+        cs_property_def_ortho_by_value(pty, NULL, ref);
+      }
+      else if (pty->type & CS_PROPERTY_ANISO) {
+        cs_real_t  ref[3][3] = { {pty->ref_value, 0, 0},
+                                 {0, pty->ref_value, 0},
+                                 {0, 0, pty->ref_value} };
+        cs_property_def_aniso_by_value(pty, NULL, ref);
+      }
+      else
         bft_error(__FILE__, __LINE__, 0, "%s: Incompatible property type.",
                   __func__);
-      }
 
-      cs_base_warn(__FILE__, __LINE__);
       cs_log_printf(CS_LOG_DEFAULT,
-                    " %s: Property \"%s\" exists with no definition.\n"
-                    "     Switch to unity by default.", __func__, pty->name);
+                    "\n Property \"%s\" will be defined using its reference"
+                    " value.\n", pty->name);
 
     }
 
   } /* Loop on properties */
 
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Set the reference value associated to a \ref cs_property_t structure
+ *         This is a real number even whatever the type of property is.
+ *
+ * \param[in, out]  pty      pointer to a cs_property_t structure
+ * \param[in]       refval   value to set
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_property_set_reference_value(cs_property_t    *pty,
+                                double            refval)
+{
+  if (pty == NULL)
+    bft_error(__FILE__, __LINE__, 0, _(_err_empty_pty));
+
+  pty->ref_value = refval;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -558,7 +595,7 @@ cs_property_def_iso_by_value(cs_property_t    *pty,
 {
   if (pty == NULL)
     bft_error(__FILE__, __LINE__, 0, _(_err_empty_pty));
-  if (pty->type != CS_PROPERTY_ISO)
+  if ((pty->type & CS_PROPERTY_ISO) == 0)
     bft_error(__FILE__, __LINE__, 0,
               " Invalid setting: property %s is not isotropic.\n"
               " Please check your settings.", pty->name);
@@ -713,25 +750,21 @@ cs_property_def_by_time_func(cs_property_t      *pty,
   pty->get_eval_at_cell[new_id] = NULL;
   pty->get_eval_at_cell_cw[new_id] = cs_xdef_cw_eval_by_time_func;
 
-  switch (pty->type) {
-
-  case CS_PROPERTY_ISO:
+  if (pty->type & CS_PROPERTY_ISO) {
     dim = 1;
     pty->get_eval_at_cell[new_id] = cs_xdef_eval_scalar_at_cells_by_time_func;
-    break;
-  case CS_PROPERTY_ORTHO:
+  }
+  else if (pty->type & CS_PROPERTY_ORTHO) {
     dim = 3;
     pty->get_eval_at_cell[new_id] = cs_xdef_eval_vector_at_cells_by_time_func;
-    break;
-  case CS_PROPERTY_ANISO:
+  }
+  else if (pty->type & CS_PROPERTY_ANISO) {
     dim = 9;
     pty->get_eval_at_cell[new_id] = cs_xdef_eval_tensor_at_cells_by_time_func;
-    break;
-
-  default:
+  }
+  else
     bft_error(__FILE__, __LINE__, 0, "%s: Incompatible property type.",
               __func__);
-  }
 
   cs_xdef_t  *d = cs_xdef_volume_create(CS_XDEF_BY_TIME_FUNCTION,
                                         dim,
@@ -864,7 +897,7 @@ cs_xdef_t *
 cs_property_def_by_array(cs_property_t    *pty,
                          cs_flag_t         loc,
                          cs_real_t        *array,
-                         _Bool             is_owner,
+                         bool              is_owner,
                          cs_lnum_t        *index)
 {
   int  id = _add_new_def(pty);
@@ -1045,46 +1078,41 @@ cs_property_get_cell_tensor(cs_lnum_t               c_id,
 
   cs_xdef_t  *def = pty->defs[def_id];
 
-  switch (pty->type) {
+  if (pty->type & CS_PROPERTY_ISO) {
 
-  case CS_PROPERTY_ISO:
-    {
-      double  eval;
+    double  eval;
+    pty->get_eval_at_cell[def_id](1,
+                                  &c_id,
+                                  true,  /* compact output */
+                                  cs_glob_mesh,
+                                  cs_cdo_connect,
+                                  cs_cdo_quant,
+                                  t_eval,
+                                  def->input,
+                                  &eval);
 
-      pty->get_eval_at_cell[def_id](1,
-                                    &c_id,
-                                    true,  /* compact output */
-                                    cs_glob_mesh,
-                                    cs_cdo_connect,
-                                    cs_cdo_quant,
-                                    t_eval,
-                                    def->input,
-                                    &eval);
+    tensor[0][0] = tensor[1][1] = tensor[2][2] = eval;
+  }
+  else if (pty->type & CS_PROPERTY_ORTHO) {
 
-      tensor[0][0] = tensor[1][1] = tensor[2][2] = eval;
-    }
-    break;
+    double  eval[3];
+    pty->get_eval_at_cell[def_id](1,
+                                  &c_id,
+                                  true,  /* compact output */
+                                  cs_glob_mesh,
+                                  cs_cdo_connect,
+                                  cs_cdo_quant,
+                                  t_eval,
+                                  def->input,
+                                  eval);
 
-  case CS_PROPERTY_ORTHO:
-    {
-      double  eval[3];
+    for (int k = 0; k < 3; k++)
+      tensor[k][k] = eval[k];
 
-      pty->get_eval_at_cell[def_id](1,
-                                    &c_id,
-                                    true,  /* compact output */
-                                    cs_glob_mesh,
-                                    cs_cdo_connect,
-                                    cs_cdo_quant,
-                                    t_eval,
-                                    def->input,
-                                    eval);
+  }
+  else {
 
-      for (int k = 0; k < 3; k++)
-        tensor[k][k] = eval[k];
-    }
-    break;
-
-  case CS_PROPERTY_ANISO:
+    assert(pty->type & CS_PROPERTY_ANISO);
     pty->get_eval_at_cell[def_id](1,
                                   &c_id,
                                   true,  /* compact output */
@@ -1094,11 +1122,7 @@ cs_property_get_cell_tensor(cs_lnum_t               c_id,
                                   t_eval,
                                   def->input,
                                   (cs_real_t *)tensor);
-    break;
 
-  default:
-    assert(0);
-    break;
   }
 
   if (do_inversion)
@@ -1133,12 +1157,13 @@ cs_property_get_cell_value(cs_lnum_t              c_id,
   if (pty == NULL)
     return result;
 
-  if (pty->type != CS_PROPERTY_ISO)
+  if ((pty->type & CS_PROPERTY_ISO) == 0)
     bft_error(__FILE__, __LINE__, 0,
-              " Invalid type of property for this function.\n"
-              " Property %s has to be isotropic.", pty->name);
+              " %s: Invalid type of property for this function.\n"
+              " Property %s has to be isotropic.", __func__, pty->name);
 
   if (pty->n_definitions > 1) {
+    assert(pty->def_ids != NULL);
     def_id = pty->def_ids[c_id];
     assert(def_id > -1);
   }
@@ -1197,37 +1222,27 @@ cs_property_tensor_in_cell(const cs_cell_mesh_t   *cm,
 
   cs_xdef_t  *def = pty->defs[def_id];
 
-  switch (pty->type) {
+  if (pty->type & CS_PROPERTY_ISO) {
 
-  case CS_PROPERTY_ISO:
-    {
-      double  eval;
+    double  eval;
+    pty->get_eval_at_cell_cw[def_id](cm, t_eval, def->input, &eval);
+    tensor[0][0] = tensor[1][1] = tensor[2][2] = eval;
 
-      pty->get_eval_at_cell_cw[def_id](cm, t_eval, def->input, &eval);
+  }
+  else if (pty->type & CS_PROPERTY_ORTHO) {
 
-      tensor[0][0] = tensor[1][1] = tensor[2][2] = eval;
-    }
-    break;
+    double  eval[3];
+    pty->get_eval_at_cell_cw[def_id](cm, t_eval, def->input, eval);
+    for (int k = 0; k < 3; k++)
+      tensor[k][k] = eval[k];
 
-  case CS_PROPERTY_ORTHO:
-    {
-      double  eval[3];
+  }
+  else {
 
-      pty->get_eval_at_cell_cw[def_id](cm, t_eval, def->input, eval);
-
-      for (int k = 0; k < 3; k++)
-        tensor[k][k] = eval[k];
-    }
-    break;
-
-  case CS_PROPERTY_ANISO:
+    assert(pty->type & CS_PROPERTY_ANISO);
     pty->get_eval_at_cell_cw[def_id](cm, t_eval, def->input,
                                      (cs_real_t *)tensor);
-    break;
 
-  default:
-    assert(0);
-    break;
   }
 
   if (do_inversion)
@@ -1263,7 +1278,7 @@ cs_property_value_in_cell(const cs_cell_mesh_t   *cm,
   if (pty == NULL)
     return result;
 
-  if (pty->type != CS_PROPERTY_ISO)
+  if ((pty->type & CS_PROPERTY_ISO) == 0)
     bft_error(__FILE__, __LINE__, 0,
               " Invalid type of property for this function.\n"
               " Property %s has to be isotropic.", pty->name);
@@ -1304,7 +1319,7 @@ cs_property_get_fourier(const cs_property_t    *pty,
   const bool  pty_uniform = cs_property_is_uniform(pty);
   const cs_cdo_quantities_t  *cdoq = cs_cdo_quant;
 
-  if (pty->type == CS_PROPERTY_ISO) {
+  if (pty->type & CS_PROPERTY_ISO) {
 
     cs_real_t  ptyval = 0.;
     if (pty_uniform)
@@ -1384,22 +1399,18 @@ cs_property_log_setup(void)
     cs_log_printf(CS_LOG_SETUP, "\n  * %s | Uniform %s Steady %s\n",
                   pty->name,
                   cs_base_strtf(is_uniform), cs_base_strtf(is_steady));
+    cs_log_printf(CS_LOG_SETUP, "\n  * %s | Reference value  % -8.4e\n",
+                  pty->name, pty->ref_value);
 
-    switch(pty->type) {
-    case CS_PROPERTY_ISO:
+    if (pty->type & CS_PROPERTY_ISO)
       cs_log_printf(CS_LOG_SETUP, "  * %s | Type: isotropic\n", pty->name);
-      break;
-    case CS_PROPERTY_ORTHO:
+    else if (pty->type & CS_PROPERTY_ORTHO)
       cs_log_printf(CS_LOG_SETUP, "  * %s | Type: orthotropic\n", pty->name);
-      break;
-    case CS_PROPERTY_ANISO:
+    else if (pty->type & CS_PROPERTY_ANISO)
       cs_log_printf(CS_LOG_SETUP, "  * %s | Type: anisotropic\n", pty->name);
-      break;
-    default:
+    else
       bft_error(__FILE__, __LINE__, 0, _("%s: Invalid type of property."),
                 __func__);
-      break;
-    }
 
     cs_log_printf(CS_LOG_SETUP, "  * %s | Number of definitions: %d\n\n",
                   pty->name, pty->n_definitions);

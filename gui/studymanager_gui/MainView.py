@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -30,7 +30,7 @@ informations in the XML document, which reflets the treated case.
 This module defines the following classes:
 - MainView
 
-    @copyright: 1998-2019 EDF S.A., France
+    @copyright: 1998-2020 EDF S.A., France
     @author: U{EDF<mailto:saturne-support@edf.fr>}
     @license: GNU GPL v2 or later, see COPYING for details.
 """
@@ -60,10 +60,10 @@ from code_saturne.Base.QtWidgets import *
 # Application modules
 #-------------------------------------------------------------------------------
 
-import cs_info
-from cs_exec_environment import \
+from code_saturne import cs_info
+from code_saturne.cs_exec_environment import \
     separate_args, update_command_single_value, assemble_args, enquote_arg
-import cs_runcase
+from code_saturne import cs_runcase
 
 try:
     from code_saturne.studymanager_gui.MainForm import Ui_MainForm
@@ -77,11 +77,6 @@ from code_saturne.model.Common import XML_DOC_VERSION, GuiParam
 from code_saturne.studymanager_gui.Toolbox import displaySelectedPage
 from code_saturne.studymanager_gui.BrowserView import BrowserView
 from code_saturne.studymanager.cs_studymanager_xml_init import smgr_xml_init
-
-try:
-    import code_saturne.Pages
-except:
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from code_saturne.Pages.WelcomeView import WelcomeView
 from code_saturne.model.IdentityAndPathesModel import IdentityAndPathesModel
@@ -722,7 +717,7 @@ class MainView(object):
               self.package.bugreport + "\n\n"               +\
               "Please visit our site:\n"                    +\
               self.package.url
-        QMessageBox.about(self, self.package.name + ' study manager', msg)
+        QMessageBox.about(self, self.package.code_name + ' study manager', msg)
 
 
     def displayLicence(self):
@@ -796,8 +791,6 @@ class MainView(object):
             if self.palette_default:
                 app.setPalette(self.palette_default)
             if self.font_default:
-                print(self.font_default)
-                print(self.font())
                 self.setFont(self.font_default)
                 app.setFont(self.font_default)
             settings = QSettings()
@@ -905,7 +898,7 @@ class MainViewSmgr(QMainWindow, Ui_MainForm, MainView):
         open the tutorial for Code_Saturne
         """
         msg = "See " + self.package.url + " web site for tutorials."
-        QMessageBox.about(self, self.package.name + ' study manager', msg)
+        QMessageBox.about(self, self.package.code_name + ' study manager', msg)
 
 
     def displayCSTheory(self):

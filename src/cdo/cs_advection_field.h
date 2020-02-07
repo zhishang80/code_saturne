@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -57,8 +57,6 @@ BEGIN_C_DECLS
 
 /*!  1: Perform the computation and post-processing of the Courant number */
 #define CS_ADVECTION_FIELD_POST_COURANT (1 << 0)
-/*!  2: Advection-field is steady-state */
-#define CS_ADVECTION_FIELD_STEADY       (1 << 1)  /* steady-state field */
 
 /*! @} */
 
@@ -66,76 +64,86 @@ BEGIN_C_DECLS
  * Type definitions
  *============================================================================*/
 
-/*! \enum cs_advection_field_key_t
- *  \brief List of available keys for setting an advection field
- *
- * \var CS_ADVKEY_DEFINE_AT_VERTICES
- * Define a field structure related to the advection field at vertices
- * Post-processing and log operations are automatically activated.
- *
- * \var CS_ADVKEY_DEFINE_AT_BOUNDARY_FACES
- * Define a field structure related to the advection field at boundary faces
- * Post-processing and log operations are automatically activated.
- *
- * \var CS_ADVKEY_POST_COURANT
- * Perform the computation (and post-process) of the Courant number
- *
- * \var CS_ADVKEY_STATE_STEADY
- * Advection field is steady-state
- */
+typedef cs_flag_t  cs_advection_field_status_t;
 
-typedef enum {
-
-  CS_ADVKEY_DEFINE_AT_VERTICES,
-  CS_ADVKEY_DEFINE_AT_BOUNDARY_FACES,
-  CS_ADVKEY_POST_COURANT,
-  CS_ADVKEY_STATE_STEADY,
-  CS_ADVKEY_N_KEYS
-
-} cs_advection_field_key_t;
-
-/*! \enum cs_advection_field_status_t
- *  \brief Type of advection field
+/*! \enum cs_advection_field_status_bit_t
+ *  \brief Bit values for specifying the definition/behavior of an advection
+ *         field
+ *
+ * @name Category of advection field
+ * @{
  *
  * \var CS_ADVECTION_FIELD_NAVSTO
- * Advection field stemming from the velocity in the (Navier-)Stokes system
+ *      Advection field stemming from the velocity in the (Navier-)Stokes system
+ *
+ * \var CS_ADVECTION_FIELD_LEGACY_NAVSTO
+ *      The Navier-Stokes equations are solved with the legacy Finite Volume
+ *      solver. Thus, the advection field is a mass flux.
  *
  * \var CS_ADVECTION_FIELD_GWF
- * Advection field stemming from the "GroundWater Flows" module. This is the
- * Darcean flux.
+ *      Advection field stemming from the "GroundWater Flows" module. This is the
+ *      Darcean flux.
  *
  * \var CS_ADVECTION_FIELD_USER
- * User-defined advection field.
+ *      User-defined advection field.
+ *
+ * @}
+ * @name Type of definition
+ * @{
+ *
+ * \var CS_ADVECTION_FIELD_TYPE_VELOCITY_VECTOR
+ *      The advection field stands for a velocity.
+ *      This is described by a vector-valued array or function.
+ *
+ * \var CS_ADVECTION_FIELD_TYPE_SCALAR_FLUX
+ *      The advection field stands for a flux.
+ *      This is described by a scalar-valued array or function.
+ *
+ * @}
+ * @name Optional bits
+ * @{
+ *
+ * \var CS_ADVECTION_FIELD_STEADY
+ *      Advection field is steady-state
+ *
+ * \var CS_ADVECTION_FIELD_LEGACY_FV
+ *      Advection field shared with the legacy Finite Volume solver
+ *
+ * \var CS_ADVECTION_FIELD_DEFINE_AT_VERTICES
+ *      Define a field structure related to the advection field at vertices
+ *      Post-processing and log operations are automatically activated.
+ *
+ * \var CS_ADVECTION_FIELD_DEFINE_AT_BOUNDARY_FACES
+ *      Define a field structure related to the advection field at boundary
+ *      faces Post-processing and log operations are automatically activated.
+ *
+ * @}
  */
 
 typedef enum {
 
-  CS_ADVECTION_FIELD_NAVSTO,
-  CS_ADVECTION_FIELD_GWF,
-  CS_ADVECTION_FIELD_USER,
-  CS_N_ADVECTION_FIELD_STATUS
+  /* Category of advection field */
+  /* --------------------------- */
 
-} cs_advection_field_status_t;
+  CS_ADVECTION_FIELD_NAVSTO                            = 1<<0, /* =   1 */
+  CS_ADVECTION_FIELD_GWF                               = 1<<1, /* =   2 */
+  CS_ADVECTION_FIELD_USER                              = 1<<2, /* =   4 */
 
-/*! \enum cs_advection_field_type_t
- *  \brief Status of the advection field. The advection field stands for what.
- *
- * \var CS_ADVECTION_FIELD_STATUS_VELOCITY
- * The advection field stands for a velocity.
- * This is described by a vector-valued array or function.
- *
- * \var CS_ADVECTION_FIELD_STATUS_FLUX
- * The advection field stands for a flux.
- * This is described by a scalar-valued array or function.
- */
+  /* Type of advection field */
+  /* ----------------------- */
 
-typedef enum {
+  CS_ADVECTION_FIELD_TYPE_VELOCITY_VECTOR              = 1<<3, /* =   8 */
+  CS_ADVECTION_FIELD_TYPE_SCALAR_FLUX                  = 1<<4, /* =  16 */
 
-  CS_ADVECTION_FIELD_TYPE_VELOCITY,
-  CS_ADVECTION_FIELD_TYPE_FLUX,
-  CS_N_ADVECTION_FIELD_TYPES
+  /* Optional */
+  /* -------- */
 
-} cs_advection_field_type_t;
+  CS_ADVECTION_FIELD_STEADY                            = 1<<5, /* =  32 */
+  CS_ADVECTION_FIELD_LEGACY_FV                         = 1<<6, /* =  64 */
+  CS_ADVECTION_FIELD_DEFINE_AT_VERTICES                = 1<<7, /* = 128 */
+  CS_ADVECTION_FIELD_DEFINE_AT_BOUNDARY_FACES          = 1<<8  /* = 256 */
+
+} cs_advection_field_status_bit_t;
 
 /*! \struct cs_advection_field_t
  *  \brief Main structure to handle an advection field
@@ -150,13 +158,11 @@ typedef struct {
    * \var name
    * name of the advection field
    *
-   * \var type
-   * type of advection field (velocity, flux..)
-   *
    * \var status
-   * status of the advection field (user, gwf...)
+   * category (user, navsto, gwf...) and type (velocity, flux...) of the
+   * advection field
    *
-   * \var flag
+   * \var post_flag
    * short descriptor dedicated to postprocessing
    *
    * \var vtx_field_id
@@ -171,6 +177,12 @@ typedef struct {
    * the value of the normal flux across boundary faces. It's always
    * defined since it's used for dealing with the boundary conditions.
    *
+   * \var int_field_id
+   * id to retrieve the related cs_field_t structure corresponding to
+   * the value of the normal flux across interior faces. It's always
+   * defined when the advection field arise from the resolution of the
+   * Navier-Stokes system with the legacy FV solver.
+   *
    * \var definition
    * pointer to the generic structure used to define the advection field. We
    * assume that only one definition is available (i.e. there is not several
@@ -180,18 +192,18 @@ typedef struct {
    * Number of definitions related to the normal flux at the boundary
    *
    * \var bdy_flux_defs
-   * Array of pointers to the definitions of the jormal flux at the boundary
+   * Array of pointers to the definitions of the normal flux at the boundary
    */
 
   int                           id;
   char                *restrict name;
   cs_advection_field_status_t   status;
-  cs_advection_field_type_t     type;
-  cs_flag_t                     flag;
+  cs_flag_t                     post_flag;
 
   int                           vtx_field_id;
   int                           cell_field_id;
   int                           bdy_field_id;
+  int                           int_field_id;
 
   /* We assume that there is only one definition associated to an advection
      field inside the computational domain */
@@ -214,21 +226,21 @@ typedef struct {
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Set the type of advection field for the given structure
+ * \brief  Set a new status for the given advection field structure
  *
  * \param[in, out] adv      pointer to an advection field structure
- * \param[in]      type     type to set
+ * \param[in]      status   status flag to add to the current status
  */
 /*----------------------------------------------------------------------------*/
 
 static inline void
-cs_advection_field_set_type(cs_adv_field_t              *adv,
-                            cs_advection_field_type_t    type)
+cs_advection_field_set_status(cs_adv_field_t               *adv,
+                              cs_advection_field_status_t   status)
 {
   if (adv == NULL)
     return;
 
-  adv->type = type;
+  adv->status = status;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -241,7 +253,7 @@ cs_advection_field_set_type(cs_adv_field_t              *adv,
  */
 /*----------------------------------------------------------------------------*/
 
-static inline _Bool
+static inline bool
 cs_advection_field_is_uniform(const cs_adv_field_t   *adv)
 {
   if (adv == NULL)
@@ -264,7 +276,7 @@ cs_advection_field_is_uniform(const cs_adv_field_t   *adv)
  */
 /*----------------------------------------------------------------------------*/
 
-static inline _Bool
+static inline bool
 cs_advection_field_is_cellwise(const cs_adv_field_t   *adv)
 {
   if (adv == NULL)
@@ -340,16 +352,24 @@ cs_advection_field_get_field(const cs_adv_field_t       *adv,
     return f;
 
   switch (ml_type) {
-  case CS_MESH_LOCATION_BOUNDARY_FACES:
-    if (adv->bdy_field_id > -1)
-      f = cs_field_by_id(adv->bdy_field_id);
-    else
-      f = NULL;
-    break;
 
   case CS_MESH_LOCATION_CELLS:
     if (adv->cell_field_id > -1)
       f = cs_field_by_id(adv->cell_field_id);
+    else
+      f = NULL;
+    break;
+
+  case CS_MESH_LOCATION_INTERIOR_FACES:
+    if (adv->int_field_id > -1)
+      f = cs_field_by_id(adv->int_field_id);
+    else
+      f = NULL;
+    break;
+
+  case CS_MESH_LOCATION_BOUNDARY_FACES:
+    if (adv->bdy_field_id > -1)
+      f = cs_field_by_id(adv->bdy_field_id);
     else
       f = NULL;
     break;
@@ -477,7 +497,7 @@ cs_advection_field_destroy_all(void);
  */
 /*----------------------------------------------------------------------------*/
 
-_Bool
+bool
 cs_advection_field_check_name(const cs_adv_field_t   *adv,
                               const char             *ref_name);
 
@@ -492,16 +512,16 @@ cs_advection_field_log_setup(void);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Set optional parameters related to a cs_adv_field_t structure
+ * \brief  Set optional post-processings
  *
- * \param[in, out]  adv       pointer to a cs_adv_field_t structure
- * \param[in]       key       key related to the member of adv to set
+ * \param[in, out]  adv         pointer to a cs_adv_field_t structure
+ * \param[in]       post_flag   flag to set
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_advection_field_set_option(cs_adv_field_t            *adv,
-                              cs_advection_field_key_t   key);
+cs_advection_field_set_postprocess(cs_adv_field_t            *adv,
+                                   cs_flag_t                  post_flag);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -548,7 +568,7 @@ void
 cs_advection_field_def_by_array(cs_adv_field_t    *adv,
                                 cs_flag_t          loc,
                                 cs_real_t         *array,
-                                _Bool              is_owner,
+                                bool               is_owner,
                                 cs_lnum_t         *index);
 
 /*----------------------------------------------------------------------------*/
@@ -618,7 +638,7 @@ cs_advection_field_def_boundary_flux_by_array(cs_adv_field_t    *adv,
                                               const char        *zname,
                                               cs_flag_t          loc,
                                               cs_real_t         *array,
-                                              _Bool              is_owner,
+                                              bool               is_owner,
                                               cs_lnum_t         *index);
 
 /*----------------------------------------------------------------------------*/
@@ -771,7 +791,7 @@ cs_advection_field_cw_boundary_face_flux(const cs_real_t          time_eval,
  * \param[in]      cm         pointer to a cs_cell_mesh_t structure
  * \param[in]      adv        pointer to a cs_adv_field_t structure
  * \param[in]      time_eval  physical time at which one evaluates the term
- * \param[in, out] fluxes     array of values attached to dual faces of a cell
+ * \param[in, out] fluxes     array of values attached to primal faces of a cell
  */
 /*----------------------------------------------------------------------------*/
 
@@ -811,7 +831,7 @@ cs_advection_field_cw_dface_flux(const cs_cell_mesh_t     *cm,
 
 void
 cs_advection_field_update(cs_real_t    t_eval,
-                          _Bool        cur2prev);
+                          bool         cur2prev);
 
 /*----------------------------------------------------------------------------*/
 /*!

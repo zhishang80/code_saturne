@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -41,42 +41,10 @@
 #endif
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_mem.h"
-#include "bft_error.h"
-#include "bft_printf.h"
-
-#include "cs_base.h"
-#include "cs_field.h"
-#include "cs_field_pointer.h"
-#include "cs_field_operator.h"
-#include "cs_math.h"
-#include "cs_mesh.h"
-#include "cs_mesh_location.h"
-#include "cs_mesh_quantities.h"
-#include "cs_halo.h"
-#include "cs_log.h"
-#include "cs_notebook.h"
-#include "cs_parall.h"
-#include "cs_parameters.h"
-#include "cs_physical_constants.h"
-#include "cs_physical_model.h"
-#include "cs_prototypes.h"
-#include "cs_restart.h"
-#include "cs_rotation.h"
-#include "cs_time_step.h"
-#include "cs_selector.h"
-#include "cs_rad_transfer.h"
-
-#include "cs_post.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
+#include "cs_headers.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -129,17 +97,14 @@ cs_user_radiative_transfer_parameters(void)
  * In the case of the P-1 model, we check that the optical length is at
  * least of the order of 1.
  *
- * \param[in]     bc_type       boundary face types
- * \param[in]     dt            time step (per cell)
- * \param[out]    ck            medium's absorption coefficient
- *                              (zero if transparent)
+ * \param[in]   bc_type  boundary face types
+ * \param[out]  ck       medium's absorption coefficient (zero if transparent)
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_user_rad_transfer_absorption(const int         bc_type[],
-                                const cs_real_t   dt[],
-                                cs_real_t         ck[])
+cs_user_rad_transfer_absorption(const int  bc_type[],
+                                cs_real_t  ck[])
 {
 
 }
@@ -155,7 +120,6 @@ cs_user_rad_transfer_absorption(const int         bc_type[],
  * and the radiative absorbing part.
  *
  * \param[in]   bc_type   boundary face types
- * \param[in]   dt        time step (per cell)
  * \param[in]   coefap    boundary condition work array for the luminance
  *                         (explicit part)
  * \param[in]   coefbp    boundary condition work array for the luminance
@@ -176,7 +140,6 @@ cs_user_rad_transfer_absorption(const int         bc_type[],
 
 void
 cs_user_rad_transfer_net_flux(const int        bc_type[],
-                              const cs_real_t  dt[],
                               const cs_real_t  coefap[],
                               const cs_real_t  coefbp[],
                               const cs_real_t  cofafp[],

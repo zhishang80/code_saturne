@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -46,7 +46,6 @@ use alstru
 use alaste
 use parall
 use period
-use ihmpre
 use cplsat
 use ppincl
 use ppcpfu
@@ -154,6 +153,7 @@ call physical_constants_init
 call porosity_from_scan_init
 call fluid_properties_init
 call space_disc_options_init
+call time_scheme_options_init
 call piso_options_init
 call turb_reference_values_init
 call listing_writing_period_init
@@ -409,23 +409,6 @@ thetfl =-999.d0
 !       (il suit bilsc2)
 isno2t = -999
 thetsn =-999.d0
-!   -- Termes sources Grandeurs turbulentes
-!     Pour les termes sources explicites en std, I..EXT definit
-!       l'extrapolation -theta ancien + (1+theta) nouveau
-!     = 0 explicite
-!     = 1 extrapolation avec theta = 1/2
-!     = 2 extrapolation avec theta = 1
-!       0 implique pas de reservation de tableaux
-!       1 et 2 sont deux options equivalentes, la difference etant faite
-!       uniquement au moment de fixer theta
-!     Pour les termes sources implicites en std, I..EXT definit
-!       la mise a l'ordre 2 ou non avec le thetav de la variable associee
-!     = 0 implicite (std)
-!     > 0 utilisation du thetav
-!     Noter cpdt que le TS d'acc. masse n'est pas regi par I..EXT
-!       (il suit bilsc2)
-isto2t = -999
-thetst = -999.d0
 
 !    -- Proprietes physiques
 !     I..EXT definit l'extrapolation -theta ancien + (1+theta) nouveau
@@ -497,15 +480,6 @@ enddo
 ! default: based on cell center mesh velocity
 iflxmw = 0
 
-! --- Reconstruction des gradients
-!       On donne les valeurs par defaut
-!       Pour la methode de limitation, on decidera plus tard
-!         selon les choix de l'utilisateur
-!       On n'active pas l'extrapolation des gradients par defaut
-!         meme pour la pression (par securite : moins stable sur certains cas)
-
-anomax = -grand*10.d0
-
 ! --- Restarted calculation
 !       By default, non-restarted calculation
 !       Write auxiliary restart file by default
@@ -550,7 +524,7 @@ ihgas = -1
 
 iturb  =-999
 itytur =-999
-iddes  = 0
+hybrid_turb  = 0
 
 ! Parfois, IGRHOK=1 donne des vecteurs non physiques en paroi
 !        IGRHOK = 1
@@ -641,12 +615,6 @@ nzones = -1
 
 itagms = 0
 
-! --- Interpolation face des viscosites
-!     = 0 ARITHMETIQUE
-!     = 1 HARMONIQUE
-
-imvisf = 0
-
 ! --- Type des CL, tables de tri
 !       Sera calcule apres cs_user_boundary_conditions.
 
@@ -730,10 +698,13 @@ icdpar = -999
 ! --- Methode des vortex
 ivrtex = 0
 
+! --- LES balance
+i_les_balance = 0
+
 ! --- Ici tout optcal.f90 est initialise
 
 !===============================================================================
-! 7. TABLEAUX DE cstphy.f90
+! TABLEAUX DE cstphy.f90
 !===============================================================================
 
 ! --- Gravite
@@ -858,6 +829,10 @@ ckwc1  = 10.d0
 ! pour la ddes
 cddes = 0.65d0
 
+! pour le sas
+csas  = 0.11d0
+csas_eta2 = 3.51d0
+
 !   pour le modele de Spalart Allmaras
 csab1    = 0.1355d0
 csab2    = 0.622d0
@@ -936,13 +911,7 @@ rhebdfm = 0.5d0
 ! --- Ici tout cstphy a ete initialise
 
 !===============================================================================
-! 9. INITIALISATION DES PARAMETRES DE IHM de ihmpre.f90
-!===============================================================================
-
-iihmpr = 0
-
-!===============================================================================
-! 10. INITIALISATION DES PARAMETRES ALE de albase.f90 et alstru.f90
+! INITIALISATION DES PARAMETRES ALE de albase.f90 et alstru.f90
 !===============================================================================
 
 ! --- Iterations d'initialisation fluide seul
@@ -1000,7 +969,7 @@ betnmk = -grand
 gamnmk = -grand
 
 !===============================================================================
-! 11. INITIALISATION DES PARAMETRES DE COUPLAGE CS/CS
+! INITIALISATION DES PARAMETRES DE COUPLAGE CS/CS
 !===============================================================================
 
 ! --- Nombre de couplage
@@ -1010,14 +979,10 @@ nbrcpl = 0
 ifaccp = 0
 
 !===============================================================================
-! 12. Lagrangian arrays
+! Lagrangian arrays
 !===============================================================================
 
 tslagr => rvoid2
-
-!===============================================================================
-! 14. Exit
-!===============================================================================
 
 return
 end subroutine

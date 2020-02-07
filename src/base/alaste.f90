@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -21,7 +21,7 @@
 !-------------------------------------------------------------------------------
 
 !> \file alaste.f90
-!> Module for ALE with Code_Aster coupling
+!> Module for ALE with code_aster coupling
 
 module alaste
 
@@ -29,14 +29,14 @@ module alaste
 
   implicit none
 
-  ! Nombre de structures max en ALE et Couplage Code_Aster
+  ! Nombre de structures max en ALE et Couplage code_aster
 
   integer nastmx
   parameter (nastmx=200)
 
-  !  Methode ALE - mouvement de structures en couplage avec Code_Aster
+  !  Methode ALE - mouvement de structures en couplage avec code_aster
 
-  ! ntcast : numero d'iteration de couplage avec Code_Aster
+  ! ntcast : numero d'iteration de couplage avec code_aster
   ! nbaste : nombre de structures mobiles
   ! nbfast : nombre de faces couplees
   ! nbnast : nombre de noeuds couples

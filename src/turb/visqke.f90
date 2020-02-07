@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -77,7 +77,7 @@ double precision, dimension(:,:,:), allocatable :: gradv
 double precision, dimension(:), pointer :: crom
 double precision, dimension(:), pointer :: viscl, visct
 double precision, dimension(:), pointer :: w_dist
-double precision, dimension(:), pointer :: cvar_k, cvar_ep, cvar_phi
+double precision, dimension(:), pointer :: cvar_k, cvar_ep
 
 !===============================================================================
 
@@ -109,8 +109,7 @@ allocate(gradv(3,3,ncelet))
 inc = 1
 iprev = 0
 
-call field_gradient_vector(ivarfl(iu), iprev, imrgra, inc,    &
-                           gradv)
+call field_gradient_vector(ivarfl(iu), iprev, 0, inc, gradv)
 
 do iel = 1, ncel
 

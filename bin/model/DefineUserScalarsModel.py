@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -588,7 +588,7 @@ class DefineUserScalarsModel(Variables, Model):
         """
         self.isNotInList(scalar_name, self.getScalarsVarianceList())
         self.isInList(scalar_name, self.getUserScalarNameList())
-        self.isInList(choice, ('constant', 'variable'))
+        self.isInList(choice, ('constant', 'user_law'))
 
         n = self.scalar_node.xmlGetNode('variable', name=scalar_name)
         n_diff = n.xmlInitChildNode('property')

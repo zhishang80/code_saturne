@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -34,6 +34,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,6 +56,7 @@
 #include "cs_mesh.h"
 #include "cs_parall.h"
 #include "cs_mesh_location.h"
+#include "cs_random.h"
 #include "cs_time_step.h"
 #include "cs_turbulence_model.h"
 #include "cs_physical_constants.h"
@@ -1169,7 +1171,7 @@ _read_and_convert_turb_variables(cs_restart_t  *r,
   const int itytur_cur = iturb_cur/10;
   const int itytur_old = iturb_old/10;
 
-  /* If the turbulence modela has not changed, nothing to do */
+  /* If the turbulence model has not changed, nothing to do */
 
   if (iturb_cur == iturb_old)
     return;
@@ -1492,7 +1494,47 @@ _read_and_convert_turb_variables(cs_restart_t  *r,
 
     /* TODO perform the conversion from other models to SA. */
 
+  } else if (itytur_cur == 4) { /* LES mode */
+
+    if (itytur_old != 4) { /* restart from RANS */
+
+      cs_real_3_t *v_vel = (cs_real_3_t *)(CS_F_(vel)->vals[t_id]);
+
+      cs_real_t *v_k;
+      BFT_MALLOC(v_k, n_cells, cs_real_t);
+
+      if (itytur_old == 3) { /* Rij */
+
+        err_sum += _read_turb_array_1d_compat(r, "r11", "R11", t_id, v_k);
+
+        err_sum += _read_turb_array_1d_compat(r, "r22", "R22", t_id, v_tmp);
+        for (cs_lnum_t i = 0; i < n_cells; i++)
+          v_k[i] += v_tmp[i];
+
+        err_sum += _read_turb_array_1d_compat(r, "r33", "R33", t_id, v_tmp);
+        for (cs_lnum_t i = 0; i < n_cells; i++)
+          v_k[i] = 0.5 * (v_k[i] + v_tmp[i]);
+
+      }
+      else {
+        err_sum += _read_turb_array_1d_compat(r, "k", "k", t_id, v_k);
+      }
+
+      /* Now add sqrt(2/3 k) as noise on the velocity */
+
+      for (cs_lnum_t cell_id = 0; cell_id < n_cells; cell_id++) {
+
+        cs_real_t rand[3];
+        cs_random_normal(3, rand);
+
+        for (int i = 0; i < 3; i++)
+          v_vel[cell_id][i] += rand[i] * sqrt(2./3.*v_k[cell_id]);
+      }
+
+    }
+
   }
+
 
   if (err_sum != 0)
     bft_error
@@ -1825,7 +1867,9 @@ cs_restart_read_variables(cs_restart_t               *r,
 
   /* Read and convert turbulence variables in case of model change */
 
-  const int iturb_cur = cs_glob_turb_model->iturb;
+  const cs_turb_model_t  *turb_model = cs_get_glob_turb_model();
+  assert(turb_model != NULL);
+  const int iturb_cur = turb_model->iturb;
   const int iturb_old = _read_turbulence_model(r);
 
   if (iturb_cur != iturb_old)

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -482,7 +482,8 @@ class BoundaryConditionsScalarsView(QWidget, Ui_BoundaryConditionsScalarsForm):
                ('z', "Z face's gravity center"),
                ('dt', 'time step'),
                ('t', 'current time'),
-               ('iter', 'number of iteration')]
+               ('iter', 'number of iteration'),
+               ('surface', 'Boundary zone surface')]
 
         for (nme, val) in self.notebook.getNotebookList():
             sym.append((nme, 'value (notebook) = ' + str(val)))
@@ -524,7 +525,8 @@ class BoundaryConditionsScalarsView(QWidget, Ui_BoundaryConditionsScalarsForm):
                ('z', "Z face's gravity center"),
                ('dt', 'time step'),
                ('t', 'current time'),
-               ('iter', 'number of iteration')]
+               ('iter', 'number of iteration'),
+               ('surface', 'Boundary zone surface')]
 
         for (nme, val) in self.notebook.getNotebookList():
             sym.append((nme, 'value (notebook) = ' + str(val)))
@@ -567,7 +569,8 @@ class BoundaryConditionsScalarsView(QWidget, Ui_BoundaryConditionsScalarsForm):
                ('z', "Z face's gravity center"),
                ('dt', 'time step'),
                ('t', 'current time'),
-               ('iter', 'number of iteration')]
+               ('iter', 'number of iteration'),
+               ('surface', 'Boundary zone surface')]
 
         for (nme, val) in self.notebook.getNotebookList():
             sym.append((nme, 'value (notebook) = ' + str(val)))

@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -41,16 +41,10 @@
 #endif
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
 #include "cs_headers.h"
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -79,12 +73,12 @@ BEGIN_C_DECLS
  *         Rely on a generic function pointer for an analytic function
  *
  * \param[in]      time       when ?
- * \param[in]      n_elts     number of elements to consider
+ * \param[in]      n_pts      number of elements to consider
  * \param[in]      pt_ids     list of elements ids (to access coords and fill)
- * \param[in]      coords     where ?
+ * \param[in]      xyz        where ?
  * \param[in]      compact    true:no indirection, false:indirection for filling
  * \param[in]      input      NULL or pointer to a structure cast on-the-fly
- * \param[in, out] retval     result of the function
+ * \param[in, out] res        result of the function
  */
 /*----------------------------------------------------------------------------*/
 
@@ -123,9 +117,9 @@ _define_adv_field(cs_real_t           time,
  *         Rely on a generic function pointer for an analytic function
  *
  * \param[in]      time      when ?
- * \param[in]      n_elts    number of elements to consider
+ * \param[in]      n_pts     number of elements to consider
  * \param[in]      pt_ids    list of elements ids (to access coords and fill)
- * \param[in]      coords    where ?
+ * \param[in]      xyz       where ?
  * \param[in]      compact   true:no indirection, false:indirection for filling
  * \param[in]      input     NULL or pointer to a structure cast on-the-fly
  * \param[in, out] res       result of the function
@@ -144,7 +138,7 @@ _define_bcs(cs_real_t           time,
   CS_UNUSED(time);
   CS_UNUSED(input);
 
-  const double  pi = 4.0*atan(1.0);
+  const double  pi = cs_math_pi;
   for (cs_lnum_t p = 0; p < n_pts; p++) {
 
     const cs_lnum_t  id = (pt_ids == NULL) ? p : pt_ids[p];
@@ -260,20 +254,18 @@ cs_user_model(void)
 
   /*! [param_cdo_wall_distance] */
   {
+    /*  Activate predefined module as the computation of the wall distance */
     cs_walldistance_activate();
   }
   /*! [param_cdo_wall_distance] */
 
   /*! [param_cdo_add_user_equation] */
   {
-    /* Add a new user equation:
-       Set the default boundary condition among:
-       CS_PARAM_BC_HMG_DIRICHLET or
-       CS_PARAM_BC_HMG_NEUMANN
-
-       By default, initial values are set to zero (or the value given by the
-       restart file in case of restart).
-    */
+    /* Add a new user equation.
+     *   The default boundary condition has to be chosen among:
+     *    CS_PARAM_BC_HMG_DIRICHLET
+     *    CS_PARAM_BC_HMG_NEUMANN
+     */
 
     cs_equation_add_user("AdvDiff.Upw", // equation name
                          "Pot.Upw",     // associated variable field name
@@ -322,24 +314,29 @@ cs_user_model(void)
   }
   /*! [param_cdo_add_user_adv_field] */
 
-  /*! [param_cdo_add_user_adv_field_opt] */
+  /*! [param_cdo_add_adv_field] */
+  {
+    /* Add a user-defined advection field named "adv_field"  */
+    cs_advection_field_status_t  adv_status =
+      CS_ADVECTION_FIELD_USER                 | /* = user-defined */
+      CS_ADVECTION_FIELD_TYPE_VELOCITY_VECTOR | /* = define by a vector field */
+      CS_ADVECTION_FIELD_DEFINE_AT_VERTICES   | /* = add a field at vertices */
+      CS_ADVECTION_FIELD_DEFINE_AT_BOUNDARY_FACES;  /* = add boundary fluxes */
+
+    cs_adv_field_t  *adv = cs_advection_field_add("adv_field", adv_status);
+  }
+  /*! [param_cdo_add_adv_field] */
+
+  /*! [param_cdo_add_user_adv_field_post] */
   {
     /* Retrieve an advection field named "adv_field"  */
     cs_adv_field_t  *adv = cs_advection_field_by_name("adv_field");
 
     /* Compute the Courant number (if unsteady simulation) */
-    cs_advection_field_set_option(adv, CS_ADVKEY_POST_COURANT);
+    cs_advection_field_set_postprocess(adv, CS_ADVECTION_FIELD_POST_COURANT);
 
-    /* Set other advanced options: for instance, define an interpolation of the
-       advection field at vertices */
-    cs_advection_field_set_option(adv, CS_ADVKEY_DEFINE_AT_VERTICES);
-
-    /* Both options in one call */
-    cs_advection_field_set_option(adv,
-                                  CS_ADVKEY_POST_COURANT |
-                                  CS_ADVKEY_DEFINE_AT_VERTICES);
   }
-  /*! [param_cdo_add_user_adv_field_opt] */
+  /*! [param_cdo_add_user_adv_field_post] */
 
 }
 
@@ -503,11 +500,8 @@ cs_user_finalize_setup(cs_domain_t   *domain)
 
     cs_advection_field_def_by_analytic(adv, _define_adv_field, NULL);
 
-    /* Enable also the defintion of the advection field at mesh vertices */
-    cs_advection_field_set_option(adv, CS_ADVKEY_DEFINE_AT_VERTICES);
-
     /* Activate the post-processing of the related Courant number */
-    cs_advection_field_set_option(adv, CS_ADVKEY_POST_COURANT);
+    cs_advection_field_set_postprocess(adv, CS_ADVECTION_FIELD_POST_COURANT);
   }
   /*! [param_cdo_setup_advfield] */
 
@@ -576,8 +570,7 @@ cs_user_finalize_setup(cs_domain_t   *domain)
   {
     /* Copy the settings for AdvDiff.Upw */
     cs_equation_param_t  *eqp_ref = cs_equation_param_by_name("AdvDiff.Upw");
-    cs_equation_t *eq = cs_equation_by_name("AdvDiff.SG");
-    cs_equation_param_t  *eqp = cs_equation_get_param(eq);
+    cs_equation_param_t  *eqp = cs_equation_param_by_name("AdvDiff.SG");
 
     /* Copy the settings */
     cs_equation_param_update_from(eqp_ref, eqp);
@@ -588,7 +581,7 @@ cs_user_finalize_setup(cs_domain_t   *domain)
 
     /* Call this function to be sure that the linear solver is set to what
        one wants */
-    cs_equation_param_set_sles(eqp, cs_equation_get_field_id(eq));
+    cs_equation_param_set_sles(eqp);
 
   }
   /*! [param_cdo_copy_settings] */

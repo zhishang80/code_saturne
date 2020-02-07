@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -42,36 +42,11 @@
  * Local headers
  *----------------------------------------------------------------------------*/
 
-#include "bft_mem.h"
-#include "bft_error.h"
-#include "bft_printf.h"
-
-#include "cs_base.h"
-#include "cs_boundary_zone.h"
-#include "cs_field.h"
-#include "cs_field_pointer.h"
-#include "cs_field_operator.h"
-#include "cs_elec_model.h"
-#include "cs_log.h"
-#include "cs_mesh.h"
-#include "cs_mesh_location.h"
-#include "cs_mesh_quantities.h"
-#include "cs_mesh_quantities.h"
-#include "cs_notebook.h"
-#include "cs_parameters.h"
-#include "cs_physical_model.h"
-#include "cs_time_step.h"
-#include "cs_selector.h"
+#include "cs_headers.h"
 
 #if defined(HAVE_MEDCOUPLING_LOADER)
 #include "cs_medcoupling_remapper.hxx"
 #endif
-
-/*----------------------------------------------------------------------------
- * Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -110,8 +85,9 @@ cs_user_boundary_conditions(int         nvar,
 {
 #if defined(HAVE_MEDCOUPLING_LOADER)
 
-  /* Variables needed for boundary condition sub-selection */
+  /*! [loc_var_def] */
 
+  /* Variables needed for boundary condition sub-selection */
   const cs_lnum_t n_b_faces = cs_glob_mesh->n_b_faces;
 
   /* MEDCoupling Remapper structure:
@@ -125,10 +101,16 @@ cs_user_boundary_conditions(int         nvar,
   BFT_MALLOC(field_names, nremapper_fields, const char *);
   field_names[0] = "TEMPERATURE";
 
+  /*! [loc_var_def] */
+
+  /*! [init] */
   /* Indexes needed to read the time step from the
    * file (-1, -1 if only one exists) */
   int it0 = -1;
   int it1 = -1;
+  /*! [init] */
+
+  /*! [remapper] */
 
   /* We request a remapper with a given name. If it does not exist,
    * the function returns a NULL pointer. */
@@ -172,10 +154,12 @@ cs_user_boundary_conditions(int         nvar,
     cs_medcoupling_remapper_setup(r);
 
   }
+  /*! [remapper] */
 
   /* If the med data needs for a translation or rotation for the geometrical
    * superposition with the target Code_Saturne mesh: */
 
+  /*! [trans_rota] */
   if (false) {
     /* Translation using a tranlsation vector. Here it is (1, 0, 0) */
     cs_real_t translation_vector[3] = {1.0, 0.0, 0.0};
@@ -193,6 +177,9 @@ cs_user_boundary_conditions(int         nvar,
     /* Update of the interpolation matrix */
     cs_medcoupling_remapper_setup(r);
   }
+  /*! [trans_rota] */
+
+  /*! [copy_values] */
 
   /* We retrieve an array containing the interpolated values.
    * Inputs are:
@@ -204,6 +191,9 @@ cs_user_boundary_conditions(int         nvar,
   /* We impose a dirichlet condition on all the faces of the boundary condition
    * related to the zone "inlet" */
 
+  /*! [copy_values] */
+
+  /*! [dirichlet_condition] */
   const int keyvar = cs_field_key_id("variable_id");
   cs_field_t *scalar = cs_field_by_name_try("scalar1");
   int iscal = cs_field_get_key_int(scalar, keyvar) - 1;
@@ -223,6 +213,7 @@ cs_user_boundary_conditions(int         nvar,
   }
 
   BFT_FREE(lstelt);
+  /*! [dirichlet_condition] */
 
 #endif
 }

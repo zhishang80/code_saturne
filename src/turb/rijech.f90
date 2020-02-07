@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -160,7 +160,7 @@ call field_get_id("wall_distance", f_id)
 call field_get_val_s(f_id, w_dist)
 
 ! Current gradient: iprev = 0
-call field_gradient_scalar(f_id, 0, imrgra, inc, iccocg, grad)
+call field_gradient_scalar(f_id, 0, 0, inc, iccocg, grad)
 
 ! Normalization (warning, the gradient may be sometimes equal to 0)
 
@@ -549,7 +549,7 @@ call field_get_id("wall_distance", f_id)
 call field_get_val_s(f_id, w_dist)
 
 ! Current gradient: iprev = 0
-call field_gradient_scalar(f_id, 0, imrgra, inc, iccocg, grad)
+call field_gradient_scalar(f_id, 0, 0, inc, iccocg, grad)
 
 ! Normalization (warning, the gradient may be sometimes equal to 0)
 do iel = 1 ,ncel

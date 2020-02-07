@@ -6,7 +6,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -1062,8 +1062,6 @@ _coord_output(const fvm_to_cgns_writer_t  *w,
                                   buffer,
                                   w->comm);
 
-    cgsize_t partial_write_idx_start = 1;
-
     do {
 
       cs_gnum_t range[2] = {block_start, block_end};
@@ -1073,8 +1071,8 @@ _coord_output(const fvm_to_cgns_writer_t  *w,
       if (_values != NULL) { /* only possible on rank 0 */
 
         int retval = CG_OK;
-        cgsize_t partial_write_idx_end
-          = partial_write_idx_start + block_end - block_start - 1;
+        cgsize_t partial_write_idx_start = range[0];
+        cgsize_t partial_write_idx_end   = range[1] - 1;
 
         assert(block_end > block_start);
 
@@ -1950,7 +1948,7 @@ _export_nodal_tesselated_g(const fvm_writer_section_t  *export_section,
 
   size_t  min_block_size = w->min_block_size
                            / (  (sizeof(cgsize_t) * stride)
-                              * (n_g_sub_elements/n_g_elements));
+                              * ((n_g_sub_elements*1.)/n_g_elements));
 
   bi = cs_block_dist_compute_sizes(w->rank,
                                    w->n_ranks,
@@ -2219,7 +2217,10 @@ _write_block_connect_i_g(const fvm_writer_section_t  *current_section,
     block_start = block_end - _block_size;
 
     cgsize_t  s_start = *global_counter + 1;
+
+#if CGNS_VERSION >= 3400
     cgsize_t  g_offset = 0;
+#endif
 
     cgsize_t *_block_connect = NULL;
     cgsize_t *_block_offsets = NULL;
@@ -2243,7 +2244,7 @@ _write_block_connect_i_g(const fvm_writer_section_t  *current_section,
 
         cgsize_t connect_size = range[1] - range[0];
         cgsize_t  s_end  = s_start;
-        cs_lnum_t elt_count = 0, new_count = 0;
+        cs_lnum_t elt_count = 0;
 
 #if CGNS_VERSION >= 3400
 
@@ -2251,6 +2252,8 @@ _write_block_connect_i_g(const fvm_writer_section_t  *current_section,
           BFT_MALLOC(_block_offsets, block_size+1, cgsize_t);
           _block_offsets[0] = g_offset;
         }
+
+        cs_lnum_t new_count = 0;
 
         while (elt_count < connect_size) {
           cs_lnum_t elt_size = _block_connect[elt_count++];

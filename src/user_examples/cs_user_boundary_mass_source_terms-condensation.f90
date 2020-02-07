@@ -4,7 +4,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -100,8 +100,9 @@ double precision tpar
 
 ! Local variables
 
+!< [loc_var_dec]
 integer          ieltcd
-integer          ifac, iel, iesp, iscal
+integer          ifac, iel, iscal
 integer          ivarh
 integer          ilelt, nlelt
 integer          izone
@@ -114,16 +115,20 @@ type(gas_mix_species_prop) s_h2o_g
 integer, allocatable, dimension(:) :: lstelt
 double precision, dimension(:), pointer :: cpro_cp
 double precision, dimension(:), pointer :: cvar_h
+!< [loc_var_dec]
 
 !===============================================================================
 
+!< [init]
 ! Allocate a temporary array for cells selection
 allocate(lstelt(nfabor))
 
 call field_get_id_try("y_h2o_g", f_id)
 if (f_id.ne.-1) &
   call field_get_key_struct_gas_mix_species_prop(f_id, s_h2o_g)
+!< [init]
 
+!< [zones_definition]
 if (iappel.eq.1.or.iappel.eq.2) then
 
 !===============================================================================
@@ -170,7 +175,9 @@ endif
 if (iappel.eq.1) then
   nfbpcd = ieltcd
 endif
+!< [zones_definition]
 
+!< [model_settings]
 !===============================================================================
 ! Parameters padding of the 1-D thermal model and condensation model
 ! ------------------------------------------------------------------
@@ -260,10 +267,13 @@ if (iappel.eq.2) then
       !-------------------------------------------
       tpar0 = 26.57d0
 
-    endif
+   endif
 
   endif
 
+!< [model_settings]
+
+!< [source_terms_values]
 elseif (iappel.eq.3) then
 
 !===============================================================================
@@ -364,7 +374,7 @@ elseif (iappel.eq.3) then
   enddo
 
 endif
-
+!< [source_terms_values]
 !--------
 ! Formats
 !--------

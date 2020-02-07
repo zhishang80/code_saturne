@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -55,10 +55,13 @@ BEGIN_C_DECLS
  * \enum cs_xdef_type_t
  *
  * \var CS_XDEF_BY_ANALYTIC_FUNCTION
- * Definition relying on an analytic function (see \ref cs_analytic_func_t)
+ * Definition relying on a \ref cs_analytic_func_t function pointer
  *
  * \var CS_XDEF_BY_ARRAY
  * Definition based on an array
+ *
+ * \var CS_XDEF_BY_DOF_FUNCTION
+ * Definition relying on a \ref cs_dof_func_t function pointer
  *
  * \var CS_XDEF_BY_FIELD
  * Definition based on a field (see \ref cs_field_t)
@@ -83,6 +86,7 @@ typedef enum {
 
   CS_XDEF_BY_ANALYTIC_FUNCTION,
   CS_XDEF_BY_ARRAY,
+  CS_XDEF_BY_DOF_FUNCTION,
   CS_XDEF_BY_FIELD,
   CS_XDEF_BY_FUNCTION,
   CS_XDEF_BY_QOV,
@@ -177,7 +181,8 @@ typedef struct {
 
 typedef struct {
 
-  /*! * \var stride
+  /*!
+   * \var stride
    * Stride to access the array values
    *
    * \var loc
@@ -200,13 +205,13 @@ typedef struct {
   cs_flag_t     loc;
   cs_real_t    *values;
   cs_lnum_t    *index;
-  _Bool         is_owner;
+  bool          is_owner;
 
 } cs_xdef_array_input_t;
 
 /*!
  * \struct cs_xdef_analytic_input_t
- * \brief Input structure when an analytic function is used for the definition
+ * \brief Input structure when a definition by analytic function is used
  */
 
 typedef struct {
@@ -218,11 +223,37 @@ typedef struct {
   void                *input;
 
   /*! \var func
-   * \ref cs_analytic_func_t to call
+   * pointer to a \ref cs_analytic_func_t to call
    */
   cs_analytic_func_t  *func;
 
 } cs_xdef_analytic_input_t;
+
+/*!
+ * \struct cs_xdef_dof_input_t
+ * \brief Input structure when a definition by DoF function is used
+ */
+
+typedef struct {
+
+  /*! \var input
+   * NULL or pointer to a structure cast on-the-fly for additional information
+   * used in the function
+   */
+  void                *input;
+
+  /*! \var loc
+   *  Flag to know which type of entities are given as parameter in the
+   *  \ref cs_dof_func_t
+   */
+  cs_flag_t            loc;
+
+  /*! \var func
+   * pointer to a \ref cs_dof_func_t to call
+   */
+  cs_dof_func_t       *func;
+
+} cs_xdef_dof_input_t;
 
 /*!
  * \struct cs_xdef_time_func_input_t
@@ -234,12 +265,13 @@ typedef struct {
   /*! \var input
    * NULL or pointer to a structure cast on-the-fly for additional information
    * used in the function
-   *
-   * \var func
-   * \ref cs_time_func_t to call
    */
   void                *input;
-  cs_time_func_t  *func;
+
+  /*! \var func
+   * pointer to a \ref cs_time_func_t to call
+   */
+  cs_time_func_t      *func;
 
 } cs_xdef_time_func_input_t;
 
@@ -293,6 +325,54 @@ cs_get_bdy_zone_id(const char   *z_name)
     }
   }
   return z_id;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Retrieve the value associated to the given definition.
+ *         This should be a definition by value and the dimension should be
+ *         equal to one.
+ *
+ * \param[in]  def    pointer to a cs_xdef_t structure
+ *
+ * \return the value of the definition
+ */
+/*----------------------------------------------------------------------------*/
+
+inline static cs_real_t
+cs_xdef_get_scalar_value(cs_xdef_t     *def)
+{
+  if (def == NULL)
+    bft_error(__FILE__, __LINE__, 0, "%s: Empty definition.", __func__);
+  assert(def->dim == 1);
+  assert(def->type == CS_XDEF_BY_VALUE);
+
+  cs_real_t  *value = (cs_real_t *)def->input;
+
+  return value[0];
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Retrieve the values associated to the given definition.
+ *         This should be a definition by array
+ *
+ * \param[in]  def    pointer to a cs_xdef_t structure
+ *
+ * \return the pointer to the array of values
+ */
+/*----------------------------------------------------------------------------*/
+
+inline static cs_real_t *
+cs_xdef_get_array(cs_xdef_t     *def)
+{
+  if (def == NULL)
+    bft_error(__FILE__, __LINE__, 0, "%s: Empty definition.", __func__);
+  assert(def->type == CS_XDEF_BY_ARRAY);
+
+  cs_xdef_array_input_t  *ai = (cs_xdef_array_input_t *)def->input;
+
+  return ai->values;
 }
 
 /*============================================================================

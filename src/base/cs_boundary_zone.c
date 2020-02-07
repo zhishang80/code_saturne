@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -247,8 +247,12 @@ _zone_define(const char  *name)
   z->time_varying = false;
   z->allow_overlay = false;
 
+  z->n_g_elts = 0;
+
   z->measure = -1.;
+  z->f_measure = -1.;
   z->boundary_measure = -1.;
+  z->f_boundary_measure = -1.;
 
   return z;
 }
@@ -301,20 +305,23 @@ _build_zone_class_id(void)
  */
 /*----------------------------------------------------------------------------*/
 
-void
-_boundary_zone_compute_measure(bool       mesh_modified,
-                               cs_zone_t *z)
+static void
+_boundary_zone_compute_metadata(bool       mesh_modified,
+                                cs_zone_t *z)
 {
   /* We recompute values only if mesh is modified or zone is time varying.
    * FIXME: For the moment, the boundary measure is not computed, but set to -1.
-   * to be improved in a next patch
+   * to be improved in the future.
+   * Not thta boundary measure of a (2D) surface should be the length of the perimeter
    */
   if (z->time_varying || mesh_modified) {
     cs_real_t *b_face_surf   = cs_glob_mesh_quantities->b_face_surf;
     cs_real_t *b_f_face_surf = cs_glob_mesh_quantities->b_f_face_surf;
 
     z->measure = 0.;
+    z->f_measure = 0.;
     z->boundary_measure = -1.;
+    z->f_boundary_measure = -1.;
 
     for (cs_lnum_t e_id = 0; e_id < z->n_elts; e_id++) {
       cs_lnum_t f_id = z->elt_ids[e_id];
@@ -322,10 +329,20 @@ _boundary_zone_compute_measure(bool       mesh_modified,
       z->f_measure += b_f_face_surf[f_id];
     }
 
-    cs_parall_sum(1, CS_REAL_TYPE, &z->measure);
-    cs_parall_sum(1, CS_REAL_TYPE, &z->f_measure);
-    cs_parall_sum(1, CS_REAL_TYPE, &z->boundary_measure);
-    cs_parall_sum(1, CS_REAL_TYPE, &z->f_boundary_measure);
+    cs_real_t measures[4] = {z->measure, z->f_measure,
+                             z->boundary_measure, z->f_boundary_measure};
+
+    cs_gnum_t n_g_elts = z->n_elts;
+    cs_parall_sum(1, CS_GNUM_TYPE, &n_g_elts);
+
+    cs_parall_sum(4, CS_REAL_TYPE, measures);
+
+    z->n_g_elts = n_g_elts;
+
+    z->measure = measures[0];
+    z->f_measure = measures[1];
+    z->boundary_measure = measures[2];
+    z->f_boundary_measure = measures[3];
   }
 }
 
@@ -565,7 +582,7 @@ cs_boundary_zone_build_all(bool  mesh_modified)
     /* Compute or update zone geometrical measures */
     for (int i = 0; i < _n_zones; i++) {
       cs_zone_t *z = _zones[i];
-      _boundary_zone_compute_measure(mesh_modified, z);
+      _boundary_zone_compute_metadata(mesh_modified, z);
     }
   }
 }
@@ -1002,6 +1019,53 @@ cs_boundary_zone_max_class_or_zone_id(void)
     retval = _max_zone_class_id;
 
   return retval;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Print boundary zones information to listing file
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_boundary_zone_print_info(void)
+{
+
+  bft_printf("\n");
+  bft_printf(" --- Information on boundary zones\n");
+  cs_real_t *b_face_surf   = cs_glob_mesh_quantities->b_face_surf;
+  cs_real_t *b_f_face_surf = cs_glob_mesh_quantities->b_f_face_surf;
+
+  for (int i = 0; i < _n_zones; i++) {
+    cs_zone_t *z = _zones[i];
+    bft_printf(_("  Boundary zone \"%s\"\n"
+                 "    id              = %d\n"
+                 "    Number of faces = %llu\n"
+                 "    Surface         = %14.7e\n"),
+               z->name, z->id, (unsigned long long)z->n_g_elts,
+               z->measure);
+    /* Only log fluid fluid when different to surface */
+    if (b_f_face_surf != b_face_surf && b_f_face_surf != NULL)
+      bft_printf(_("    Fluid surface   = %14.7e\n"),
+                 z->f_measure);
+
+    if (z->boundary_measure < 0.) {
+      bft_printf(_("    Perimeter       = -1 (not computed)\n"));
+      /* Only log fluid fluid when different to surface */
+      if (b_f_face_surf != b_face_surf && b_f_face_surf != NULL)
+        bft_printf(_("    Fluid perimeter = -1 (not computed)\n"));
+    }
+    else {
+      bft_printf(_("    Perimeter       = %14.7e\n"),
+                 z->boundary_measure);
+      /* Only log fluid fluid when different to surface */
+      if (b_f_face_surf != b_face_surf && b_f_face_surf != NULL)
+        bft_printf(_("    Fluid perimeter = %14.7e\n"),
+                   z->f_boundary_measure);
+    }
+  }
+
+  bft_printf_flush();
 }
 
 /*----------------------------------------------------------------------------*/

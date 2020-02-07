@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -58,6 +58,7 @@ use ppincl
 use atincl
 use atsoil
 use spefun
+use cs_c_bindings
 
 !===============================================================================
 
@@ -67,7 +68,7 @@ implicit none
 
 double precision nc(ncelet),w(3,ncelet),qldia(ncelet)
 double precision tempc(ncelet),rom(ncelet),pphy(ncelet)
-double precision refrad(ncelet)
+double precision refrad(ncel)
 
 ! Local variables
 
@@ -92,11 +93,6 @@ double precision ugauss2,sursat2,smax2,nuc2
 double precision ugauss3,sursat3,smax3,nuc3
 double precision nuc1snc,nuc2snc,nuc3snc
 double precision numcb,dencb
-
-! function declaration
-
-external         esatliq
-double precision esatliq
 
 double precision , parameter :: rhowater=1000. ! kg/m**3
 ! FIXME should be set somewhere else
@@ -138,14 +134,14 @@ else if (modnuc.eq.2) then
 endif
 
 ! ===============================================================================
-! 1.  Computation new nc field
+! 1.  Computation new Nc field (in cm^-3)
 ! ===============================================================================
 
 do iel = 1, ncel
 
   if (qldia(iel).le.epzero) then
 
-     nc(iel) = 0.d0
+    nc(iel) = 0.d0
 
   else ! qldia(iel) > epzero
 
@@ -156,7 +152,7 @@ do iel = 1, ncel
 
       tempk = tempc(iel) + tkelvi
       aa1   = 0.622d0*clatev*9.81d0/(rair*cp*tempk**2) - 9.81d0/(rair*tempk)
-      esat  = esatliq(tempk)
+      esat  = cs_air_pwv_sat(tempc(iel))
       aa2   = rair*tempk/(0.622d0 *esat) + (0.622d0 *clatev**2)/(tempk*pphy(iel)*cp)
       ddv   = 0.211d0 * ( tempk/tkelvi )**(1.94d0)*(101325d0/pphy(iel))*1.d-4
       kka   = ( (5.69d0 + 0.017d0*tempc(iel))/0.239d0 ) * 1.d-3
@@ -222,7 +218,7 @@ do iel = 1, ncel
          rayonm3  = 0.40d-6
          sigaero3 = 1.3d0
 
-         ! surface tension water-steam [n/m], tempk [k]
+         ! surface tension water-steam [N/m], tempk [K]
          tempk = tempc(iel)+tkelvi
          tauvw = 0.075d0
 
@@ -274,7 +270,7 @@ do iel = 1, ncel
          coefa = 2.d0*tauvw/(rhowater*rvap*tempk)
 
          ! FIXME
-         ! cf pruppacher and klett 1997 (reprinted correction 2000) (6-28)
+         ! cf Pruppacher and Klett 1997 (reprinted correction 2000) (6-28)
          ! coefa = 3.3d-7 / tempk
 
          ! coefficient for Raoult effect: coefb [-]
@@ -306,7 +302,7 @@ do iel = 1, ncel
                9.81d0/(rair*tempk)
 
          ! coefficient corresponding to liquid water condensation |aa2|
-         esat = esatliq(tempk)
+         esat = cs_air_pwv_sat(tempc(iel))
          aa2  = rair*tempk/(0.622d0*esat)+(0.622d0*clatev**2.d0) /   &
                 (tempk*pphy(iel)*cp)
 
@@ -358,9 +354,8 @@ do iel = 1, ncel
          nuc1   = 0.5d0 * ntotal1 * (1.d0-ferf(ugauss1))
          nuc2   = 0.5d0 * ntotal2 * (1.d0-ferf(ugauss2))
          nuc3   = 0.5d0 * ntotal3 * (1.d0-ferf(ugauss3))
-         ! nuc=nuc1+nuc2
+
          nuc=nuc1+nuc2+nuc3
-         ! nuc=nuc3
 
          nuc1snc = nuc1/ntotal1
          nuc2snc = nuc2/ntotal2
@@ -380,11 +375,11 @@ do iel = 1, ncel
      ! 3. if qc > 0, w <= 0 and nc = 0,
      ! we impose nc > 0 so that the mean volume radius = 10 microns
 
-   elseif (nc(iel).lt.epzero) then
+    elseif (nc(iel).lt.epzero) then
 
-     nc(iel) = 1.d-6*(3.d0*rom(iel)*qldia(iel))/(4.d0*pi*rhowater*(10.d-6)**3)
+      nc(iel) = 1.d-6*(3.d0*rom(iel)*qldia(iel))/(4.d0*pi*rhowater*(10.d-6)**3)
 
-   endif ! end w > 0
+    endif ! end w > 0
 
   endif ! end qldia > 0
 enddo

@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -57,17 +57,19 @@ BEGIN_C_DECLS
  */
 
 /*!  1: Neumann boundary conditions */
-#define CS_CDO_BC_NEUMANN          (1 << 0)
+#define CS_CDO_BC_NEUMANN               (1 << 0)
 /*!  2: Homogeneous Neumann boundary conditions */
-#define CS_CDO_BC_HMG_NEUMANN      (1 << 1)
+#define CS_CDO_BC_HMG_NEUMANN           (1 << 1)
 /*!  4: Dirichlet boundary conditions */
-#define CS_CDO_BC_DIRICHLET        (1 << 2)
+#define CS_CDO_BC_DIRICHLET             (1 << 2)
 /*!  8: Homogeneous Dirichlet boundary conditions */
-#define CS_CDO_BC_HMG_DIRICHLET    (1 << 3)
+#define CS_CDO_BC_HMG_DIRICHLET         (1 << 3)
 /*! 16: Robin boundary conditions */
-#define CS_CDO_BC_ROBIN            (1 << 4)
+#define CS_CDO_BC_ROBIN                 (1 << 4)
 /*! 32: Apply a sliding condition (for vector-valued equations) */
-#define CS_CDO_BC_SLIDING          (1 << 5)
+#define CS_CDO_BC_SLIDING               (1 << 5)
+/*! 64: Apply a Dirichlet on the tangential part of a vector-valued quantity */
+#define CS_CDO_BC_TANGENTIAL_DIRICHLET  (1 << 6)
 
 /*! @} */
 
@@ -121,6 +123,10 @@ typedef struct {
   cs_lnum_t    n_sliding_faces;
   cs_lnum_t   *sliding_ids;
 
+  /* Circulation */
+  cs_lnum_t    n_circulation_faces;
+  cs_lnum_t   *circulation_ids;
+
 } cs_cdo_bc_face_t;
 
 /*============================================================================
@@ -168,6 +174,9 @@ cs_cdo_bc_get_desc(cs_flag_t   bc_flag,
   case CS_CDO_BC_SLIDING:
     sprintf(desc, "%s", "Sliding");
     break;
+  case CS_CDO_BC_TANGENTIAL_DIRICHLET:
+    sprintf(desc, "%s", "Dirichlet on the tangential component");
+    break;
 
   default:
     bft_error(__FILE__, __LINE__, 0,
@@ -210,6 +219,9 @@ cs_cdo_bc_get_flag(cs_param_bc_type_t   bc_type)
     break;
   case CS_PARAM_BC_SLIDING:
     ret_flag = CS_CDO_BC_SLIDING;
+    break;
+  case CS_PARAM_BC_CIRCULATION:
+    ret_flag = CS_CDO_BC_TANGENTIAL_DIRICHLET;
     break;
 
   default:
@@ -276,6 +288,30 @@ static inline bool
 cs_cdo_bc_is_sliding(cs_flag_t    flag)
 {
   if (flag & CS_CDO_BC_SLIDING)
+    return true;
+  else
+    return false;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Check if a flag is associated to a Dirichlet BC (homogeneous or
+ *          not)
+ *
+ * \param[in] flag     flag to test
+ *
+ * \return  true or false
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline bool
+cs_cdo_bc_is_circulation(cs_flag_t    flag)
+{
+  if (flag & CS_CDO_BC_DIRICHLET)
+    return true;
+  else if (flag & CS_CDO_BC_HMG_DIRICHLET)
+    return true;
+  else if (flag & CS_CDO_BC_TANGENTIAL_DIRICHLET)
     return true;
   else
     return false;

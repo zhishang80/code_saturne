@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -207,8 +207,8 @@ class TreeModel(QAbstractItemModel):
                     img_path = ":/icons/22x22/closure_modeling.png"
                     icon = QIcon()
                     icon.addPixmap(QPixmap(_fromUtf8(img_path)), QIcon.Normal, QIcon.Off)
-                elif page_name == 'Calculation management':
-                    img_path = ":/icons/22x22/run_button.png"
+                elif page_name == 'Performance settings':
+                    img_path = ":/icons/22x22/run_parameters.png"
                     icon = QIcon()
                     icon.addPixmap(QPixmap(_fromUtf8(img_path)), QIcon.Normal, QIcon.Off)
 
@@ -519,9 +519,7 @@ Postprocessing
     Lagrangian solution control
     Profiles
     Balance by zone
-Calculation management
-    Performance tuning
-    OpenTurns study
+Performance settings
 """
         return tree
 
@@ -814,8 +812,6 @@ Calculation management
         self.setRowClose(self.tr('Profiles'))
         self.setRowClose(self.tr('Balance by zone'))
 
-        self.setRowClose(self.tr('OpenTurns study'))
-
         self.__hideRow()
 
 
@@ -1078,7 +1074,6 @@ Calculation management
 
         self.setRowShow(self.tr('Performance tuning'), True)
         self.setRowShow(self.tr('Prepare batch calculation'), True)
-        self.setRowShow(self.tr('OpenTurns study'), case['salome'])
 
         # End of test of physical module
 

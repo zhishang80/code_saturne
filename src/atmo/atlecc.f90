@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -68,18 +68,19 @@ integer           imode
 
 ! Local variables
 
+logical, save :: switch_to_labels
 integer f_id
 integer itp, ii, ios, k
 integer sjday,minute
 double precision second
 integer year, month, quant, hour, day, jday
-character(len=80) :: ccomnt, label, oneline
+character(len=80) :: ccomnt, label, oneline, fname
 character(len=1) :: csaute
 
 ! altitudes and concentrations of every nespgi species
 double precision  zconctemp(nespgi+1)
-! names of species defined in the file in case of a user defined chemical scheme
-character(len=80), allocatable, dimension(:) ::      namespg
+! names of species in the initialization file
+character(len=80), dimension(:), allocatable :: labels
 
 !===============================================================================
 
@@ -207,72 +208,7 @@ else
 endif
 
 !===============================================================================
-! 4. reading the number of reactions
-!===============================================================================
-if (ifilechemistry.eq.4) then
-
-  103  read (impmec,'(A80)',err=999,end=999) ccomnt
-
-  if(ccomnt(1:1).eq.csaute) go to 103
-  backspace(impmec)
-
-  if (imode.eq.0) then
-    read(impmec,*,err=999,end=999) nrg
-  else
-    read(impmec,*,err=999,end=999)
-  endif
-
-  !===============================================================================
-  ! 4. reading the number of species
-  !===============================================================================
-
-  104  read (impmec,'(A80)',err=999,end=999) ccomnt
-
-  if(ccomnt(1:1).eq.csaute) go to 104
-  backspace(impmec)
-
-  if (imode.eq.0) then
-    read(impmec,*,err=999,end=999) nespg
-  else
-    read(impmec,*,err=999,end=999)
-  endif
-
-  !===============================================================================
-  ! 5. reading the names of the species
-  !===============================================================================
-
-  105  read(impmec,'(A80)',err=999,end=999) ccomnt
-
-  if (ccomnt(1:1).eq.csaute) go to 105
-  backspace(impmec)
-
-  allocate(namespg(nespg))
-  read(impmec,*,err=999,end=999) namespg(1:nespg)
-  do k = 1, nespg
-    f_id = ivarfl(isca(isca_chem(k)))
-    call field_set_key_str(f_id, keylbl, namespg(k))
-  enddo
-  deallocate (namespg)
-
-  !===============================================================================
-  ! 6. reading the molar masses of the species
-  !===============================================================================
-
-  106  read (impmec,'(a80)',err=999,end=999) ccomnt
-
-  if(ccomnt(1:1).eq.csaute) go to 106
-  backspace(impmec)
-
-  if (imode.eq.0) then
-    read(impmec,*,err=999,end=999)
-  else
-    ! Molar masses must be given in the same order as species
-    read(impmec,*,err=999,end=999) dmmk(1:nespg)
-  endif
-
-endif ! End test on ifilechemistry
-!===============================================================================
-! 7. reading the number of species initialized by the chemistry file
+! 4. reading the number of species initialized by the chemistry file
 !===============================================================================
 
  107  read (impmec,'(a80)',err=999,end=999) ccomnt
@@ -283,6 +219,14 @@ backspace(impmec)
 
 if (imode.eq.0) then
   read (impmec,*,err=999,end=999) nespgi
+  ! If nespgi < 0, we will read labels
+  ! If nepsgi > 0, we will read scalar ids (default)
+  if (nespgi < 0) then
+    nespgi = - nespgi
+    switch_to_labels = .true.
+  else
+   switch_to_labels = .false.
+  endif
   if (nespgi.gt.size(isca_chem)) then
     write(nfecra,8002) size(isca_chem), nespgi
     call csexit (1)
@@ -293,7 +237,7 @@ else
 endif
 
 !===============================================================================
-! 8. reading the number of species initialized by the chemistry file
+! 5. reading the species initialized by the chemistry file
 !===============================================================================
 if (nespgi.ge.1) then
 
@@ -306,11 +250,43 @@ if (nespgi.ge.1) then
   if (imode.eq.0) then
     read(impmec,*,err=999,end=999)
   else
-    read(impmec,*,err=999,end=999) idespgi(1:nespgi)
+    if (switch_to_labels) then
+       allocate(labels(nespgi))
+       read(impmec,*,err=999,end=999) labels
+
+       do ii = 1, nespgi
+
+         ! Initialize idespgi
+         idespgi(ii) = -1
+
+         ! Find the field matching the given label
+         ! Update idespgi and break innermost for loop
+         do k = 1, nespg
+           call field_get_label(ivarfl(isca(isca_chem(k))),fname)
+           if (trim(labels(ii)).eq.fname) then
+             idespgi(ii) = k
+             exit
+           endif
+         enddo
+
+         ! Verification
+         if (idespgi(ii).lt.1 .or. idespgi(ii).gt.size(isca_chem)) then
+           write(nfecra,8003) labels(ii)
+           call csexit (1)
+           !==========
+         endif
+
+       enddo
+
+       deallocate(labels)
+
+    else
+      read(impmec,*,err=999,end=999) idespgi(1:nespgi)
+    endif
   endif
 
 !===============================================================================
-! 9. reading the concentration profiles
+! 6. reading the concentration profiles
 !===============================================================================
 
 109 read(impmec,'(a80)',err=999,end=999) ccomnt
@@ -349,7 +325,7 @@ if (nespgi.ge.1) then
 endif ! fin test nespgi
 
 !===============================================================================
-! 10. logging
+! 7. logging
 !===============================================================================
 
 if (imode.eq.1) then
@@ -366,7 +342,7 @@ if (imode.eq.1) then
 7996 format(1x, f10.2)
   write(nfecra, '(a)', advance='no') 'zproc, '
   do ii = 1, nespgi
-    f_id = ivarfl(isca(isca_chem(ii)))
+    f_id = ivarfl(isca(isca_chem(idespgi(ii))))
     call field_get_label(f_id, label)
     if (ii .lt. nespgi) then
       write(nfecra, '(a)', advance='no') trim(label)//', '
@@ -464,6 +440,24 @@ call csexit (1)
 '@                                                            ',/,&
 '@   Nombre de scalaires chimie       declares : ',I10         ,/,&
 '@   Nombre d''especes chimiques a initialiser : ',I10         ,/,&
+'@                                                            ',/,&
+'@  Le calcul ne sera pas execute.                            ',/,&
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/)
+ 8003 format(                                                           &
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/,&
+'@ @@ ATTENTION : ARRET A L''ENTREE DES DONNEES (atlecc)      ',/,&
+'@    =========                                               ',/,&
+'@    PHYSIQUE PARTICULIERE (ATMOSPHERIQUE) DEMANDEE          ',/,&
+'@    MODULE DE CHIMIE (ICHEMISTRY) SPACK                     ',/,&
+'@                                                            ',/,&
+'@  L''espece a initialiser avec le fichier chimie            ',/,&
+'@  n''est pas definie                                        ',/,&
+'@                                                            ',/,&
+'@   Scalaire a initialiser : ',A80                            ,/,&
 '@                                                            ',/,&
 '@  Le calcul ne sera pas execute.                            ',/,&
 '@                                                            ',/,&
@@ -581,6 +575,22 @@ call csexit (1)
 '@                                                            ',/,&
 '@   Number of chemistry model scalars: ',I10                  ,/,&
 '@   Number of species to initialize: ',I10                    ,/,&
+'@                                                            ',/,&
+'@  The computation will not be run                           ',/,&
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/)
+ 8003 format(                                                           &
+'@                                                            ',/,&
+'@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@',/,&
+'@                                                            ',/,&
+'@ @@ WARNING : STOP WHILE READING INPUT DATA (atlecc)        ',/,&
+'@    =========                                               ',/,&
+'@      ATMOSPHERIC CHEMISTRY FROM SPACK                      ',/,&
+'@                                                            ',/,&
+'@  Could not identify the given species label                ',/,&
+'@                                                            ',/,&
+'@   Given species label : ',A80                               ,/,&
 '@                                                            ',/,&
 '@  The computation will not be run                           ',/,&
 '@                                                            ',/,&

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -653,6 +653,7 @@ cs_rank_neighbors_symmetrize(cs_rank_neighbors_t  *n,
                                                          flags,
                                                          NULL,
                                                          NULL,
+                                                         NULL,
                                                          n->rank,
                                                          comm);
 
@@ -900,6 +901,7 @@ cs_rank_neighbors_sync_count(const cs_rank_neighbors_t   *n_send,
                                                          CS_LNUM_TYPE,
                                                          flags,
                                                          send_count,
+                                                         NULL,
                                                          NULL,
                                                          n_send->rank,
                                                          comm);

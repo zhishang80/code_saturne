@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -724,11 +724,16 @@ integer function yo2j(year,ordinal)
 !
 implicit none
 integer year,ordinal
-! I am puzzled by the (1-14)/12 : why not writing -1?
-yo2j= ordinal + ((1461 * (year + 4800 + (1 - 14) / 12)) / 4 +   &
-        (367 * (1 - 2 - 12 * ((1 - 14) / 12))) / 12 -           &
-        (3 * ((year + 4900 + (1 - 14) / 12) / 100)) / 4         &
-        + 1 - 32075) - 1
+! I am puzzled by the (1-14)/12 : why not write -1?
+
+! yo2j= ordinal + ((1461 * (year + 4800 + (1 - 14) / 12)) / 4 +        &
+!                  (367 * (1 - 2 - 12 * ((1 - 14) / 12))) / 12 -       &
+!                  (3 * ((year + 4900 + (1 - 14) / 12) / 100)) / 4     &
+!                   + 1 - 32075) - 1
+
+yo2j= ordinal + ((1461 * (year + 4800)) / 4     &
+      -30 - (3 * ((year + 4900) / 100)) / 4     &
+      + 1 - 32075) - 1
 end function yo2j
 
 
@@ -1352,8 +1357,6 @@ integer ih2o
 data ih2o/0/
 save ih2o
 double precision rap
-double precision qsatliq
-external qsatliq
 
 if (ippmod(iatmos).eq.2) ih2o=1
 if(.not.allocated(pressure))then
@@ -1375,9 +1378,9 @@ integration_direction:if (ihpm.eq.0) then
              "hydrostatic_pressure::k=",k
         tmoy = 0.5d0*(tempC(k-1,j,i) + tempC(k,j,i)) + tkelvi
         if (ippmod(iatmos).eq.2) then
-          q0 = min( qw(k-1,j,i), qsatliq( tempC(k-1,j,i)+tkelvi, &
+          q0 = min( qw(k-1,j,i), cs_air_yw_sat( tempC(k-1,j,i), &
                pressure(k-1,j,i)))
-          q1 = min( qw(k  ,j,i), qsatliq( tempC(k  ,j,i)+tkelvi, &
+          q1 = min( qw(k  ,j,i), cs_air_yw_sat( tempC(k  ,j,i), &
                pressure(k-1,j,i)))
         else
           q0 = qw(k-1,j,i)
@@ -1399,9 +1402,9 @@ else
       do k = thermal_profile_dim, 2, -1
         tmoy = 0.5d0*(tempC(k-1,j,i) + tempC(k,j,i)) + tkelvi
         if (ippmod(iatmos).eq.2) then
-          q0 = min( qw(k-1,j,i), qsatliq( tempC(k-1,j,i)+tkelvi, &
+          q0 = min( qw(k-1,j,i), cs_air_yw_sat( tempC(k-1,j,i), &
                pressure(k  ,j,i)))
-          q1 = min( qw(k  ,j,i), qsatliq( tempC(k  ,j,i)+tkelvi, &
+          q1 = min( qw(k  ,j,i), cs_air_yw_sat( tempC(k  ,j,i), &
                pressure(k  ,j,i)))
         else
           q0 = qw(k-1,j,i)

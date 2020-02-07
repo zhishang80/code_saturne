@@ -4,7 +4,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -73,8 +73,7 @@
 !______________________________________________________________________________.
 !  mode           name          role                                           !
 !______________________________________________________________________________!
-!> \param[in]     ixmlpu        indicates if the XML file from the GUI is used
-!>                              (1 : yes, 0 : no)
+!> \param[in]     ixmlpu        indicates if an XML file from the GUI is used  !
 !______________________________________________________________________________!
 
 subroutine usppmo &
@@ -116,11 +115,7 @@ integer ixmlpu
 !        if =  0   adiabatic model
 !        if =  1   extended model with enthalpy source term
 
-if (ixmlpu.eq.0) then
-
-  ippmod(icod3p) = -1
-
-endif
+ippmod(icod3p) = -1
 
 ! --- coebu: Eddy-Break Up pre-mixed flame
 ! ==========
@@ -135,11 +130,7 @@ endif
 !        if =  3   extended model with enthalpy and mixture fraction transport
 !                   (dilution, thermal losses, etc.)
 
-if (ixmlpu.eq.0) then
-
-  ippmod(icoebu) = -1
-
-endif
+ippmod(icoebu) = -1
 
 ! --- colwc: Libby-Williams pre-mixed flame
 ! ==========
@@ -152,11 +143,7 @@ endif
 !        if =  4   extended four-peak model, adiabatic
 !        if =  5   extended four-peak model with enthalpy source terms
 
-if (ixmlpu.eq.0) then
-
-  ippmod(icolwc) = -1
-
-endif
+ippmod(icolwc) = -1
 
 
 ! --- Soot model
@@ -181,11 +168,7 @@ rosoot = 2000.d0 ! kg/m3
 !        if = -1   module not activated
 !        if = 0    module activated
 
-if (ixmlpu.eq.0) then
-
-  ippmod(icfuel) = -1
-
-endif
+ippmod(icfuel) = -1
 
 ! --- coal :
 ! ==========
@@ -203,11 +186,7 @@ endif
 !        if = 0    module activated
 !        if = 1    with drying
 
-if (ixmlpu.eq.0) then
-
-  ippmod(iccoal) = -1
-
-endif
+ippmod(iccoal) = -1
 
 ! Activate the drift: 0 (no activation),
 !                     1 (transported particle velocity)
@@ -225,11 +204,7 @@ i_comb_drift = 1
 !        if = 0    module activated
 !        if = 1    with drying (NOT functional)
 
-if (ixmlpu.eq.0) then
-
-  ippmod(icpl3c) = -1
-
-endif
+ippmod(icpl3c) = -1
 
 ! --- compf: Compressible flows
 ! ==========
@@ -240,11 +215,7 @@ endif
 !        if =  2   homogeneous two phase model
 !        if =  3   in pressure increment
 
-if (ixmlpu.eq.0) then
-
-  ippmod(icompf) = -1
-
-endif
+ippmod(icompf) = -1
 
 ! --- eljou: Joule effect
 ! ==========
@@ -255,11 +226,7 @@ endif
 !        if = 3    Potentiel reel     + CDL Transfo
 !        if = 4    Potentiel complexe + CDL Transfo
 
-if (ixmlpu.eq.0) then
-
-  ippmod(ieljou) = -1
-
-endif
+ippmod(ieljou) = -1
 
 ! --- elarc: Electric arcs
 ! ==========
@@ -268,11 +235,7 @@ endif
 !        if = 1    electric potential
 !        if = 2    electric potential and vector potential (hence 3D modelling)
 
-if (ixmlpu.eq.0) then
-
-  ippmod(ielarc) = -1
-
-endif
+ippmod(ielarc) = -1
 
 ! --- atmos: Atmospheric flows
 ! ==========
@@ -282,11 +245,7 @@ endif
 !        if = 1    dry atmosphere
 !        if = 2    humid atmosphere (experimental)
 
-if (ixmlpu.eq.0) then
-
-  ippmod(iatmos) = -1
-
-endif
+ippmod(iatmos) = -1
 
 ! --- aeros: Cooling towers
 ! ==========
@@ -296,11 +255,7 @@ endif
 !        if = 1    Poppe's model
 !        if = 2    Merkel's model
 
-if (ixmlpu.eq.0) then
-
-  ippmod(iaeros) = -1
-
-endif
+ippmod(iaeros) = -1
 
 ! --- igmix: Gas mixtures modelling
 ! ==========
@@ -342,58 +297,50 @@ ippmod(idarcy) = -1
 !       if = 0   user-specified
 !       if = 1   tabulated by JANAF (default)
 
-if (ixmlpu.eq.0) then
-
-  indjon = 1
-
-endif
+indjon = 1
 
 !===============================================================================
 ! 2.  Data file related to modules above
 !===============================================================================
 
-if (ixmlpu.eq.0) then
+! Combustion
 
-  ! Combustion
+if (     ippmod(icod3p).ge.0                                          &
+    .or. ippmod(icoebu).ge.0 .or. ippmod(icolwc).ge.0) then
 
-  if (     ippmod(icod3p).ge.0                                          &
-      .or. ippmod(icoebu).ge.0 .or. ippmod(icolwc).ge.0) then
-
-    if (indjon.eq.1) then
-      ficfpp = 'dp_C3P'
-    else
-      ficfpp = 'dp_C3PSJ'
-    endif
-
+  if (indjon.eq.1) then
+    ficfpp = 'dp_C3P'
+  else
+    ficfpp = 'dp_C3PSJ'
   endif
 
-  ! Fuel combustion
+endif
 
-  if (ippmod(icfuel).ge.0) then
-    ficfpp = 'dp_FUE'
-  endif
+! Fuel combustion
 
-  ! Atmospheric flows
+if (ippmod(icfuel).ge.0) then
+  ficfpp = 'dp_FUE'
+endif
 
-  if (ippmod(iatmos).ge.0) then
-    ficmet = 'meteo'
-  endif
+! Atmospheric flows
 
- if (ippmod(igmix).ge.0) then
-   ! Specific condensation modelling
+if (ippmod(iatmos).ge.0) then
+  ficmet = 'meteo'
+endif
 
-   ! wall condensation
-   !      if = -1 module not activated
-   !      if =  0 condensation source terms activated
-   icondb = -1
+if (ippmod(igmix).ge.0) then
+  ! Specific condensation modelling
 
-   ! internal condensation
-   !      if = -1 module not activated
-   !      if =  0 condensation source terms with metal
-   !                               structures activate
-   icondv = -1
- endif
+  ! wall condensation
+  !      if = -1 module not activated
+  !      if =  0 condensation source terms activated
+  icondb = -1
 
+  ! internal condensation
+  !      if = -1 module not activated
+  !      if =  0 condensation source terms with metal
+  !                               structures activate
+  icondv = -1
 endif
 
 !< [usppmo]
@@ -433,7 +380,6 @@ use cstphy
 use entsor
 use parall
 use period
-use ihmpre
 use albase
 use ppppar
 use ppthch
@@ -557,74 +503,6 @@ if (itytur.eq.4) then
   ivrtex = 1
 endif
 
-! --- Convective scheme
-
-!     blencv = 0 for upwind (order 1 in space, "stable but diffusive")
-!            = 1 for centered/second order (order 2 in space)
-!       we may use intermediate real values.
-!       Here we choose:
-!         for the velocity and user scalars:
-!           an upwind-centered scheme with 100% centering (blencv=1)
-!         for other variables
-!           the default code value (upwind standard, centered in LES)
-
-!     Specifically, for user scalars
-!       if we suspect an excessive level of numerical diffusion on
-!         a variable ivar representing a user scalar
-!         iscal (with ivar=isca(iscal)), it may be useful to set
-!         blencv = 1.0d0 to use a second-order scheme in space for
-!         convection. For temperature or enthalpy in particular, we
-!         may thus choose in this case:
-!
-!         call field_get_key_struct_var_cal_opt(ivarfl(isca(iscalt)), vcopt)
-!         vcopt%blencv = 1.0d0
-!         call field_set_key_struct_var_cal_opt(ivarfl(isca(iscalt)), vcopt)
-
-!       For non-user scalars relative to specific physics (coal, combustion,
-!         electric arcs: see usppmo) implicitly defined by the model,
-!         the corresponding information is set automatically elsewhere:
-!         we do not modify blencv here.
-
-call field_get_key_struct_var_cal_opt(ivarfl(iu), vcopt)
-vcopt%blencv = 1.0d0
-call field_set_key_struct_var_cal_opt(ivarfl(iu), vcopt)
-
-if (nscaus.ge.1) then
-  do ii = 1, nscaus
-    call field_get_key_struct_var_cal_opt(ivarfl(isca(ii)), vcopt)
-    vcopt%blencv = 1.0d0
-    call field_set_key_struct_var_cal_opt(ivarfl(isca(ii)), vcopt)
-  enddo
-endif
-
-
-! --- Linear solver parameters (for each unknown)
-
-!     epsilo: relative precision for the solution of the linear system.
-
-
-if (nscaus.ge.1) then
-  do ii = 1, nscaus
-    call field_get_key_struct_var_cal_opt(ivarfl(isca(ii)), vcopt)
-    vcopt%epsilo = 1.d-6
-    call field_set_key_struct_var_cal_opt(ivarfl(isca(ii)), vcopt)
-  enddo
-endif
-
-
-! --- Dynamic reconstruction sweeps to handle non-orthogonlaities
-!     This parameter computes automatically a dynamic relax factor,
-!     and can be activated for any variable.
-!      - iswdyn = 1: means that the last increment is relaxed
-!      - iswdyn = 2: means that the last two increments are used to
-!                         relax
-!     NB: when iswdyn is greater than 1, then the number of
-!         non-orthogonality sweeps is increased to 20.
-
-call field_get_key_struct_var_cal_opt(ivarfl(ipr), vcopt)
-vcopt%iswdyn = 1
-call field_set_key_struct_var_cal_opt(ivarfl(ipr), vcopt)
-
 ! --- Rotation/curvature correction for eddy-viscosity turbulence models
 !      0: deactivated
 !      1: activated
@@ -632,66 +510,7 @@ call field_set_key_struct_var_cal_opt(ivarfl(ipr), vcopt)
 
 irccor = 1
 
-
-! --- Stabilization in turbulent regime
-
-!     For difficult cases, a stabilization may be obtained by not
-!     reconstructing the convective and diffusive flux for variables
-!     of the turbulence model, that is
-!       in k-epsilon: if (itytur.eq.2) then
-!          ircflu(ik)   = 0 and ircflu(iep)  = 0
-!       in Rij-epsilon: if (itytur.eq.3) then
-!          ircflu(ir11) = 0,    ircflu(ir22) = 0,
-!          ircflu(ir33) = 0,
-!          ircflu(ir12) = 0,    ircflu(ir23) = 0,
-!          ircflu(ir23) = 0,
-!                                  and ircflu(iep)  = 0
-!     (note that variable itytur is equal to iturb/10)
-
-
-if (itytur.eq.2) then
-  call field_get_key_struct_var_cal_opt(ivarfl(ik), vcopt)
-  vcopt%ircflu = 0
-  call field_set_key_struct_var_cal_opt(ivarfl(ik), vcopt)
-
-  call field_get_key_struct_var_cal_opt(ivarfl(iep), vcopt)
-  vcopt%ircflu = 0
-  call field_set_key_struct_var_cal_opt(ivarfl(iep), vcopt)
-endif
-
-
-! --- Advanced re-initialization for EBRSM or k-omega models
-
-!     - 0: switch off (default)
-!     - 1: switch on
-
-reinit_turb = 1
-
-
-! --- Turbulent diffusion model for second moment closure (iturb = 3x)
-!      0: scalar diffusivity (Shir model)
-!      1: tensorial diffusivity (Daly and Harlow model, default model)
-
-
-if (itytur.eq.3) then
-  idirsm = 1
-endif
-
-
-! --- Advanced choice of Wall function
-
-
 iwallf = 5
-
-
-! Physical constants (cstphy)
-! ===========================
-
-! --- gravity (g in m/s2, with the sign in the calculation coordinate axes).
-
-gx = 0.d0
-gy = 0.d0
-gz = 0.d0
 
 
 ! --- rotation of the reference frame (omega in rad/s)
@@ -708,149 +527,6 @@ icorio = 0
 call rotation_define(0.d0, 0.d0, 0.d0,  &    ! rotation vector
                      0.d0, 0.d0, 0.d0)       ! invariant point
 
-
-
-! --- Reference fluid properties
-
-!       ro0        : density in kg/m3
-!       viscl0     : dynamic viscosity in kg/(m s)
-!       cp0        : specific heat in J/(Kelvin kg)
-!       t0         : reference temperature in Kelvin
-!       p0         : total reference pressure in Pascal
-!                    the calculation is based on a
-!                    reduced pressure P*=Ptot-ro0*g.(x-xref)
-!                    (except in compressible case)
-!       xyzp0(3)   : coordinates of the reference point for
-!                    the total pressure (where it is equal to p0)
-
-!     In general, it is not necessary to furnish a reference point xyz0.
-!       If there are outlets, the code will take the center of the
-!       reference outlet face.
-!       On the other hand, if we plan to explicitly fix Dirichlet conditions
-!       for pressure, it is better to indicate to which reference the
-!       values relate (for a better resolution of reduced pressure).
-
-
-!     Other properties are given by default in all cases.
-
-!     Nonetheless, we may note that:
-
-!       In the standard case (no gas combustion, coal, electric arcs,
-!                             compressibility):
-!       ---------------------
-!         ro0, viscl0 and cp0
-!             are useful and represent either the fluid properties if they
-!             are constant, either simple mean values for the initialization
-!             if properties are variable and defined in cs_user_physical_properties.
-!         t0  is not useful
-!         p0  is useful but is not used in an equation of state. p0
-!             is a reference value for the incompressible solver
-!             which will serve to set the (possible) domain outlet pressure.
-!             We may also take it as 0 or as a physical value in Pascals.
-
-!       With the electric module:
-!       ------------------------
-!         ro0, viscl0 and cp0
-!             are useful but simply represent mean initial values;
-!             the density, molecular dynamic viscosity, and specific
-!             heat are necessarily defined as fields (whether they are
-!             physically variable or not): see cs_user_physical_properties
-!             for the Joule effect
-!             module and the electric arcs dp_ELE data file.
-!         t0  is useful an must be in Kelvin (> 0) but represents a simple
-!             initialization value.
-!         p0  is useful bu is not used in the equation of state. p0
-!             is a reference value for the incompressible solver which
-!             will be used to calibrate the (possible) outlet pressure
-!             of the domain. We may take it as zero or as a physical
-!             value in Pascals.
-
-!       With gas combustion:
-!       --------------------
-!         ro0 is not useful (it is automatically recalculated by the
-!             law of ideal gases from t0 and p0).
-!         viscl0 is indispensable: it is the molecular dynamic viscosity,
-!             assumed constant for the fluid.
-!         cp0 is indispensable: it is the heat capacity, assumed constant,
-!             (modelization of source terms involving a local Nusselt in
-!             the Lagrangian module, reference value allowing the
-!             calculation of a radiative
-!             (temperature, exchange coefficient) couple).
-!         t0  is indispensible and must be in Kelvin (> 0).
-!         p0  is indispensable and must be in Pascal (> 0).
-
-!       With pulverized coal:
-!       ---------------------
-!         ro0 is not useful (it is automatically recalculated by the
-!             law of ideal gases from t0 and p0).
-!         viscl0 is indispensable: it is the molecular dynamic viscosity,
-!             assumed constant for the fluid (its effect is expected to
-!             be small compared to turbulent effects).
-!         cp0 is indispensable: it is the heat capacity, assumed constant,
-!             (modelization of source terms involving a local Nusselt in
-!             the coal or Lagrangian module, reference value allowing the
-!             calculation of a radiative
-!             (temperature, exchange coefficient) couple).
-!         t0  is indispensable and must be in Kelvin (> 0).
-!         p0  is indispensable and must be in Pascal (> 0).
-
-!       With compressibility:
-!       ---------------------
-!         ro0 is not useful, stricto sensu; nonetheless, as experience
-!             shows that users often use this variable, it is required
-!             to assign to it a strictly positive value (for example,
-!             an initial value).
-!         viscl0 is useful and represents the molecular dynamic viscosity,
-!             when it is constant, or a value which will be used during
-!             initializations (or in inlet turbulence conditions,
-!             depending on the user choice.
-!         cp0 is indispensable: it is the heat capacity, assumed constant
-!             in the thermodynamics available by default
-!         t0  is indispensable and must be in Kelvin (> 0).
-!         p0  is indispensable and must be in Pascal (> 0).
-!             With the thermodynamic law available by default,
-!             t0 and p0 are used for the initialization of the density.
-!         xyzp0 is not useful because the pressure variable directly
-!             represents the total pressure.
-
-ro0    = 1.17862d0
-viscl0 = 1.83337d-5
-cp0    = 1017.24d0
-
-t0 = 20.d0 + 273.15d0
-p0 = 1.01325d5
-
-
-! --- irovar, ivivar, icp: constant or variable density,
-!                          viscosity/diffusivity, and specific heat
-
-!     When a specific physics module is active
-!       (coal, combustion, electric arcs, compressible: see usppmo)
-!       we MUST NOT set variables 'irovar', 'ivivar', and 'icp' here, as
-!       they are defined automatically.
-!     Nonetheless, for the compressible case, ivivar may be modified
-!       in the uscfx2 user subroutine.
-
-!     When no specific physics module is active, we may specify if the
-!       density, specific heat, and the molecular viscosity
-!       are constant (irovar=0, ivivar=0, icp=-1), which is the default
-!       or variable (irovar=1, ivivar=1, icp=0)
-
-!     For those properties we choose as variable, the corresponding law
-!       must be defined in cs_user_physical_properties
-!       (incs_user_physical_properties.f90);
-!       if they are constant, they take values ro0, viscl0, and cp0.
-
-irovar = 1
-ivivar = 1
-icp = -1
-
-! We only specify XYZ0 if we explicitely fix Dirichlet conditions
-! for the pressure.
-
-xyzp0(1) = 0.d0
-xyzp0(2) = 0.d0
-xyzp0(3) = 0.d0
 
 ! --- Variable diffusivity field id (ifcvsl>=0) or constant
 !     diffusivity (ifcvsl=-1) for the thermal scalar and USER scalars.
@@ -935,24 +611,6 @@ do jj = 1, nscaus
   iturt(jj) = 10
 enddo
 
-
-! --- Reference velocity for turbulence initialization (m2/s)
-!       (useful only with turbulence)
-
-uref = 1.d0
-
-
-! --- Reference length scale in meters for initialization
-!       of epsilon (and specific clipping of turbulence, but
-!       this is not the default option)
-!       Assign a value of the order of the largest dimension of the
-!       physical domain in which the flow may develop.
-!       If a negative value is set here, or no value set and the GUI not
-!       used, the cubic root of the domain will be used.
-!       (useful only for turbulence).
-
-almax = 0.5
-
 ! Error estimators for Navier-Stokes (non-frozen velocity field)
 
 ! We recommend running a calculation restart on a few time steps
@@ -1027,7 +685,6 @@ use entsor
 use field
 use parall
 use period
-use ihmpre
 use post
 use ppppar
 use ppthch
@@ -1152,6 +809,7 @@ use atsoil
 use atchem
 use atimbr
 use siream
+use cs_c_bindings
 
 !===============================================================================
 
@@ -1181,7 +839,7 @@ iatmst = 1
 !  smin   --> starting minute
 !  ssec   --> starting second
 
-syear = 1994
+syear = 2019
 squant = 1
 shour = 1
 smin = 0
@@ -1231,6 +889,11 @@ vertical_influence_radius = 100.d0
 !2 --> scheme with 20 species and 34 reactions
 !3 --> scheme CB05 with 52 species and 155 reactions
 !4 --> user defined schema
+!      for ichemistry = 4, a SPACK file must be provided
+!      call atmo_chemistry_set_spack_file_name("species.spack.dat")
+!      the following sources generated by SPACK should be included in the SRC folder
+!          kinetic.f90, fexchem.f90, jacdchemdc.f90, rates.f90, dratedc.f90
+!          dimensions.f90, LU_decompose.f90, LU_solve.f90
 ichemistry = 0
 
 ! ificchemistry: choice to read (=1,2,3,4, according to the scheme)
@@ -1328,7 +991,6 @@ use cstphy
 use entsor
 use cstnum
 use parall
-use ihmpre
 use period
 use ppppar
 use ppthch
@@ -1432,7 +1094,6 @@ subroutine uscfx1
 !===============================================================================
 
 use paramx
-use ihmpre
 use dimens
 use numvar
 use optcal
@@ -1469,22 +1130,18 @@ double precision :: cv(2), gamma(2), pinf(2), qprim(2)
 ! 1. Properties options
 !===============================================================================
 
-if (iihmpr.eq.0) then   !  Remove test to set values here when also using GUI.
+! --> Molecular thermal conductivity
+!       constant  : ifcvsl = -1
+!       variable  : ifcvsl = 0
 
-  ! --> Molecular thermal conductivity
-  !       constant  : ifcvsl = -1
-  !       variable  : ifcvsl = 0
+ifcvsl = -1
+call field_set_key_int(ivarfl(isca(itempk)), kivisl, ifcvsl)
 
-  ifcvsl = -1
-  call field_set_key_int(ivarfl(isca(itempk)), kivisl, ifcvsl)
+! --> Volumetric molecular viscosity
+!       iviscv = -1 : uniform  in space and constant in time
+!              =  0 : variable in space and time
 
-  ! --> Volumetric molecular viscosity
-  !       iviscv = -1 : uniform  in space and constant in time
-  !              =  0 : variable in space and time
-
-  iviscv = -1
-
-endif
+iviscv = -1
 
 !< [uscfx1]
 
@@ -1494,7 +1151,6 @@ endif
 
 return
 end subroutine uscfx1
-
 
 !===============================================================================
 
@@ -1525,7 +1181,6 @@ subroutine uscfx2
 !===============================================================================
 
 use paramx
-use ihmpre
 use dimens
 use numvar
 use optcal
@@ -1550,13 +1205,11 @@ implicit none
 ! 1. Physical properties
 !===============================================================================
 
-if (iihmpr.eq.0) then   !  Remove test to set values here when also using GUI.
-
 ! --> Molecular viscosity
 !       constant  : ivivar = 0
 !       variable  : ivivar = 1
 
-  ivivar = 0
+ivivar = 0
 
 ! --> Reference molecular thermal conductivity
 !       visls0 = lambda0  (molecular thermal conductivity, W/(m K))
@@ -1564,7 +1217,7 @@ if (iihmpr.eq.0) then   !  Remove test to set values here when also using GUI.
 !       WARNING: visls0 must be strictly positive
 !         (set a realistic value here even if conductivity is variable)
 
-  visls0(itempk) = 3.d-2
+visls0(itempk) = 3.d-2
 
 !       If the molecular thermal conductivity is variable, its values
 !         must be provided in the user subroutine 'cs_user_physical_properties'
@@ -1575,7 +1228,7 @@ if (iihmpr.eq.0) then   !  Remove test to set values here when also using GUI.
 
 !       viscv0 = kappa0  (volumetric molecular viscosity, kg/(m s))
 
-  viscv0 = 0.d0
+viscv0 = 0.d0
 
 !       If the volumetric molecular viscosity is variable, its values
 !         must be provided in the user subroutine 'cs_user_physical_properties'
@@ -1584,16 +1237,14 @@ if (iihmpr.eq.0) then   !  Remove test to set values here when also using GUI.
 
 !       For example with dry air, xmasml is around 28.8d-3 kg/mol
 
-  xmasmr = 0.028966
+xmasmr = 0.028966
 
 ! --> Hydrostatic equilibrium
 
 !       Specify if the hydrostatic equilibrium must be accounted for
 !         (yes = 1 , no = 0)
 
-  icfgrp = 1
-
-endif
+icfgrp = 1
 
 !< [uscfx2]
 
@@ -1603,7 +1254,6 @@ endif
 
 return
 end subroutine uscfx2
-
 
 !===============================================================================
 
@@ -1665,7 +1315,6 @@ droplet_diam = 0.005d0
 return
 end subroutine cs_user_cooling_towers
 
-
 !===============================================================================
 
 !> \brief User routine for definition of computation parameters dealing
@@ -1683,7 +1332,6 @@ subroutine user_darcy_ini1
 ! Module files
 !===============================================================================
 
-use ihmpre, only: iihmpr
 use entsor
 use darcy_module
 
@@ -1701,7 +1349,8 @@ darcy_anisotropic_dispersion = 0 ! dispersion : 0 isotrop, 1 anisotrop
 
 darcy_unsteady = 0 ! 0 steady flow, 1 unsteady flow
 
-darcy_convergence_criterion = 0 ! convergence criterion of Newton scheme : 0, over pressure, 1, over velocity
+darcy_convergence_criterion = 0 ! convergence criterion of Newton scheme:
+                                ! 0, over pressure, 1, over velocity
 
 darcy_gravity = 0 ! gravity is taken into account : 0 no, 1 yes
 

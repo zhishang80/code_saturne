@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -649,7 +649,6 @@ void CS_PROCF (uiati1, UIATI1) (int           *imeteo,
  *----------------------------------------------------------------------------*/
 
 void CS_PROCF (uisofu, UISOFU) (const int    *iirayo,
-                                const int    *iihmpr,
                                 const int    *ncharm,
                                 int          *ncharb,
                                 int          *nclpch,
@@ -715,9 +714,6 @@ void CS_PROCF (uisofu, UISOFU) (const int    *iirayo,
                                 double       *repnlo)
 {
   cs_var_t  *vars = cs_glob_var;
-
-  if (*iihmpr != 1)
-    cs_gui_load_file("dp_FCP.xml");
 
   /* Read gas mix absorption coefficient */
   if (*iirayo > 0)
@@ -1256,9 +1252,6 @@ void CS_PROCF (uidai1, UIDAI1) (int  *permeability,
 void
 cs_gui_physical_model_select(void)
 {
-  if (!cs_gui_file_is_loaded())
-    return;
-
   int isactiv = 0;
 
   cs_var_t  *vars = cs_glob_var;
@@ -1379,7 +1372,7 @@ cs_gui_physical_model_select(void)
     else if (cs_gui_strcmp(vars->model, "hgn_model")) {
       cs_vof_parameters_t *vof_param = cs_get_glob_vof_parameters();
       if (cs_gui_strcmp(vars->model_value, "merkle_model")) {
-        vof_param = CS_VOF_ENABLED | CS_VOF_MERKLE_MASS_TRANSFER;
+        vof_param->vof_model = CS_VOF_ENABLED | CS_VOF_MERKLE_MASS_TRANSFER;
       } else {
         vof_param->vof_model = CS_VOF_ENABLED + CS_VOF_FREE_SURFACE;
       }
@@ -1531,7 +1524,7 @@ cs_gui_get_thermophysical_model(const char  *model_thermo)
 }
 
 /*-----------------------------------------------------------------------------
- * Return 1 if a specific physics model is activated, 0 othewise.
+ * Return 1 if a specific physics model is activated, 0 otherwise.
  *
  * Updates the cs_glob_vars global structure.
  *----------------------------------------------------------------------------*/
@@ -1561,7 +1554,8 @@ cs_gui_get_activ_thermophysical_model(void)
                           "joule_effect",
                           "atmospheric_flows",
                           "compressible_model",
-                          "groundwater_model"};
+                          "groundwater_model",
+                          "hgn_model"};
   const char *name_o[] = {"gas_combustion"};
 
   int n_names_m = sizeof(name_m) / sizeof(name_m[0]);

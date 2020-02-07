@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -107,16 +107,15 @@ cs_reco_cw_scalar_pv_at_face_center(const short int          f,
   if (p_v == NULL)
     return p_f;
 
-  assert(cs_flag_test(cm->flag,
-                      CS_FLAG_COMP_PFQ | CS_FLAG_COMP_EV | CS_FLAG_COMP_FEQ |
-                      CS_FLAG_COMP_FE));
+  assert(cs_eflag_test(cm->flag,
+                       CS_FLAG_COMP_PFQ | CS_FLAG_COMP_EV | CS_FLAG_COMP_FEQ |
+                       CS_FLAG_COMP_FE));
 
-  const cs_quant_t  pfq = cm->face[f];
   for (int ie = cm->f2e_idx[f]; ie < cm->f2e_idx[f+1]; ie++) {
     const short int  *v = cm->e2v_ids + 2*cm->f2e_ids[ie];
     p_f += (p_v[v[0]] + p_v[v[1]]) * cm->tef[ie];
   }
-  p_f *= 0.5 / pfq.meas;
+  p_f *= 0.5 / cm->face[f].meas;
 
   return p_f;
 }
@@ -143,7 +142,7 @@ cs_reco_cw_scalar_pv_at_cell_center(const cs_cell_mesh_t     *cm,
   if (p_v == NULL || cm == NULL)
     return p_c;
 
-  assert(cs_flag_test(cm->flag, CS_FLAG_COMP_PVQ)); /* Sanity check */
+  assert(cs_eflag_test(cm->flag, CS_FLAG_COMP_PVQ)); /* Sanity check */
 
   /* Reconstruct the value at the cell center */
   for (short int v = 0; v < cm->n_vc; v++)
@@ -229,11 +228,55 @@ cs_reco_vect_pv_at_cell_centers(const cs_adjacency_t        *c2v,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_reco_cell_vect_from_face_dofs(const cs_adjacency_t       *c2f,
+cs_reco_cell_vectors_by_ib_face_dofs(const cs_adjacency_t       *c2f,
+                                     const cs_cdo_quantities_t  *cdoq,
+                                     const cs_real_t             i_face_vals[],
+                                     const cs_real_t             b_face_vals[],
+                                     cs_real_t                  *cell_reco);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Reconstruct the vector-valued quantity inside a cell from the face
+ *        DoFs (interior and boundary). Scalar-valued face DoFs are related to
+ *        the normal flux across faces.
+ *
+ * \param[in]   c_id          id of the cell to handle
+ * \param[in]   c2f           cell -> faces connectivity
+ * \param[in]   quant         pointer to the additional quantities struct.
+ * \param[in]   face_dofs     array of DoF values at faces
+ * \param[out]  cell_reco     vector-valued reconstruction inside cells. This
+ *                            quantity should have been allocated before calling
+ *                            this function
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_reco_cell_vector_by_face_dofs(cs_lnum_t                   c_id,
+                                 const cs_adjacency_t       *c2f,
                                  const cs_cdo_quantities_t  *cdoq,
-                                 const cs_real_t             i_face_vals[],
-                                 const cs_real_t             b_face_vals[],
+                                 const cs_real_t             face_dofs[],
                                  cs_real_t                  *cell_reco);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Reconstruct the vector-valued quantity inside each cell from the face
+ *        DoFs (interior and boundary). Scalar-valued face DoFs are related to
+ *        the normal flux across faces.
+ *
+ * \param[in]   c2f           cell -> faces connectivity
+ * \param[in]   quant         pointer to the additional quantities struct.
+ * \param[in]   face_dofs     array of DoF values at faces
+ * \param[out]  cell_reco     vector-valued reconstruction inside cells. This
+ *                            quantity should have been allocated before calling
+ *                            this function
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_reco_cell_vectors_by_face_dofs(const cs_adjacency_t       *c2f,
+                                  const cs_cdo_quantities_t  *cdoq,
+                                  const cs_real_t             face_dofs[],
+                                  cs_real_t                  *cell_reco);
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -359,7 +402,7 @@ cs_reco_dfbyc_in_pec(const cs_cell_mesh_t        *cm,
 /*!
  * \brief  Reconstruct at the cell center a field of edge-based DoFs
  *
- *  \param[in]      cid     cell id
+ *  \param[in]      c_id    cell id
  *  \param[in]      c2e     cell -> edges connectivity
  *  \param[in]      quant   pointer to the additional quantities struct.
  *  \param[in]      dof     pointer to the field of edge-based DoFs
@@ -368,7 +411,7 @@ cs_reco_dfbyc_in_pec(const cs_cell_mesh_t        *cm,
 /*----------------------------------------------------------------------------*/
 
 void
-cs_reco_ccen_edge_dof(cs_lnum_t                   cid,
+cs_reco_ccen_edge_dof(cs_lnum_t                   c_id,
                       const cs_adjacency_t       *c2e,
                       const cs_cdo_quantities_t  *quant,
                       const double               *dof,
@@ -390,6 +433,73 @@ cs_reco_ccen_edge_dofs(const cs_cdo_connect_t     *connect,
                        const cs_cdo_quantities_t  *quant,
                        const double               *dof,
                        double                     *p_ccrec[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Reconstruct a cell-wise constant curl from the knowledge of the
+ *         circulation at primal edges
+ *
+ * \param[in]      connect  pointer to a cs_cdo_connect_t structure
+ * \param[in]      quant    pointer to the additional quantities struct.
+ * \param[in]      circ     pointer to the array of circulations at edges
+ * \param[in, out] p_curl   pointer to value of the reconstructed curl inside
+ *                          cells (allocated if set to NULL)
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_reco_cell_curl_by_edge_dofs(const cs_cdo_connect_t        *connect,
+                               const cs_cdo_quantities_t     *quant,
+                               const cs_real_t               *circ,
+                               cs_real_t                    **p_curl);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Reconstruct the mean-value of the gradient field with DoFs arising
+ *         from a face-based scheme (values at face center and cell center)
+ *         The reconstruction only deals with the consistent part so that there
+ *         is no distinction betwwen Fb schemes
+ *
+ * \param[in]      c_id     cell id
+ * \param[in]      connect  pointer to a cs_cdo_connect_t structure
+ * \param[in]      quant    pointer to the additional quantities struct.
+ * \param[in]      p_c      pointer to the array of values in cells
+ * \param[in]      p_f      pointer to the array of values on faces
+ * \param[in, out] grd_c    value of the reconstructed gradient at cell center
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_reco_grad_cell_from_fb_dofs(cs_lnum_t                    c_id,
+                               const cs_cdo_connect_t      *connect,
+                               const cs_cdo_quantities_t   *quant,
+                               const cs_real_t             *p_c,
+                               const cs_real_t             *p_f,
+                               cs_real_t                    grd_c[]);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Reconstruct the mean-value of the tensor gradient field with DoFs
+ *         arising from a face-based scheme (vector-valued at face center and
+ *         cell center) The reconstruction only deals with the consistent part
+ *         so that there is no distinction between Fb schemes
+ *
+ * \param[in]      c_id     cell id
+ * \param[in]      connect  pointer to a cs_cdo_connect_t structure
+ * \param[in]      quant    pointer to the additional quantities struct.
+ * \param[in]      u_c      pointer to the array of values in cells
+ * \param[in]      u_f      pointer to the array of values on faces
+ * \param[in, out] grd_c    value of the reconstructed gradient at cell center
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_reco_grad_33_cell_from_fb_dofs(cs_lnum_t                    c_id,
+                                  const cs_cdo_connect_t      *connect,
+                                  const cs_cdo_quantities_t   *quant,
+                                  const cs_real_t             *u_c,
+                                  const cs_real_t             *u_f,
+                                  cs_real_t                    grd_c[]);
 
 /*----------------------------------------------------------------------------*/
 /*!

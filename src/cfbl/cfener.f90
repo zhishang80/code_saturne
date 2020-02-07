@@ -1,7 +1,7 @@
 !-------------------------------------------------------------------------------
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -105,7 +105,7 @@ integer          ifac  , iel
 integer          init  , iii
 integer          ifcvsl, iflmas, iflmab
 integer          icvflb
-integer          nswrgp, imligp, iwarnp
+integer          imrgrp, nswrgp, imligp, iwarnp
 integer          iconvp, idiffp, ndircp
 integer          nswrsp, ircflp, ischcp, isstpp, iescap
 double precision epsrgp, climgp, extrap, blencp, epsilp
@@ -201,9 +201,9 @@ if (ippmod(icompf).eq.2) then
   call field_get_val_s(ivarfl(isca(ifracm)), cvar_fracm)
   call field_get_val_s(ivarfl(isca(ifrace)), cvar_frace)
 else
-  cvar_fracv => null()
-  cvar_fracm => null()
-  cvar_frace => null()
+  cvar_fracv => rvoid1
+  cvar_fracm => rvoid1
+  cvar_frace => rvoid1
 endif
 
 call field_get_key_int(ivarfl(ivar), kimasf, iflmas)
@@ -256,6 +256,9 @@ call ustssc                                                                    &
   icepdc , icetsm , itypsm ,                                                   &
   dt     ,                                                                     &
   ckupdc , smacel , smbrs  , rovsdt )
+
+! C version
+call user_source_terms(ivarfl(isca(iscal)), smbrs, rovsdt)
 
 do iel = 1, ncel
   smbrs(iel) = smbrs(iel) + rovsdt(iel)*cvar_energ(iel)
@@ -444,6 +447,7 @@ if (vcopt_e%idiff.ge. 1) then
   iii = iu
   inc = 1
   iccocg = 1
+  imrgrp = vcopt_u%imrgra
   nswrgp = vcopt_u%nswrgr
   imligp = vcopt_u%imligr
   iwarnp = vcopt_u%iwarni
@@ -465,7 +469,7 @@ if (vcopt_e%idiff.ge. 1) then
   f_id0 = -1
   call gradient_s                                                   &
   !==========
-   ( f_id0  , imrgra , inc    , iccocg , nswrgp , imligp ,          &
+   ( f_id0  , imrgrp , inc    , iccocg , nswrgp , imligp ,          &
      iwarnp , epsrgp , climgp , extrap ,                            &
      w7     , coefap , coefbp ,                                     &
      grad   )
@@ -537,7 +541,7 @@ if (vcopt_e%idiff.ge. 1) then
       cvk = cpk - cs_physical_constants_r/mk
 
       use_previous = 0
-      call field_gradient_scalar(ivarfl(ivarsp), use_previous, imrgra, inc, &
+      call field_gradient_scalar(ivarfl(ivarsp), use_previous, 0, inc, &
                                  iccocg, grad)
 
       do ifac = 1, nfac
@@ -649,7 +653,7 @@ if (vcopt_e%idiff.ge. 1) then
     allocate(grad_dd(nfabor), btemp(nfabor))
 
     use_previous = 0
-    call field_gradient_scalar(ivarfl(isca(itempk)), use_previous, imrgra, inc,&
+    call field_gradient_scalar(ivarfl(isca(itempk)), use_previous, 0, inc,&
                                iccocg, grad)
 
     do ifac = 1, nfabor
@@ -673,7 +677,7 @@ if (vcopt_e%idiff.ge. 1) then
       cvk = cpk - cs_physical_constants_r/mk
 
       use_previous = 0
-      call field_gradient_scalar(ivarfl(ivarsp), use_previous, imrgra, inc, &
+      call field_gradient_scalar(ivarfl(ivarsp), use_previous, 0, inc, &
                                  iccocg, grad)
 
       do ifac = 1, nfabor
@@ -735,6 +739,7 @@ endif
 iconvp = vcopt_e%iconv
 idiffp = vcopt_e%idiff
 ndircp = vcopt_e%ndircl
+imrgrp = vcopt_e%imrgra
 nswrsp = vcopt_e%nswrsm
 nswrgp = vcopt_e%nswrgr
 imligp = vcopt_e%imligr
@@ -769,7 +774,7 @@ call field_get_coefbf_s(ivarfl(ivar), cofbfp)
 call codits                                                      &
 !==========
 ( idtvar , init   , ivarfl(ivar)    , iconvp , idiffp , ndircp , &
-  imrgra , nswrsp , nswrgp , imligp , ircflp ,                   &
+  imrgrp , nswrsp , nswrgp , imligp , ircflp ,                   &
   ischcp , isstpp , iescap , imucpp , idftnp , iswdyp ,          &
   iwarnp , normp  ,                                              &
   blencp , epsilp , epsrsp , epsrgp , climgp , extrap ,          &

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -58,10 +58,10 @@ from code_saturne.Base.QtWidgets import *
 # Application modules
 #-------------------------------------------------------------------------------
 
-import cs_info
-from cs_exec_environment import \
+from code_saturne import cs_info
+from code_saturne.cs_exec_environment import \
     separate_args, update_command_single_value, assemble_args, enquote_arg
-import cs_runcase
+from code_saturne import cs_runcase
 
 try:
     from code_saturne.trackcvg.MainForm import Ui_MainForm
@@ -69,13 +69,8 @@ except:
     sys.path.insert(1, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Base"))
     from code_saturne.trackcvg.MainForm import Ui_MainForm
 
-try:
-    import code_saturne.trackcvg
-except:
-    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from code_saturne.Base.QtPage import getexistingdirectory
-from code_saturne.Base.QtPage import DoubleValidator, from_qvariant
+from code_saturne.Base.QtPage import DoubleValidator, from_qvariant, to_text_string
 
 import numpy
 import matplotlib
@@ -568,7 +563,7 @@ class MainView(object):
         icon = QIcon(QPixmap(iconpath))
         self.setWindowIcon(icon)
 
-        self.setWindowTitle(self.package.code_name + " TRACKING CONVERGENCE" + " - " + self.package.version)
+        self.setWindowTitle(self.package.code_name + " convergence plot" + " - " + self.package.version)
 
         # Validator
         validator = DoubleValidator(self.lineEditTime, min=0.0)
@@ -840,8 +835,6 @@ class MainView(object):
             if self.palette_default:
                 app.setPalette(self.palette_default)
             if self.font_default:
-                print(self.font_default)
-                print(self.font())
                 self.setFont(self.font_default)
                 app.setFont(self.font_default)
             settings = QSettings()

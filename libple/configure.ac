@@ -4,7 +4,7 @@
 # This file is part of the "Parallel Location and Exchange" library,
 # intended to provide mesh or particle-based code coupling services.
 #
-# Copyright (C) 2005-2019 EDF S.A.
+# Copyright (C) 2005-2020 EDF S.A.
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
@@ -30,7 +30,7 @@ m4_define([ple_licence_c_comment],
   This file is part of the "Parallel Location and Exchange" library,
   intended to provide mesh or particle-based code coupling services.
 
-  Copyright (C) 2005-2019  EDF
+  Copyright (C) 2005-2020  EDF
 
   This library is free software; you can redistribute it and/or
   modify it under the terms of the GNU Lesser General Public
@@ -202,19 +202,12 @@ AC_ARG_ENABLE(python,
 )
 
 if test "${python_bindings}" = "yes" ; then
-
-  AX_PKG_SWIG(1.3.21) # check swig version
-  AX_SWIG_PYTHON
   AM_PATH_PYTHON(2.6)
   AX_PYTHON_DEVEL([>='2.6'])
-  AX_PYTHON_MODULE(mpi4py)
-
+  PLE_AC_TEST_MPI4PY
 fi
 
 AM_CONDITIONAL(HAVE_MPI4PY, [test "${HAVE_PYMOD_MPI4PY}" = yes])
-AM_CONDITIONAL(HAVE_SWIG, [test "${SWIG}" != ""])
-
-AC_ARG_VAR([SWIG_PYTHON_FLAGS], [Additional flags for SWIG (usually -I<path>)])
 
 if test "${python_bindings}" = "yes" ; then
 
@@ -222,13 +215,6 @@ if test "${python_bindings}" = "yes" ; then
     AC_DEFINE([HAVE_MPI4PY], 1, [mpi4py module])
   else
     # AC_MSG_WARN(mpi4py MPI Python bindings not found])
-    python_bindings=no
-  fi
-
-  if test "${SWIG}" != ""; then
-    AC_DEFINE([HAVE_SWIG], 1, [swig presence])
-  else
-    # AC_MSG_WARN(SWIG not found])
     python_bindings=no
   fi
 
@@ -302,7 +288,7 @@ fi
 # take effect whether the result is true or not (maybe due to a bug),
 # so we directly use autoconf's enable_shared variable.
 
-if test "$host_os" = mingw32 ; then
+if test "$host_os" = mingw64 ; then
    enable_shared=no
 fi
 AC_SUBST(enable_shared)

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -108,6 +108,7 @@ class Dico:
         self.data['batch']            = None
         self.data['no_boundary_conditions'] = False
         self.data['salome']           = False
+        self.data['module']           = None
         self.data['package']          = None
         self.data['current_page']     = ""
         self.data['current_index']    = None
@@ -307,8 +308,6 @@ class XMLElement:
         Set attributes to a XMLElement node, only if these attributes
         do not already exist.
         """
-        if self.ca: self.ca.modified()
-
         for attr, value in list(kwargs.items()):
             if not self.el.hasAttribute(attr):
                 self.el.setAttribute(attr, _encode(str(value)))
@@ -331,30 +330,30 @@ class XMLElement:
         return d
 
 
-    def xmlGetAttribute(self, attr):
+    def xmlGetAttribute(self, attr, default=None):
         """
         Return the value of the XMLElement node attribute.
-        Crash if the searched attribute does not exist.
+        Crash if the searched attribute does not exist and no default is provided.
         """
         if not self.el.hasAttribute(attr):
-            node = self.__str__()
-            attr = attr.encode(sys.stdout.encoding,'replace')
-            msg = "There is an error in with the elementNode: \n\n" \
-                  + node + "\n\nand the searching attribute: \n\n" \
-                  + attr + "\n\nThe application will finish."
-            self.__errorExit(msg)
+            if default == None:
+                node = self.__str__()
+                attr = attr.encode(sys.stdout.encoding,'replace')
+                msg = "ElementNode: \n\n" \
+                      + node + "\n\nis missing attribute: \n\n" \
+                      + attr + "\n\nThe application will finish."
+                self.__errorExit(msg)
+            return default
+
         else:
             a = self.el.getAttributeNode(attr)
-
-        return _encode(a.value)
+            return _encode(a.value)
 
 
     def xmlSetAttribute(self, **kwargs):
         """
         Set several attribute (key=value) to a node
         """
-        if self.ca: self.ca.modified()
-
         for attr, value in list(kwargs.items()):
             self.el.setAttribute(attr, _encode(str(value)))
 
@@ -365,8 +364,6 @@ class XMLElement:
         """
         Delete the XMLElement node attribute
         """
-        if self.ca: self.ca.modified()
-
         if self.el.hasAttribute(attr):
             self.el.removeAttribute(attr)
 
@@ -390,7 +387,6 @@ class XMLElement:
         Set a XMLElement attribute an its value
         with a dictionary syntax: node['attr'] = value
         """
-        if self.ca: self.ca.modified()
         self.el.setAttribute(attr, _encode(str(value)))
 
         log.debug("__setitem__-> %s" % self.__xmlLog())
@@ -400,7 +396,6 @@ class XMLElement:
         """
         Delete a XMLElement attribute with a dictionary syntax: del node['attr']
         """
-        if self.ca: self.ca.modified()
         self.xmlDelAttribute(name)
 
         #log.debug("__delitem__-> %s" % self.__xmlLog())
@@ -590,7 +585,6 @@ class XMLElement:
         Add a new XMLElement node as a child of the current
         XMLElement node (i.e. self), with attributes and value.
         """
-        if self.ca: self.ca.modified()
 
         el = self.doc.createElement(tag)
         for k in attrList:
@@ -635,8 +629,6 @@ class XMLElement:
         If the elementNode 'node' has no TEXT_NODE as childNodes,
         it will be created.
         """
-        if self.ca: self.ca.modified()
-
         if newTextNode == "" or newTextNode == None : return
 
         if type(newTextNode) != str: newTextNode = str(newTextNode)
@@ -863,7 +855,6 @@ class XMLElement:
         """
         Create a comment XMLElement node.
         """
-        if self.ca: self.ca.modified()
         elt = self._inst( self.el.appendChild(self.doc.createComment(data)) )
         log.debug("xmlAddComment-> %s" % self.__xmlLog())
         return elt
@@ -1030,8 +1021,6 @@ class XMLElement:
         Copy all childsNode of oldNode to the node newNode.
         'deep' is the childs and little-childs level of the copy.
         """
-        if self.ca: self.ca.modified()
-
         if oldNode.el.hasChildNodes():
             for n in oldNode.el.childNodes:
                 self._inst(self.el.appendChild(n.cloneNode(deep)))
@@ -1043,7 +1032,6 @@ class XMLElement:
         """
         Destroy a single node.
         """
-        if self.ca: self.ca.modified()
         oldChild = self.el.parentNode.removeChild(self.el)
         oldChild.unlink()
 
@@ -1057,6 +1045,18 @@ class XMLElement:
             self._inst(node).xmlRemoveNode()
 
         log.debug("xmlRemoveChild-> %s %s" % (tag, self.__xmlLog()))
+
+
+    def xmlRemoveChildren(self):
+        """
+        Remove all chldren.
+        Each element of the returned list is an instance of the XMLElement
+        class.
+        """
+        childNodeList = []
+        while self.el.hasChildNodes():
+            oldChild = self.el.removeChild(self.el.firstChild)
+            oldChild.unlink()
 
 
     def xmlNormalizeWhitespace(self, text):
@@ -1180,16 +1180,14 @@ class XMLDocument(XMLElement):
         if isinstance(node, XMLElement):
             node = node.el
 
-        if 'formula' not in node.tagName or 'dirichlet_formula' in node.tagName:
-            for n in node.childNodes:
-                if n.nodeType == Node.TEXT_NODE:
+        for n in node.childNodes:
+            if n.nodeType == Node.TEXT_NODE:
+                if node.tagName[-7:] != 'formula':
                     n.data = self.xmlNormalizeWhitespace(n.data)
-        else:
-            for n in node.childNodes:
-                if n.nodeType == Node.TEXT_NODE:
-                    while n.data[0] in (" ", "\n", "\t"):
+                else:
+                    while n.data[:1] in (" ", "\n", "\t"):
                         n.data = n.data[1:]
-                    while n.data[-1] in (" ", "\n", "\t"):
+                    while n.data[-1:] in (" ", "\n", "\t"):
                         n.data = n.data[:-1]
 
         node.normalize()
@@ -1238,7 +1236,11 @@ class XMLDocument(XMLElement):
 
 class Case(Dico, XMLDocument):
 
-    def __init__(self, package=None, file_name="", studymanager=False):
+    def __init__(self,
+                 package=None,
+                 file_name="",
+                 module=None,
+                 studymanager=False):
         """
         Instantiate a new dico and a new xml doc
         """
@@ -1247,10 +1249,20 @@ class Case(Dico, XMLDocument):
 
         if package:
             self['package'] = package
-            rootNode = '<' + self['package'].code_name +'_GUI study="" case="" version="2.0"/>'
         else:
-            rootNode = '<' + '_GUI study="" case="" version="2.0"/>'
+            from code_saturne import cs_package
+            self['package'] = cs_package.package()
 
+        code_name = ''
+        if module:
+            if module == 'code_saturne':
+                code_name = 'Code_Saturne'
+            elif module == 'neptune_cfd':
+                code_name = 'NEPTUNE_CFD'
+        if package and not code_name:
+            code_name = package.code_name
+
+        rootNode = '<' + code_name +'_GUI study="" case="" version="2.0"/>'
         if studymanager:
             rootNode = '<studymanager/>'
 
@@ -1269,19 +1281,20 @@ class Case(Dico, XMLDocument):
         self.xml_saved = self.toString()
 
 
+    def module_name(self):
+        # Specific module
+        if (self.doc.documentElement.tagName == "NEPTUNE_CFD_GUI"):
+            return 'neptune_cfd'
+
+        # General case
+        return 'code_saturne'
+
     def xmlRootNode(self):
         """
         This function return the only one root element of the document
         (higher level of ELEMENT_NODE).
         """
         return self.doc.documentElement
-
-
-    def modified(self):
-        """
-        Return if the xml doc is modified.
-        """
-        self['saved'] = "no"
 
 
     def isModified(self):
@@ -1471,12 +1484,9 @@ class Case(Dico, XMLDocument):
             file.write('sys.path.insert(0, "' + self['package'].dirs['pythondir'][1] + '")\n')
             file.write('sys.path.insert(0, "' + os.path.join(self['package'].dirs['pythondir'][1], self['package'].name) + '")\n\n')
 
-            if self['package'].code_name == 'Code_Saturne':
-                file.write('import cs_package\n')
+            if self.module_name() == 'code_saturne':
                 file.write('from model.XMLinitialize import XMLinit\n')
-            else:
-                file.write('sys.path.insert(0, "' + os.path.join(self['package'].dirs['pythondir'][1], "code_saturne") + '")\n\n')
-                file.write('import nc_package\n')
+            elif self.module_name() == 'neptune_cfd':
                 file.write('from model.XMLinitializeNeptune import XMLinit\n')
             file.write('from model.XMLengine import Case\n\n')
 
@@ -1486,10 +1496,7 @@ class Case(Dico, XMLDocument):
                 name = os.path.splitext(self['pythonfile'])[0] + ".xml"
                 file.write("fp = '" + name + "'\n")
 
-            if self['package'].code_name == 'Code_Saturne':
-                file.write("case = Case(package = cs_package.package())\n")
-            else:
-                file.write("case = Case(package = nc_package.package())\n")
+            file.write("case = Case(module=" + self.module_name + ")\n")
             file.write("case['xmlfile'] = fp\n")
             file.write("case.xmlCleanAllBlank(case.xmlRootNode())\n")
             file.write("XMLinit(case).initialize()\n")

@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -317,7 +317,7 @@ cs_f_boundary_conditions_get_pointers(int **itypfb,
  * \brief Handling of boundary condition definition errors and
  *        associated output.
  *
- * This function checks for errors, and simply returns if no errors are
+ * This function checks for errors, and simply returns if no error is
  * encountered. In case of error, it outputs helpful information so as to
  * make it easier to locate the matching faces.
  *
@@ -346,7 +346,7 @@ cs_boundary_conditions_error(const int       *bc_flag,
     _type_name = type_name;
 
   /* Check for faces with problems;
-     bc_flag[] used to determine if we have an error */
+     bc_flag[] used to determine if there is an error */
 
   int have_errors
     = cs_flag_check(_("face with boundary condition definition error"),
@@ -361,8 +361,8 @@ cs_boundary_conditions_error(const int       *bc_flag,
   if (have_errors)
     bft_error
       (__FILE__, __LINE__, 0,
-       _("\nSome boundary condition definitions are incomplete or incorrect.\n\n"
-         "  For details, read the end of the calculation log,\n"
+       _("\nSome boundary condition definitions are incomplete or incorrect.\n"
+         "\n  For details, read the end of the calculation log,\n"
          "  or visualize the error postprocessing output."));
 }
 
@@ -755,14 +755,11 @@ cs_boundary_conditions_create(void)
   /* boundary conditions zone by boundary face */
   /* only for specific physics */
 
-  if (   cs_glob_physical_model_flag[CS_PHYSICAL_MODEL_FLAG] > 0
-      || cs_gui_file_is_loaded()) {
-    BFT_MALLOC(_bc_face_zone, n_b_faces, int);
-    for (cs_lnum_t ii = 0 ; ii < n_b_faces ; ii++) {
-      _bc_face_zone[ii] = 0;
-    }
-    cs_glob_bc_face_zone = _bc_face_zone;
+  BFT_MALLOC(_bc_face_zone, n_b_faces, int);
+  for (cs_lnum_t ii = 0 ; ii < n_b_faces ; ii++) {
+    _bc_face_zone[ii] = 0;
   }
+  cs_glob_bc_face_zone = _bc_face_zone;
 }
 
 /*----------------------------------------------------------------------------
@@ -773,11 +770,7 @@ void
 cs_boundary_conditions_free(void)
 {
   BFT_FREE(_bc_type);
-
-  if (   cs_glob_physical_model_flag[CS_PHYSICAL_MODEL_FLAG] > 0
-      || cs_gui_file_is_loaded()) {
-    BFT_FREE(_bc_face_zone);
-  }
+  BFT_FREE(_bc_face_zone);
 }
 
 /*----------------------------------------------------------------------------*/

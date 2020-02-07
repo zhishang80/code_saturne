@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -217,21 +217,23 @@ static cs_field_key_val_t  *_key_vals = NULL;
 
 /* Names for logging */
 
-static const int _n_type_flags = 6;
+static const int _n_type_flags = 8;
 static const int _type_flag_mask[] = {CS_FIELD_INTENSIVE,
                                       CS_FIELD_EXTENSIVE,
                                       CS_FIELD_VARIABLE,
                                       CS_FIELD_PROPERTY,
                                       CS_FIELD_POSTPROCESS,
                                       CS_FIELD_ACCUMULATOR,
-                                      CS_FIELD_USER};
+                                      CS_FIELD_USER,
+                                      CS_FIELD_CDO};
 static const char *_type_flag_name[] = {N_("intensive"),
                                         N_("extensive"),
                                         N_("variable"),
                                         N_("property"),
                                         N_("postprocess"),
                                         N_("accumulator"),
-                                        N_("user")};
+                                        N_("user"),
+                                        N_("CDO")};
 
 /*============================================================================
  * Global variables
@@ -534,7 +536,6 @@ _add_val(cs_lnum_t   n_elts,
          int         dim,
          cs_real_t  *val_old)
 {
-  cs_lnum_t  ii;
   cs_real_t  *val = val_old;
 
   BFT_REALLOC(val, n_elts*dim, cs_real_t);
@@ -544,19 +545,10 @@ _add_val(cs_lnum_t   n_elts,
      first be touched by the same core that will later operate on
      this memory, usually leading to better core/memory affinity. */
 
-  if (dim == 1) {
-#   pragma omp parallel for
-    for (ii = 0; ii < n_elts; ii++)
-      val[ii] = 0.0;
-  }
-  else {
-    cs_lnum_t jj;
-#   pragma omp parallel for private(jj)
-    for (ii = 0; ii < n_elts; ii++) {
-      for (jj = 0; jj < dim; jj++)
-        val[ii*dim + jj] = 0.0;
-    }
-  }
+  const cs_lnum_t _n_elts = dim * n_elts;
+# pragma omp parallel for if (_n_elts > CS_THR_MIN)
+  for (cs_lnum_t ii = 0; ii < _n_elts; ii++)
+    val[ii] = 0.0;
 
   return val;
 }
@@ -707,6 +699,9 @@ static int
 _check_key(const cs_field_t  *f,
            int                key_id)
 {
+  if (f == NULL)
+    return CS_FIELD_INVALID_FIELD;
+
   int errcode = CS_FIELD_OK;
 
   assert(f->id >= 0 && f->id < _n_fields);
@@ -1650,6 +1645,8 @@ cs_field_set_n_time_vals(cs_field_t  *f,
                          int          n_time_vals)
 {
   assert(f != NULL);
+  if (f == NULL)
+    return;
 
   int _n_time_vals = n_time_vals;
 
@@ -1741,6 +1738,8 @@ cs_field_map_values(cs_field_t   *f,
                     cs_real_t    *val_pre)
 {
   assert(f != NULL);
+  if (f == NULL)
+    return;
 
   if (f->is_owner) {
     BFT_FREE(f->val);
@@ -2135,11 +2134,13 @@ cs_field_set_values(cs_field_t  *f,
                     cs_real_t    c)
 {
   assert(f != NULL);
+  if (f == NULL)
+    return;
 
   const cs_lnum_t *n_elts = cs_mesh_location_get_n_elts(f->location_id);
   const cs_lnum_t _n_vals = n_elts[2]*f->dim;
 
-# pragma omp parallel for
+# pragma omp parallel for if (_n_vals > CS_THR_MIN)
   for (cs_lnum_t ii = 0; ii < _n_vals; ii++)
     f->val[ii] = c;
 }
@@ -2163,11 +2164,11 @@ cs_field_current_to_previous(cs_field_t  *f)
   if (f->n_time_vals > 1) {
 
     const cs_lnum_t *n_elts = cs_mesh_location_get_n_elts(f->location_id);
+    const cs_lnum_t _n_elts = n_elts[2];
 
-#   pragma omp parallel
+#   pragma omp parallel if (_n_elts > CS_THR_MIN)
     {
       const int dim = f->dim;
-      const cs_lnum_t _n_elts = n_elts[2];
 
       if (f->is_owner) {
         if (dim == 1) {
@@ -2888,6 +2889,9 @@ cs_field_lock_key(cs_field_t  *f,
 {
   int retval = CS_FIELD_OK;
 
+  if (f == NULL)
+    return CS_FIELD_INVALID_FIELD;
+
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1) {
@@ -2931,6 +2935,8 @@ cs_field_set_key_int(cs_field_t  *f,
 {
   int retval = CS_FIELD_OK;
 
+  if (f == NULL)
+    return CS_FIELD_INVALID_FIELD;
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1) {
@@ -2976,6 +2982,8 @@ cs_field_get_key_int(const cs_field_t  *f,
 {
   int errcode = CS_FIELD_OK;
 
+  if (f == NULL)
+    return CS_FIELD_INVALID_FIELD;
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1 && key_id < _n_keys) {
@@ -3018,7 +3026,7 @@ cs_field_get_key_int(const cs_field_t  *f,
                 key_id);
   }
 
-  return 0;
+  return CS_FIELD_OK;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -3107,6 +3115,8 @@ cs_field_set_key_double(cs_field_t  *f,
 {
   int retval = CS_FIELD_OK;
 
+  if (f == NULL)
+    return CS_FIELD_INVALID_FIELD;
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1) {
@@ -3152,6 +3162,9 @@ cs_field_get_key_double(const cs_field_t  *f,
 {
   int errcode = CS_FIELD_OK;
 
+  if (f == NULL)
+    bft_error(__FILE__, __LINE__, 0,
+              "%s: Field is not defined.", __func__);
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1 && key_id < _n_keys) {
@@ -3220,6 +3233,8 @@ cs_field_set_key_str(cs_field_t  *f,
 {
   int retval = CS_FIELD_OK;
 
+  if (f == NULL)
+    return CS_FIELD_INVALID_FIELD;
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1) {
@@ -3269,6 +3284,8 @@ cs_field_get_key_str(const cs_field_t  *f,
 {
   int errcode = CS_FIELD_OK;
 
+  if (f == NULL)
+    return NULL;
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1 && key_id < _n_keys) {
@@ -3337,6 +3354,8 @@ cs_field_set_key_struct(cs_field_t  *f,
 {
   int retval = CS_FIELD_OK;
 
+  if (f == NULL)
+    return CS_FIELD_INVALID_FIELD;
   assert(f->id >= 0 && f->id < _n_fields);
 
   if (key_id > -1) {
@@ -3385,9 +3404,11 @@ cs_field_get_key_struct(const cs_field_t  *f,
                         const int          key_id,
                         void              *s)
 {
-  int errcode = CS_FIELD_OK;
-
+  if (f == NULL)
+    return NULL;
   assert(f->id >= 0 && f->id < _n_fields);
+
+  int errcode = CS_FIELD_OK;
 
   if (key_id > -1 && key_id < _n_keys) {
     cs_field_key_def_t *kd = _key_defs + key_id;
@@ -3455,9 +3476,11 @@ void *
 cs_field_get_key_struct_ptr(cs_field_t  *f,
                             int          key_id)
 {
-  int errcode = CS_FIELD_OK;
-
+  if (f == NULL)
+    return NULL;
   assert(f->id >= 0 && f->id < _n_fields);
+
+  int errcode = CS_FIELD_OK;
 
   if (key_id > -1) {
     cs_field_key_def_t *kd = _key_defs + key_id;
@@ -3531,9 +3554,11 @@ const void *
 cs_field_get_key_struct_const_ptr(const cs_field_t  *f,
                                   int                key_id)
 {
-  int errcode = CS_FIELD_OK;
-
+  if (f == NULL)
+    return NULL;
   assert(f->id >= 0 && f->id < _n_fields);
+
+  int errcode = CS_FIELD_OK;
 
   if (key_id > -1 && key_id < _n_keys) {
     cs_field_key_def_t *kd = _key_defs + key_id;
@@ -3592,7 +3617,7 @@ cs_field_log_defs(void)
   int n_cat_fields = 0;
 
   int mask_id_start = 2; /* _type_flag_*[CS_FIELD_VARIABLE] */
-  int mask_id_end = 6;   /* _type_flag_*[CS_FIELD_USER] */
+  int mask_id_end = 7;   /* _type_flag_*[CS_FIELD_CDO] */
   int mask_prev = 0;
 
   if (_n_fields == 0)

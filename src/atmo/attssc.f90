@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -51,6 +51,7 @@ use period
 use mesh
 use atincl
 use field
+use radiat
 use cs_c_bindings
 
 !===============================================================================
@@ -105,9 +106,10 @@ call field_get_val_s(icrom, crom)
 
 !===============================================================================
 ! 2. Taking into acount radiative forcing for the 1d radiative module
+!    (if the 3D module is not activated)
 !===============================================================================
 
-if (ippmod(iatmos).ge.1.and.iatra1.ge.1) then
+if (ippmod(iatmos).ge.1.and.iatra1.ge.1.and.iirayo.eq.0) then
 
   call field_get_val_s(ivarfl(isca(iscalt)), cvar_pottemp)
   call field_get_val_s(itempc, cpro_tempc)
@@ -120,16 +122,28 @@ if (ippmod(iatmos).ge.1.and.iatra1.ge.1) then
     allocate(ray3Dst(ncel))
 
     ! Call the 1D radiative model
-    ! Compute the divergence of the ir and solar radiative fluxes :
+    ! Compute the divergence of the ir and solar radiative fluxes:
+    call atr1vf
 
     ! Cressman interpolation of the 1D radiative fluxes on the 3D mesh:
-    call atr1vf()
-
     ! Infra red
     call mscrss(idrayi, 1, ray3Di)
 
     ! Sun
     call mscrss(idrayst, 1, ray3Dst)
+
+    ! Store radiative fluxes for droplet nucleation model
+    ! FIXME if temperature not the first specific physics scalar
+    if (ippmod(iatmos).eq.2.and.modsedi.eq.1) then ! for humid atmo. physics only
+      if (.not.r3_is_defined) then
+        if (modnuc.gt.0)then
+          allocate(refrad(ncel))
+          do iel = 1, ncel
+            refrad(iel) = (-ray3Di(iel)  + ray3Dst(iel))
+          enddo
+        endif
+      endif
+    endif
 
     ! Explicit source term for the thermal scalar equation:
 
@@ -165,7 +179,7 @@ if (ippmod(iatmos).eq.2.and.modsedi.eq.1) then ! for humid atmo. physics only
   enddo
   if (irangp.ge.0) call parmax(qliqmax)
 
-  if(qliqmax.gt.1e-8)then
+  if (qliqmax.gt.1d-8) then
 
     if (.not.r3_is_defined)then
 
@@ -194,11 +208,6 @@ if (ippmod(iatmos).eq.2.and.modsedi.eq.1) then ! for humid atmo. physics only
           enddo
         endif
 
-        allocate(refrad(ncelet))
-        do iel = 1, ncel
-          refrad(iel) = 0.d0
-        enddo
-
         call nuclea (                                                 &
              cvar_ntdrp,                                              &
              vel,                                                     &
@@ -212,7 +221,7 @@ if (ippmod(iatmos).eq.2.and.modsedi.eq.1) then ! for humid atmo. physics only
       endif ! (modnuc.gt.0)
 
       allocate(r3(ncelet))
-      call define_r3()
+      call define_r3
       r3_is_defined = .true.
 
       allocate(grad1(3,ncelet), grad2(3,ncelet))
@@ -238,11 +247,10 @@ if (ippmod(iatmos).eq.2.and.modsedi.eq.1) then ! for humid atmo. physics only
       enddo
       treated_scalars = treated_scalars + 1
 
-    elseif (ivar.eq.isca(itotwt)) then
+    elseif (ivar.eq.isca(iymw)) then
 
       do iel = 1, ncel
-        crvexp(iel) = crvexp(iel) - cell_f_vol(iel)*grad1(3,iel)          &
-                    / crom(iel)
+        crvexp(iel) = crvexp(iel) - cell_f_vol(iel)*grad1(3,iel) / crom(iel)
       enddo
 
       treated_scalars = treated_scalars + 1
@@ -303,7 +311,10 @@ contains
 
     double precision rho_water
     parameter (rho_water=1.d+3) ! FIXME should be defined somewhere else
-
+    double precision a_const
+    parameter (a_const=0.620350490899d0 ) ! (3/4*PI)**(1/3)
+    double precision conversion
+    parameter (conversion=1d+6)! passing from 1/cm**3 to 1/m**3
     !===========================================================================
 
     r3max = 0.d0
@@ -311,9 +322,11 @@ contains
       rho = crom(iel)
       qliq = cpro_liqwt(iel)
       nc = cvar_ntdrp(iel)
-      if(qliq.ge.1e-8)then
+      if(qliq.ge.1d-8)then
         nc = max(nc,1.d0)
-        r3(iel) = ((rho*qliq)/(rho_water*nc*1.d6)*0.75d0*pi)**(1.d0/3.d0)
+        ! FIXME a_const does not have to be hardcoded
+        r3(iel) = ((rho*qliq)/(rho_water*nc*conversion))**(1.d0/3.d0)
+        r3(iel) = r3(iel)*a_const
       else
         r3(iel) = 0.d0
       endif
@@ -379,11 +392,12 @@ contains
 
     double precision climgp, epsrgp, extrap, depo
 
-    integer    iccocg, ii, iifld, imligp, inc, iwarnp, nswrgp, ifac, iel
+    integer    iccocg, ii, iifld, imligp, inc, iwarnp, imrgrp, nswrgp, ifac, iel
     double precision, dimension(:), allocatable :: local_coefa, local_coefb
     double precision, dimension(:), allocatable :: local_field, sed_vel
     double precision, dimension(:), allocatable :: pres, temp
 
+    double precision, dimension(:), pointer :: rugd
     double precision, dimension(:), pointer :: bcfnns, ustar, cvar_temp, rugt
 
     type(var_cal_opt) :: vcopt
@@ -432,13 +446,14 @@ contains
 
       call field_get_val_s_by_name('non_neutral_scalar_correction', bcfnns)
       call field_get_val_s_by_name('ustar', ustar)
+      call field_get_val_s_by_name('boundary_roughness', rugd)
       call field_get_val_s_by_name('boundary_thermal_roughness', rugt)
 
       do ifac = 1, nfabor
         if (itypfb(ifac).eq.iparug) then
           iel  = ifabor(ifac)
           if (r3(iel).gt.0.d0) then
-            if (rugt(ifac).gt.0.d0) then
+            if (rugd(ifac).gt.0.d0) then
               call deposition_vel(temp(iel), crom(iel), pres(iel),         &
                                   bcfnns(ifac), ustar(ifac), rugt(ifac),   &
                                   r3(iel), sed_vel(iel), depo)
@@ -456,7 +471,8 @@ contains
     iccocg = 1
     inc = 1
     iifld = -1
-    call field_get_key_struct_var_cal_opt(ivarfl(isca(itotwt)), vcopt)
+    call field_get_key_struct_var_cal_opt(ivarfl(isca(iymw)), vcopt)
+    imrgrp = vcopt%imrgra
     nswrgp = vcopt%nswrgr
     epsrgp = vcopt%epsrgr
     imligp = vcopt%imligr
@@ -486,7 +502,7 @@ contains
     enddo
 
     call gradient_s                                                 &
-   ( iifld  , imrgra , inc    , iccocg , nswrgp ,imligp,            &
+   ( iifld  , imrgrp , inc    , iccocg , nswrgp ,imligp,            &
      iwarnp , epsrgp , climgp , extrap ,                            &
      local_field     , local_coefa , local_coefb ,                  &
      grad1   )
@@ -501,7 +517,7 @@ contains
     enddo
 
     call gradient_s                                                 &
-   ( iifld  , imrgra , inc    , iccocg , nswrgp ,imligp,            &
+   ( iifld  , imrgrp , inc    , iccocg , nswrgp ,imligp,            &
      iwarnp , epsrgp , climgp , extrap ,                            &
      local_field     , local_coefa , local_coefb ,                  &
      grad2   )

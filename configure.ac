@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -30,7 +30,7 @@ m4_define([cs_licence_c_comment],
 [/*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -85,7 +85,7 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES])
 
 AC_ARG_WITH(shell-env,
             [AS_HELP_STRING([--with-shell-env],
-                            [source given or detected shell environment)])],
+                            [source given or detected shell environment])],
             [if test "x$with_shell_env" = "x"; then
                shell_env=auto
              elif test -f "$with_shell_env"; then
@@ -324,7 +324,7 @@ fi
 # take effect whether the result is true or not (maybe due to a bug),
 # so we directly use autoconf's enable_shared variable.
 
-if test "$host_os" = mingw32 ; then
+if test "$host_os" = mingw64 ; then
    enable_shared=no
 fi
 AC_SUBST(enable_shared)
@@ -344,7 +344,7 @@ LT_INIT([disable-static, win32-dll])
 cs_special_user_link=
 if test "x$enable_shared" = "xno" ; then
   case "$host_os" in
-    linux* | *bsd* | cnk* | mingw32 | cygwin* )
+    linux* | *bsd* | cnk* | mingw64 | cygwin* )
       if test "x$auto_flags" = "xyes" ; then
         LDFLAGS="${LDFLAGS} -Wl,--allow-multiple-definition"
       fi
@@ -561,7 +561,7 @@ AM_PATH_PYTHON(["2.6"])
 # as it is on Unix systems (whichever is chosen, Python modules will be
 # frozen by cx_freeze for Windows packaging).
 # So, we choose to override some Python paths.
-if test "$host_os" = mingw32 ; then
+if test "$host_os" = mingw64 ; then
 
   AC_MSG_NOTICE([Overriding Python paths on MinGW hosts])
 
@@ -580,7 +580,7 @@ if test "$host_os" = mingw32 ; then
 fi
 
 win_prefix=""
-if test "$host_os" = mingw32 ; then
+if test "$host_os" = mingw64 ; then
   win_prefix=`cygpath --path --windows "${prefix}"`
   AC_SUBST(win_prefix, [${win_prefix}])
 fi
@@ -645,7 +645,11 @@ if test "x$cs_have_dlloader" = "xyes" ; then
 
 fi
 
-# Use long global numbers ?
+# Use RTLD_GLOBAL for dlopen ?
+
+# Note setting enable_dlopen_rtld_global in the last statement is not
+# useful on modern systems but avoids error due to empty else on Centos 6...
+
 AC_ARG_ENABLE(dlopen-rtld-global,
   [AS_HELP_STRING([--enable-dlopen-rtld-global], [add RTLD_GLOBAL to dlopen flags])],
   [
@@ -656,7 +660,7 @@ AC_ARG_ENABLE(dlopen-rtld-global,
       *)   AC_MSG_ERROR([bad value ${enableval} for --enable-dlopen-rtld-global]) ;;
     esac
   ],
-  [ ]
+  [ enable_dlopen_rtld_global=no ]
 )
 
 #------------------------------------------------------------------------------
@@ -670,7 +674,10 @@ if test "x$cs_have_internal_ple" = xyes; then
   AC_CONFIG_SUBDIRS([libple])
 fi
 
-CS_AC_TEST_SALOME
+AM_CONDITIONAL(HAVE_SALOME, test x$with_salome != xno)
+if test "x$with_salome" != xno; then
+  AC_CONFIG_SUBDIRS([salome])
+fi
 
 CS_AC_TEST_BLAS([$cs_have_openmp])
 CS_AC_TEST_MPI
@@ -875,8 +882,8 @@ sys.stdout.write(path)]"
   # To bypass this issue, we launch pyuic4 through cmd.exe
   # with a "standard" PATH.
   # pyrcc4 does not need this trick as it is a standard executable.
-  if test "$host_os" = mingw32 ; then
-    if test "$build_os" = mingw32 ; then
+  if test "$host_os" = mingw64 ; then
+    if test "$build_os" = mingw64 ; then
       CMDPYUIC4="cmd //C $PYPATH/Lib/site-packages/PyQt4/pyuic4"
     elif test "$build_os" = cygwin ; then
       CMDPYUIC4="cmd /C $PYPATH/Lib/site-packages/PyQt4/pyuic4"
@@ -890,19 +897,9 @@ sys.stdout.write(path)]"
     AC_PATH_PROG([PYRCC4], [pyrcc4], [],           [${PYPATH}:$PATH])
   fi
 
-  if test "x$LRELEASE" = "x" ; then
-    AC_PATH_PROGS([LRELEASE], [lrelease-qt4 lrelease])
-  fi
-
-  # lrelease only used for CFDSTUDY, so not an issue in most cases if missing
-
   if test "x$PYUIC4" = "x" -o "x$PYRCC4" = "x" ; then
     AC_MSG_FAILURE([cannot find PyQt4 dev tools, Graphical User Interface cannot be installed])
     cs_have_gui=no
-  fi
-
-  if test "x$LRELEASE" = "x" -a "$cs_have_salome_gui" =  "yes" ; then
-    AC_MSG_ERROR([cannot find lrelease, required for CFDSTUDY (Salome) GUI])
   fi
 
 fi
@@ -928,19 +925,6 @@ sys.stdout.write(path)]"
   AC_ARG_VAR([PYRCC5], [PyQt5 resources compiler])
   AC_ARG_VAR([LRELEASE], [Qt message files generator])
 
-  ## On MinGW (MSYS) or Cygwin (BASH) build systems, and for MinGW hosts,
-  ## pyuic5 is a batch file and cannot be run from the shell.
-  ## To bypass this issue, we launch pyuic5 through cmd.exe
-  ## with a "standard" PATH.
-  ## pyrcc5 does not need this trick as it is a standard executable.
-  #if test "$host_os" = mingw32 ; then
-  #  if test "$build_os" = mingw32 ; then
-  #    CMDPYUIC4="cmd //C $PYPATH/Lib/site-packages/PyQt4/pyuic4"
-  #  elif test "$build_os" = cygwin ; then
-  #    CMDPYUIC4="cmd /C $PYPATH/Lib/site-packages/PyQt4/pyuic4"
-  #  fi
-  #fi
-
   if test "x$PYUIC5" = "x" ; then
     AC_PATH_PROG([PYUIC5], [pyuic5], [$CMDPYUIC5], [${PYPATH}:$PATH])
   fi
@@ -952,7 +936,8 @@ sys.stdout.write(path)]"
     AC_PATH_PROGS([LRELEASE], [lrelease-qt5 lrelease])
   fi
 
-  # lrelease not currently used, so not an issue if missing
+  # lrelease not currently used (except in SALOME CFD extension, with a separate
+  # configure, so not an issue here
 
   if test "x$PYUIC5" = "x" -o "x$PYRCC5" = "x" ; then
     AC_MSG_FAILURE([cannot find PyQt5 dev tools, Graphical User Interface cannot be installed])
@@ -990,7 +975,7 @@ AC_CHECK_FUNCS([mkdir chdir stat dup2 access])
 AC_CHECK_FUNCS([snprintf])
 AC_CHECK_FUNCS([getcwd sleep])
 AC_CHECK_FUNCS([getpwuid geteuid])
-AC_CHECK_FUNCS([uname, linkat])
+AC_CHECK_FUNCS([uname linkat])
 AC_CHECK_FUNCS([clock_gettime clock_getcpuclockid])
 AC_CHECK_FUNCS([getrusage gettimeofday sbrk sysinfo])
 AC_CHECK_FUNCS([posix_memalign])
@@ -1178,7 +1163,6 @@ AC_CONFIG_FILES([Makefile po/Makefile.in
                  preprocessor/Makefile
                  preprocessor/appli/Makefile preprocessor/base/Makefile
                  preprocessor/pre-post/Makefile preprocessor/util/Makefile
-                 salome/Makefile
                  src/Makefile      src/apps/Makefile src/gui/Makefile
                  src/bft/Makefile  src/fvm/Makefile  src/mei/Makefile
                  src/base/Makefile src/atmo/Makefile src/cdo/Makefile
@@ -1190,22 +1174,6 @@ AC_CONFIG_FILES([Makefile po/Makefile.in
                  src/meg/Makefile
                  gui/Makefile gui/Base/Makefile gui/Pages/Makefile
                  gui/studymanager_gui/Makefile gui/trackcvg/Makefile
-                 salome/fsi_coupling/Makefile
-                 salome/fsi_coupling/idl/Makefile
-                 salome/fsi_coupling/libmilieu/Makefile
-                 salome/fsi_coupling/resources/Makefile
-                 salome/fsi_coupling/src/Makefile
-                 salome/fsi_coupling/src/FSI_ASTER/Makefile
-                 salome/fsi_coupling/src/FSI_MILIEU/Makefile
-                 salome/fsi_coupling/src/FSI_SATURNE/Makefile
-                 salome/cfd_study/Makefile
-                 salome/cfd_study/doc/Makefile
-                 salome/cfd_study/idl/Makefile
-                 salome/cfd_study/resources/Makefile
-                 salome/cfd_study/src/Makefile
-                 salome/cfd_study/src/CFDSTUDY/Makefile
-                 salome/cfd_study/src/CFDSTUDYGUI/Makefile
-                 salome/cfd_study/src/CFDSTUDYOTURNS/Makefile
                  docs/Makefile docs/doxygen/Makefile docs/style/csvers.tex
                  docs/studymanager/Makefile docs/studymanager/graphics/Makefile
                  docs/developer/Makefile docs/developer/graphics/Makefile
@@ -1214,10 +1182,6 @@ AC_CONFIG_FILES([Makefile po/Makefile.in
                  docs/theory/Makefile docs/theory/graphics/Makefile
                  docs/user/Makefile docs/user/graphics/Makefile
                  tests/Makefile
-                 extras/salome/fsi_appli_config.xml
-                 extras/windows/innosetup/setup_mingw.iss
-                 extras/windows/innosetup/setup_cygwin32.iss
-                 extras/windows/innosetup/setup_cygwin64.iss
                  bin/cs_config.py])
 
 #------------------------------------------------------------------------------
@@ -1315,8 +1279,6 @@ echo " EOS support: "$cs_have_eos""
 echo " freesteam support: "$cs_have_freesteam""
 echo " CoolProp support: "$cs_have_coolprop""
 echo " PETSc support: "$cs_have_petsc""
-echo " SALOME GUI support: "$cs_have_salome_gui""
-echo " SALOME Kernel support: "$cs_have_salome_kernel""
 echo " Dynamic loader support: "$cs_have_dlloader""
 if (test "x$cs_env_modules" != "x") ; then
   echo " Auto load environment modules: "$cs_env_modules""

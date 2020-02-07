@@ -7,7 +7,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -55,7 +55,7 @@
 #include <ple_coupling.h>
 
 /*----------------------------------------------------------------------------
- *  Local headers
+ * Local headers
  *----------------------------------------------------------------------------*/
 
 #include "cs_headers.h"
@@ -63,12 +63,6 @@
 #if defined(HAVE_PETSC)
 #include "cs_sles_petsc.h"
 #endif
-
-/*----------------------------------------------------------------------------
- *  Header for the current file
- *----------------------------------------------------------------------------*/
-
-#include "cs_prototypes.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -251,7 +245,7 @@ cs_user_sles_petsc_hook(void               *context,
 
     /* Assume a PETSc version greater or equal to 3.7.0 */
     if (eqp->sles_param.precond == CS_PARAM_PRECOND_AMG) {
-      if (eqp->sles_param.amg_type == CS_PARAM_AMG_BOOMER) {
+      if (eqp->sles_param.amg_type == CS_PARAM_AMG_HYPRE_BOOMER) {
 
         PetscOptionsSetValue(NULL,
                              "-pc_hypre_boomeramg_strong_threshold", "0.7");
@@ -286,7 +280,7 @@ cs_user_linear_solvers(void)
 {
   /* Available native iterative linear solvers are:
    *
-   *  CS_SLES_PCG                 (preconditionned conjugate gradient)
+   *  CS_SLES_PCG                 (preconditioned conjugate gradient)
    *  CS_SLES_JACOBI              (Jacobi)
    *  CS_SLES_BICGSTAB            (Bi-conjugate gradient stabilized)
    *  CS_SLES_BICGSTAB2           (BiCGStab2)

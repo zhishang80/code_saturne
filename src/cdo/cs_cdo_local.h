@@ -10,7 +10,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -59,9 +59,15 @@ typedef struct {
   double     eig_ratio; /*!< ratio of the eigenvalues of the diffusion tensor */
   double     eig_max;   /*!< max. value among eigenvalues */
 
-  /* Store the cellwise value for the diffusion, time and reaction properties */
+  /* Store the cellwise value for the diffusion, curl-curl, grad-div, time
+     and reaction properties */
   cs_real_33_t  dpty_mat; /*!< Property tensor if not isotropic for diffusion */
-  double        dpty_val; /*!< Property value if isotropic for diffusion*/
+  double        dpty_val; /*!< Property value if isotropic for diffusion */
+
+  cs_real_33_t  cpty_mat; /*!< Property tensor if not isotropic for curl-curl */
+  double        cpty_val; /*!< Property value if isotropic for curl-curl */
+
+  double        gpty_val; /*!< Property value if isotropic for grad-div */
 
   double        tpty_val; /*!< Property value for time operator */
 
@@ -145,7 +151,7 @@ typedef struct {
 
 typedef struct {
 
-  cs_flag_t      flag;    /*!< indicate which quantities have to be defined */
+  cs_eflag_t     flag;    /*!< indicate which quantities have to be computed */
   fvm_element_t  type;    /*!< type of element related to this cell */
 
   /* Sizes used to allocate buffers */
@@ -160,44 +166,46 @@ typedef struct {
   double         diam_c;  /*!< diameter of the current cell */
 
   /* Vertex information */
-  short int    n_vc;  /*!< local number of vertices in a cell */
+  short int    n_vc;  /*!< number of vertices in a cell */
   cs_lnum_t   *v_ids; /*!< vertex ids on this rank */
   double      *xv;    /*!< local vertex coordinates (copy) */
   double      *wvc;   /*!< weight |dualvol(v) cap vol_c|/|vol_c|, size: n_vc */
 
   /* Edge information */
-  short int    n_ec;  /*!< local number of edges in a cell */
-  cs_lnum_t   *e_ids; /*!< edge ids on this rank */
-  cs_quant_t  *edge;  /*!< local edge quantities (xe, length and unit vector) */
-  cs_nvec3_t  *dface; /*!< local dual face quantities (area and unit normal) */
+  short int    n_ec;   /*!< number of edges in a cell */
+  cs_lnum_t   *e_ids;  /*!< edge ids on this rank */
+  cs_quant_t  *edge;   /*!< edge quantities (xe, length and unit vector) */
+  cs_nvec3_t  *dface;  /*!< dual face quantities (area and unit normal) */
+  cs_real_t   *pvol_e; /*!< volume associated to an edge in the cell */
 
   /* Face information */
-  short int    n_fc;     /*!< local number of faces in a cell */
+  short int    n_fc;        /*!< number of faces in a cell */
   cs_lnum_t    bface_shift; /*!< shift to get the boundary face numbering */
-  cs_lnum_t   *f_ids;    /*!< face ids on this rank */
-  short int   *f_sgn;    /*!< incidence number between f and c */
-  double      *f_diam;   /*!< diameters of local faces */
-  double      *hfc;      /*!< height of the pyramid of basis f and apex c */
-  double      *pfc;      /*!< volume of the pyramid for each face */
-  cs_quant_t  *face;     /*!< face quantities (xf, area and unit normal) */
-  cs_nvec3_t  *dedge;    /*!< dual edge quantities (length and unit vector) */
+  cs_lnum_t   *f_ids;       /*!< face ids on this rank */
+  short int   *f_sgn;       /*!< incidence number between f and c */
+  double      *f_diam;      /*!< diameters of local faces */
+  double      *hfc;         /*!< height of the pyramid of basis f and apex c */
+  cs_quant_t  *face;        /*!< face quantities (xf, area and unit normal) */
+  cs_nvec3_t  *dedge;      /*!< dual edge quantities (length and unit vector) */
+  cs_real_t   *pvol_f;      /*!< volume associated to a face in the cell */
 
   /* Local e2v connectivity: size 2*n_ec (allocated to 2*n_max_ebyc) */
-  short int   *e2v_ids; /*!< cell-wise edge->vertices connectivity */
-  short int   *e2v_sgn; /*!< cell-wise edge->vertices orientation (-1 or +1) */
+  short int   *e2v_ids;  /*!< cell-wise edge->vertices connectivity */
+  short int   *e2v_sgn;  /*!< cell-wise edge->vertices orientation (-1 or +1) */
 
   /* Local f2v connectivity: size = 2*n_max_ebyc */
-  short int   *f2v_idx; /*!< size n_fc + 1 */
-  short int   *f2v_ids; /*!< size 2*n_max_ebyc */
+  short int   *f2v_idx;  /*!< size n_fc + 1 */
+  short int   *f2v_ids;  /*!< size 2*n_max_ebyc */
 
   /* Local f2e connectivity: size = 2*n_max_ebyc */
-  short int   *f2e_idx; /*!< size n_fc + 1 */
-  short int   *f2e_ids; /*!< size 2*n_max_ebyc */
-  double      *tef;     /*!< area of the triangle of base |e| and apex xf */
+  short int   *f2e_idx;  /*!< cellwise face->edges connectivity (size n_fc+1) */
+  short int   *f2e_ids;  /*!< cellwise face->edges ids (size 2*n_max_ebyc) */
+  short int   *f2e_sgn;  /*!< cellwise face->edges orientation (-1 or +1) */
+  double      *tef;      /*!< area of the triangle of base |e| and apex xf */
 
   /* Local e2f connectivity: size 2*n_ec (allocated to 2*n_max_ebyc) */
-  short int   *e2f_ids; /*!< cell-wise edge -> faces connectivity */
-  cs_nvec3_t  *sefc;    /*!< portion of dual faces (2 triangles by edge) */
+  short int   *e2f_ids;  /*!< cell-wise edge -> faces connectivity */
+  cs_nvec3_t  *sefc;     /*!< portion of dual faces (2 triangles by edge) */
 
 } cs_cell_mesh_t;
 
@@ -221,6 +229,8 @@ typedef struct {
   short int    f_sgn;  /*!< incidence number between f and c */
   cs_quant_t   face;   /*!< face quantities (xf, area and unit normal) */
   cs_nvec3_t   dedge;  /*!< its dual edge quantities (length and unit vector) */
+  double       pvol;   /*!< volume of the pyramid of base f and apex x_c */
+  double       hfc;    /*!< height of the pyramid of base f and apex x_c */
 
   /* Vertex information */
   short int    n_vf;    /*!< local number of vertices on this face */
@@ -298,6 +308,30 @@ cs_cell_mesh_get_v(const cs_lnum_t              v_id,
   for (short int v = 0; v < cm->n_vc; v++)
     if (cm->v_ids[v] == v_id)
       return v;
+  return -1;
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief   Retrieve the edge id in the cellwise numbering associated to the
+ *          given edge id in the mesh numbering
+ *
+ * \param[in]       e_id    vertex id in the mesh numbering
+ * \param[in]       cm      pointer to a cs_cell_mesh_t structure
+ *
+ * \return the edge id in the cell numbering or -1 if not found
+ */
+/*----------------------------------------------------------------------------*/
+
+static inline short int
+cs_cell_mesh_get_e(const cs_lnum_t              e_id,
+                   const cs_cell_mesh_t  *const cm)
+{
+  if (cm == NULL)
+    return -1;
+  for (short int e = 0; e < cm->n_ec; e++)
+    if (cm->e_ids[e] == e_id)
+      return e;
   return -1;
 }
 
@@ -418,8 +452,8 @@ cs_cell_mesh_is_boundary_face(const cs_cell_mesh_t    *cm,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Allocate global structures related to a cs_cell_mesh_t and
- *         cs_face_mesh_t structures
+ * \brief  Allocate global structures used for build system with a cellwise or
+ *         facewise process
  *
  * \param[in]   connect   pointer to a \ref cs_cdo_connect_t structure
  */
@@ -592,7 +626,7 @@ cs_cell_mesh_free(cs_cell_mesh_t     **p_cm);
 
 void
 cs_cell_mesh_build(cs_lnum_t                    c_id,
-                   cs_flag_t                    build_flag,
+                   cs_eflag_t                   build_flag,
                    const cs_cdo_connect_t      *connect,
                    const cs_cdo_quantities_t   *quant,
                    cs_cell_mesh_t              *cm);

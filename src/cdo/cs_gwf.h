@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -43,6 +43,8 @@ BEGIN_C_DECLS
 /*============================================================================
  * Macro definitions
  *============================================================================*/
+
+#define CS_GWF_ADVECTION_NAME   "darcy_velocity"
 
 /*!
  * @name Flags specifying the general behavior of the groundwater flow module
@@ -203,25 +205,12 @@ cs_gwf_set_gravity_vector(const cs_real_3_t      gvec);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Advanced setting: indicate where the darcian flux is stored
- *         cs_flag_primal_cell is the default setting
- *         cs_flag_dual_face_byc is a valid choice for vertex-based schemes
- *
- * \param[in] location_flag   where the flux is defined
- */
-/*----------------------------------------------------------------------------*/
-
-void
-cs_gwf_set_darcian_flux_location(cs_flag_t      location_flag);
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief  Add a new equation related to the groundwater flow module
  *         This equation is a particular type of unsteady advection-diffusion
  *         reaction eq.
  *         Tracer is advected thanks to the darcian velocity and
  *         diffusion/reaction parameters result from a physical modelling.
- *         Terms are activated according to the settings.
+ *         Terms solved in the equation are activated according to the settings.
  *
  * \param[in]  eq_name    name of the tracer equation
  * \param[in]  var_name   name of the related variable

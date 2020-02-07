@@ -4,7 +4,7 @@
 
 /* This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -1313,7 +1313,7 @@ cs_matrix_vector(const cs_mesh_t            *m,
   int is_p = 0;
 
   if (cs_glob_porous_model == 3) {
-    i_f_face_factor = mq->i_f_face_factor;
+    i_f_face_factor = (const cs_real_2_t *)(mq->i_f_face_factor);
     b_f_face_factor = mq->b_f_face_factor;
     is_p = 1;
   }

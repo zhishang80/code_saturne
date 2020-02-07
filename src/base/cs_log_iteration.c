@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -649,7 +649,7 @@ _log_fields(void)
         BFT_REALLOC(wsum, log_count_max, double);
       }
 
-      if (have_weight && (f->type | CS_FIELD_INTENSIVE)) {
+      if (have_weight && (f->type & CS_FIELD_INTENSIVE)) {
         cs_array_reduce_simple_stats_l_w(_n_elts,
                                          f->dim,
                                          NULL,
@@ -1235,7 +1235,7 @@ _log_clips(void)
     const char *name = NULL;
     int f_id = _clips[clip_id].f_id;
     int f_dim = 0;
-    if (f_id > 0) {
+    if (f_id > -1) {
       const cs_field_t  *f = cs_field_by_id(f_id);
       name = cs_field_get_key_str(f, label_key_id);
       if (name == NULL)
@@ -1325,7 +1325,7 @@ _log_clips(void)
 
       const char *name = NULL;
       int f_id = _clips[clip_id].f_id;
-      if (f_id > 0) {
+      if (f_id > -1) {
         const cs_field_t  *f = cs_field_by_id(f_id);
         name = cs_field_get_key_str(f, label_key_id);
         if (name == NULL)

@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -61,6 +61,9 @@ BEGIN_C_DECLS
 
 typedef struct {
 
+  /* Id */
+  int id;
+
   /* Locator + tag for exchanging variables */
   ple_locator_t   *locator;
   int             *c_tag;
@@ -87,10 +90,6 @@ typedef struct {
   /* OF vectors  */
   cs_real_3_t *offset_vect;
 
-  /* Gradient reconstruction */
-  cs_real_33_t *cocgb_s_lsq;
-  cs_real_33_t *cocg_it;
-
   /* User information */
   char *namesca;
 
@@ -115,7 +114,7 @@ cs_internal_coupling_n_couplings(void);
 /*!
  * \brief Define coupling volume using given selection criteria.
  *
- * Then, this volume must be seperated from the rest of the domain with a wall.
+ * Then, this volume must be separated from the rest of the domain with a wall.
  *
  * \param[in, out] mesh            pointer to mesh structure to modify
  * \param[in]      criteria_cells  criteria for the first group of cells
@@ -546,7 +545,7 @@ cs_internal_coupling_dump(void);
  * Add preprocessing operations required by coupling volume using given
  * criteria.
  *
- * The volume is seperated from the rest of the domain with inserted
+ * The volume is separated from the rest of the domain with inserted
  * boundaries.
  *
  * parameters:

@@ -2,7 +2,7 @@ dnl-----------------------------------------------------------------------------
 dnl
 dnl This file is part of Code_Saturne, a general-purpose CFD tool.
 dnl
-dnl Copyright (C) 1998-2019 EDF S.A.
+dnl Copyright (C) 1998-2020 EDF S.A.
 dnl
 dnl This program is free software; you can redistribute it and/or modify it under
 dnl the terms of the GNU General Public License as published by the Free Software
@@ -94,6 +94,7 @@ if test "x$with_ccm" != "xno" ; then
 
   if test "x$cs_have_ccm_headers" = "xyes"; then
 
+    AC_MSG_CHECKING([for CCM file support])
     AC_LINK_IFELSE([AC_LANG_PROGRAM(
 [[#include <libccmio/ccmio.h>]],
 [[CCMIOID root;
@@ -103,13 +104,14 @@ CCMIOOpenFile(&error, "test.ccm", kCCMIOWrite, &root);]])
                    [ AC_DEFINE([HAVE_CCM], 1, [CCM file support])
                      cs_have_ccm=yes
                    ],
-                   [if test "x$with_ccm" != "xcheck" ; then
-                      AC_MSG_FAILURE([CCM support is requested, but test for CCM failed!])
-                    else
-                      AC_MSG_WARN([no CCM file support])
-                    fi
-                   ],
+                   [],
                    )
+    AC_MSG_RESULT($cs_have_ccm)
+    if test "x$cs_have_ccm" = "xno" ; then
+      if test "x$with_ccm" != "xcheck" ; then
+        AC_MSG_FAILURE([CCM support is requested, but test for CCM failed!])
+      fi
+    fi
   fi
 
   if test "x$cs_have_ccm" != "xyes"; then

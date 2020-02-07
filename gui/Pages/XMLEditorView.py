@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -198,6 +198,9 @@ class XMLEditorView(QDialog, Ui_XMLEditor):
 
         self.symbols  = []
         self.case = case
+
+        title = self.tr("XML source")
+        self.setWindowTitle(title)
 
         # Syntax highlighting
         self.h1 = XMLHighlighter(self.textEditContent, self.symbols)

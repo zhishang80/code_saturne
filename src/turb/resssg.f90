@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -131,7 +131,7 @@ integer          ii    , jj    , kk    , iiun  , iii   , jjj
 integer          iflmas, iflmab
 integer          nswrgp, imligp, iwarnp
 integer          iconvp, idiffp, ndircp
-integer          nswrsp, ircflp, ischcp, isstpp, iescap
+integer          imrgrp, nswrsp, ircflp, ischcp, isstpp, iescap
 integer          st_prv_id, comp_id
 integer          iprev , inc, iccocg, ll
 integer          imucpp, idftnp, iswdyp
@@ -311,6 +311,9 @@ call cs_user_turbulence_source_terms &
    ckupdc , smacel ,                                              &
    smbr   , rovsdt )
 
+! C version
+call user_source_terms(ivarfl(ivar), smbr, rovsdt)
+
 !     If we extrapolate the source terms
 if (st_prv_id.ge.0) then
   do iel = 1, ncel
@@ -433,9 +436,7 @@ if (iturb.eq.32) then
   inc    = 1
   iccocg = 1
 
-  call field_gradient_scalar(ivarfl(ial), iprev, imrgra, inc,     &
-                             iccocg,                              &
-                             grad)
+  call field_gradient_scalar(ivarfl(ial), iprev, 0, inc, iccocg, grad)
 
 endif
 
@@ -787,6 +788,7 @@ endif
 iconvp = vcopt%iconv
 idiffp = vcopt%idiff
 ndircp = vcopt%ndircl
+imrgrp = vcopt%imrgra
 nswrsp = vcopt%nswrsm
 nswrgp = vcopt%nswrgr
 imligp = vcopt%imligr
@@ -817,7 +819,7 @@ call field_get_coefbf_s(ivarfl(ivar), cofbfp)
 
 call codits &
  ( idtvar , init   , ivarfl(ivar)    , iconvp , idiffp , ndircp , &
-   imrgra , nswrsp , nswrgp , imligp , ircflp ,                   &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp ,                   &
    ischcp , isstpp , iescap , imucpp , idftnp , iswdyp ,          &
    iwarnp , normp  ,                                              &
    blencp , epsilp , epsrsp , epsrgp , climgp , extrap ,          &

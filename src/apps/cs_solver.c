@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -43,6 +43,7 @@
 #include "bft_mem.h"
 #include "bft_printf.h"
 
+#include "cs_ale.h"
 #include "cs_all_to_all.h"
 #include "cs_base.h"
 #include "cs_base_fortran.h"
@@ -50,6 +51,7 @@
 #include "cs_boundary_zone.h"
 #include "cs_calcium.h"
 #include "cs_cdo_main.h"
+#include "cs_cell_to_vertex.h"
 #include "cs_control.h"
 #include "cs_coupling.h"
 #include "cs_ctwr.h"
@@ -62,7 +64,9 @@
 #include "cs_gradient.h"
 #include "cs_gradient_perio.h"
 #include "cs_gui.h"
+#include "cs_gui_boundary_conditions.h"
 #include "cs_gui_conjugate_heat_transfer.h"
+#include "cs_gui_mobile_mesh.h"
 #include "cs_gui_output.h"
 #include "cs_gui_particles.h"
 #include "cs_gui_radiative_transfer.h"
@@ -125,23 +129,6 @@ BEGIN_C_DECLS
  * Public function prototypes
  *============================================================================*/
 
-/*----------------------------------------------------------------------------
- * Main function for Code_Saturne run.
- *
- * This function is called either by main() in the standard case, or by
- * a SALOME standalone module's yacsinit() function. As the latter cannot
- * return, almost all of the code's execution steps (except command-line
- * initialization, required to know if we are running in standard mode or
- * pluging a SALOME module) are done here.
- *
- * As yacsinit() can take no arguments, the command-line options must be
- * defined as a static global variable by main() so as to be usable
- * by run().
- *----------------------------------------------------------------------------*/
-
-void
-cs_run(void);
-
 /*============================================================================
  * Static global variables
  *============================================================================*/
@@ -161,19 +148,11 @@ static cs_opts_t  opts;
 /*----------------------------------------------------------------------------
  * Main function for Code_Saturne run.
  *
- * This function is called either by main() in the standard case, or by
- * a SALOME standalone module's yacsinit() function. As the latter cannot
- * return, almost all of the code's execution steps (except command-line
- * initialization, required to know if we are running in standard mode or
- * pluging a SALOME module) are done here.
- *
- * As yacsinit() can take no arguments, the command-line options must be
- * defined as a static global variable by main() so as to be usable
- * by run().
+ * This function is called by main().
  *----------------------------------------------------------------------------*/
 
-void
-cs_run(void)
+static void
+_run(void)
 {
   cs_int_t  ivoset = 0;
 
@@ -197,6 +176,8 @@ cs_run(void)
   cs_gui_parallel_io();
   cs_user_parallel_io();
   cs_file_defaults_info();
+
+  cs_gui_mpi_algorithms();
 
   cs_partition_external_library_info();
 
@@ -268,6 +249,10 @@ cs_run(void)
     CS_PROCF (haltyp, HALTYP) (&ivoset);
     if (ivoset)
       halo_type = CS_HALO_EXTENDED;
+
+    cs_gui_boundary_conditions_define(cs_glob_domain->boundaries);
+    if (cs_glob_ale > 0)
+      cs_gui_mobile_mesh_get_boundaries(cs_glob_domain);
 
     cs_cdo_initialize_setup(cs_glob_domain);
 
@@ -549,6 +534,7 @@ cs_run(void)
 
   /* Free main mesh after printing some statistics */
 
+  cs_cell_to_vertex_free();
   cs_mesh_adjacencies_finalize();
 
   cs_boundary_zone_finalize();
@@ -661,21 +647,9 @@ main(int    argc,
     cs_notebook_load_from_file();
   }
 
-  /* Running as a standalone SALOME component, load YACS component
-     library and run yacsinit() component initialization and event loop,
-     which should itself include the standard run routine */
+  /* Call main run() method */
 
-  if (opts.yacs_module != NULL) {
-    cs_calcium_load_yacs(opts.yacs_module);
-    BFT_FREE(opts.yacs_module);
-    cs_calcium_start_yacs(); /* Event-loop does not return as of this version */
-    cs_calcium_unload_yacs();
-  }
-
-  /* In standard case, simply call regular run() method */
-
-  else
-    cs_run();
+  _run();
 
   /* Return */
 

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -41,7 +41,7 @@ import sys, unittest
 #-------------------------------------------------------------------------------
 
 from code_saturne.model.Common import *
-import code_saturne.model.IdentityAndPathesModel as IdentityAndPathesModel
+from code_saturne.model.IdentityAndPathesModel import IdentityAndPathesModel
 from code_saturne.model.XMLvariables import Variables, Model
 from code_saturne.model.XMLmodel import ModelTest
 from code_saturne.model.FluidCharacteristicsModel import FluidCharacteristicsModel

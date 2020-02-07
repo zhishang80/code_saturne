@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -123,7 +123,7 @@ integer          iel
 integer          isou, jsou
 integer          ii    , jj    , kk    , iiun
 integer          iflmas, iflmab
-integer          nswrgp, imligp, iwarnp
+integer          imrgrp, nswrgp, imligp, iwarnp
 integer          iconvp, idiffp, ndircp
 integer          nswrsp, ircflp, ischcp, isstpp
 integer          st_prv_id
@@ -270,6 +270,9 @@ call cs_user_turbulence_source_terms2 &
    icepdc , icetsm , itypsm ,                                     &
    ckupdc , smacel ,                                              &
    smbr   , rovsdt )
+
+! C version
+call user_source_terms(ivarfl(irij), smbr, rovsdt)
 
   !     If we extrapolate the source terms
 if (st_prv_id.ge.0) then
@@ -676,6 +679,7 @@ iconvp = vcopt_rij%iconv
 idiffp = vcopt_rij%idiff
 ndircp = vcopt_rij%ndircl
 nswrsp = vcopt_rij%nswrsm
+imrgrp = vcopt_rij%imrgra
 nswrgp = vcopt_rij%nswrgr
 imligp = vcopt_rij%imligr
 ircflp = vcopt_rij%ircflu
@@ -696,7 +700,7 @@ icvflb = 0
 
 call coditts &
  ( idtvar , ivarfl(irij)    , iconvp , idiffp , ndircp ,          &
-   imrgra , nswrsp , nswrgp , imligp , ircflp ,                   &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp ,                   &
    ischcp , isstpp , idftnp , iswdyp ,                            &
    iwarnp ,                                                       &
    blencp , epsilp , epsrsp , epsrgp , climgp ,                   &

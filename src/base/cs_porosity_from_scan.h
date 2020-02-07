@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -71,6 +71,7 @@ BEGIN_C_DECLS
 typedef struct {
   bool  compute_porosity_from_scan;
   char *file_name;
+  char *output_name;
   bool  postprocess_points;
   /*! Matrix of associated transformation
      (3x4 matrix, 3 first rows of a homogeneous
@@ -111,14 +112,27 @@ cs_porosity_from_scan_set_file_name(const char *file_name);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief This function add a scanner source point
+ * \brief This function sets the output name for the FVM writer of scan points.
  *
- * \param[in] source     source vector
+ * \param[in] output_name  name of the output (a suffix will be added)
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_porosity_from_scan_add_source(cs_real_3_t source);
+cs_porosity_from_scan_set_output_name(const char *output_name);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief This function add a scanner source point
+ *
+ * \param[in] source     source vector
+ * \param[in] transform  flag to apply the transformation matrix to the source
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_porosity_from_scan_add_source(const cs_real_3_t source,
+                                 const bool transform);
 
 /*----------------------------------------------------------------------------*/
 /*!

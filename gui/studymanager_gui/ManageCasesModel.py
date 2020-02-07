@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -533,13 +533,13 @@ class ManageCasesModel(Model):
         nn['label'] = name
 
 
-    def getPostScriptInput(self, study_name, idx):
+    def getPostScriptInput(self, study_name, case_idx):
         """
         Get post script status from node with index
         """
-        self.isInt(idx)
+        self.isInt(case_idx)
         study_node = self.case.xmlGetNode('study', label = study_name)
-        node = study_node.xmlGetNode("case", id = idx)
+        node = study_node.xmlGetNode("case", id = case_idx)
         nn = node.xmlGetNode("input")
         name = ""
         if nn:
@@ -547,13 +547,13 @@ class ManageCasesModel(Model):
         return name
 
 
-    def setPostScriptInput(self, study_name, idx, name):
+    def setPostScriptInput(self, study_name, case_idx, name):
         """
         Put post script status from node with index
         """
-        self.isInt(idx)
+        self.isInt(case_idx)
         study_node = self.case.xmlGetNode('study', label = study_name)
-        node = study_node.xmlGetNode("case", id = idx)
+        node = study_node.xmlGetNode("case", id = case_idx)
         nn = node.xmlInitChildNode("input")
         nn['file'] = name
 

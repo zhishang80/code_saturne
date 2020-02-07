@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -76,9 +76,6 @@
 !> \param[in]     trava         working array for the velocity-pressure coupling
 !> \param[in]     dfrcxt        variation of the external forces
 !                               making the hydrostatic pressure
-!> \param[in]     grdphd        hydrostatic pressure gradient to handle the
-!>                              imbalance between the pressure gradient and
-!>                              gravity source term
 !> \param[in]     tpucou        non scalar time step in case of
 !>                              velocity pressure coupling
 !> \param[in]     trav          right hand side for the normalizing
@@ -99,7 +96,7 @@ subroutine predvv &
    icepdc , icetsm , itypsm ,                                     &
    dt     , vel    , vela   , velk   ,                            &
    tslagr , coefav , coefbv , cofafv , cofbfv ,                   &
-   ckupdc , smacel , frcxt  , grdphd ,                            &
+   ckupdc , smacel , frcxt  ,                                     &
    trava  ,                   dfrcxt , tpucou , trav   ,          &
    viscf  , viscb  , viscfi , viscbi , secvif , secvib ,          &
    w1     )
@@ -123,7 +120,6 @@ use ppppar
 use ppthch
 use ppincl
 use cplsat
-use ihmpre, only: iihmpr
 use mesh
 use rotation
 use turbomachinery
@@ -153,7 +149,6 @@ double precision dt(ncelet)
 double precision tslagr(ncelet,*)
 double precision ckupdc(6,ncepdp), smacel(ncesmp,nvar)
 double precision frcxt(3,ncelet), dfrcxt(3,ncelet)
-double precision grdphd(3, ncelet)
 double precision trava(ndim,ncelet)
 double precision tpucou(6, ncelet)
 double precision trav(3,ncelet)
@@ -174,7 +169,7 @@ double precision vela  (3, ncelet)
 
 integer          f_id  , iel   , ielpdc, ifac  , isou  , itypfl, n_fans
 integer          iccocg, inc   , iprev , init  , ii    , jj
-integer          nswrgp, imligp, iwarnp
+integer          imrgrp, nswrgp, imligp, iwarnp
 integer          iswdyp, idftnp
 integer          iconvp, idiffp, ndircp, nswrsp
 integer          ircflp, ischcp, isstpp, iescap
@@ -429,9 +424,7 @@ enddo
 ! The computation of explicit and implicit source terms is performed
 ! at the first iteration only.
 ! If iphydr=1 or if we have buoyant scalars then we need to update source terms
-if (iihmpr.eq.1) then
-  call uitsnv (vel, tsexp, tsimp)
-endif
+call uitsnv (vel, tsexp, tsimp)
 
 call ustsnv &
   ( nvar   , nscal  , ncepdp , ncesmp ,                            &
@@ -439,6 +432,9 @@ call ustsnv &
   icepdc , icetsm , itypsm ,                                     &
   dt     ,                                                       &
   ckupdc , smacel , tsexp  , tsimp  )
+
+! C version
+call user_source_terms(ivarfl(iu), tsexp, tsimp)
 
 n_fans = cs_fan_n_fans()
 if (n_fans .gt. 0) then
@@ -460,7 +456,7 @@ if (ippmod(iatmos).ge.0) then
   if (f_oi_id.ge.0) then
     call cs_at_data_assim_source_term(ivarfl(iu), tsexp, tsimp)
   endif
-  if (iatmst.eq.1) then
+  if (iatmst.ge.1) then
     call cs_at_source_term_for_inlet(tsexp)
   endif
 endif
@@ -505,7 +501,7 @@ iprev = 0
 if (vcopt_p%iwgrec.eq.1) then
 
   ! retrieve density used in diffusive flux scheme (correction step)
-  if (irovar.eq.1.and.(idilat.gt.1.or.ivofmt.ge.0.or.ippmod(icompf).eq.3)) then
+  if (irovar.eq.1.and.(idilat.gt.1.or.ivofmt.gt.0.or.ippmod(icompf).eq.3)) then
     call field_get_id("density_mass", f_id)
     call field_get_val_s(f_id, cpro_rho_mass)
 
@@ -534,7 +530,8 @@ if (vcopt_p%iwgrec.eq.1) then
   if (f_dim.gt.1) then
     call field_get_val_v(iflwgr, cpro_wgrec_v)
     do iel = 1, ncel
-      ! FIXME should take headlosses into account, not compatible neither with ipucou=1...
+      ! FIXME should take head losses into account,
+      ! not compatible either with ipucou=1...
       cpro_wgrec_v(1,iel) = dt(iel) / wgrec_crom(iel)
       cpro_wgrec_v(2,iel) = dt(iel) / wgrec_crom(iel)
       cpro_wgrec_v(3,iel) = dt(iel) / wgrec_crom(iel)
@@ -557,7 +554,7 @@ endif
 call grdpor(inc)
 
 ! Pressure gradient
-call field_gradient_potential(ivarfl(ipr), iprev, imrgra, inc,    &
+call field_gradient_potential(ivarfl(ipr), iprev, 0, inc,         &
                               iccocg, iphydr,                     &
                               frcxt, cpro_gradp)
 
@@ -574,12 +571,14 @@ if (iforbr.ge.0 .and. iterns.eq.1) then
     diipbx = diipb(1,ifac)
     diipby = diipb(2,ifac)
     diipbz = diipb(3,ifac)
-    pip = cvar_pr(iel) &
-        + diipbx*cpro_gradp(1,iel) + diipby*cpro_gradp(2,iel) + diipbz*cpro_gradp(3,iel)
+    pip = cvar_pr(iel)                          &
+          + diipbx*cpro_gradp(1,iel)            &
+          + diipby*cpro_gradp(2,iel)            &
+          + diipbz*cpro_gradp(3,iel)
     pfac = coefa_p(ifac) +coefb_p(ifac)*pip
     pfac1= cvar_pr(iel)                                              &
-         +(cdgfbo(1,ifac)-xyzcen(1,iel))*cpro_gradp(1,iel)              &
-         +(cdgfbo(2,ifac)-xyzcen(2,iel))*cpro_gradp(2,iel)              &
+         +(cdgfbo(1,ifac)-xyzcen(1,iel))*cpro_gradp(1,iel)           &
+         +(cdgfbo(2,ifac)-xyzcen(2,iel))*cpro_gradp(2,iel)           &
          +(cdgfbo(3,ifac)-xyzcen(3,iel))*cpro_gradp(3,iel)
     pfac = coefb_p(ifac)*(vcopt_p%extrag*pfac1                       &
          +(1.d0-vcopt_p%extrag)*pfac)                                &
@@ -611,13 +610,6 @@ if (iphydr.eq.1) then
     trav(1,iel) = trav(1,iel)+(frcxt(1 ,iel) - cpro_gradp(1,iel)) * cell_f_vol(iel)
     trav(2,iel) = trav(2,iel)+(frcxt(2 ,iel) - cpro_gradp(2,iel)) * cell_f_vol(iel)
     trav(3,iel) = trav(3,iel)+(frcxt(3 ,iel) - cpro_gradp(3,iel)) * cell_f_vol(iel)
-  enddo
-else if (iphydr.eq.2) then
-  do iel = 1, ncel
-    rom = crom(iel)
-    trav(1,iel) = trav(1,iel)+(rom*gx - grdphd(1,iel) - cpro_gradp(1,iel)) * cell_f_vol(iel)
-    trav(2,iel) = trav(2,iel)+(rom*gy - grdphd(2,iel) - cpro_gradp(2,iel)) * cell_f_vol(iel)
-    trav(3,iel) = trav(3,iel)+(rom*gz - grdphd(3,iel) - cpro_gradp(3,iel)) * cell_f_vol(iel)
   enddo
 else if (ippmod(icompf).ge.0) then
   do iel = 1, ncel
@@ -765,9 +757,7 @@ if(     (itytur.eq.2 .or. itytur.eq.5 .or. iturb.eq.60) &
   iprev  = 1
   inc    = 1
 
-  call field_gradient_scalar(ivarfl(ik), iprev, imrgra, inc,      &
-                             iccocg,                              &
-                             grad)
+  call field_gradient_scalar(ivarfl(ik), iprev, 0, inc, iccocg, grad)
 
   d2s3 = 2.d0/3.d0
 
@@ -928,12 +918,14 @@ if ((icorio.eq.1.or.iturbo.eq.1) .and. iphydr.ne.1) then
         call add_coriolis_v(0, romvom, vela(:,iel), trav(:,iel))
       enddo
       ! Turbomachinery frozen rotors rotation
-      do iel = 1, ncel
-        if (irotce(iel).gt.0) then
-          romvom = -crom(iel)*cell_f_vol(iel)
-          call add_coriolis_v(irotce(iel), romvom, vela(:,iel), trav(:,iel))
-        endif
-      enddo
+      if (iturbo.eq.1) then
+        do iel = 1, ncel
+          if (irotce(iel).gt.0) then
+            romvom = -crom(iel)*cell_f_vol(iel)
+            call add_coriolis_v(irotce(iel), romvom, vela(:,iel), trav(:,iel))
+          endif
+        enddo
+      endif
 
     ! Si on itere sur navsto : TRAVA
     else
@@ -944,12 +936,14 @@ if ((icorio.eq.1.or.iturbo.eq.1) .and. iphydr.ne.1) then
         call add_coriolis_v(0, romvom, vela(:,iel), trava(:,iel))
       enddo
       ! Turbomachinery frozen rotors rotation
-      do iel = 1, ncel
-        if (irotce(iel).gt.0) then
-          romvom = -crom(iel)*cell_f_vol(iel)
-          call add_coriolis_v(irotce(iel), romvom, vela(:,iel), trava(:,iel))
-        endif
-      enddo
+      if (iturbo.eq.1) then
+        do iel = 1, ncel
+          if (irotce(iel).gt.0) then
+            romvom = -crom(iel)*cell_f_vol(iel)
+            call add_coriolis_v(irotce(iel), romvom, vela(:,iel), trava(:,iel))
+          endif
+        enddo
+      endif
 
     endif
   endif
@@ -958,7 +952,7 @@ endif
 ! --->  Implicit part
 
 !  At the second call, fimp is not needed anymore
-if(iappel.eq.1) then
+if (iappel.eq.1) then
   if (icorio.eq.1 .or. iturbo.eq.1) then
     ! The theta-scheme for the Coriolis term is the same as the other terms
     thetap = vcopt_u%thetav
@@ -966,16 +960,17 @@ if(iappel.eq.1) then
     ! Reference frame rotation
     do iel = 1, ncel
       romvom = -2.d0*crom(iel)*cell_f_vol(iel)*thetap
-      call add_coriolis_t(irotce(iel), romvom, fimp(:,:,iel))
+      call add_coriolis_t(0, romvom, fimp(:,:,iel))
     enddo
     ! Turbomachinery frozen rotors rotation
-    do iel = 1, ncel
-      if (irotce(iel).gt.0) then
-        romvom = -crom(iel)*cell_f_vol(iel)*thetap
-        call add_coriolis_t(irotce(iel), romvom, fimp(:,:,iel))
-      endif
-    enddo
-
+    if (iturbo.eq.1) then
+      do iel = 1, ncel
+        if (irotce(iel).gt.0) then
+          romvom = -crom(iel)*cell_f_vol(iel)*thetap
+          call add_coriolis_t(irotce(iel), romvom, fimp(:,:,iel))
+        endif
+      enddo
+    endif
   endif
 endif
 
@@ -1089,6 +1084,7 @@ if((itytur.eq.3.or.iturb.eq.23).and.iterns.eq.1) then
   else
     call field_get_key_struct_var_cal_opt(ivarfl(ik), vcopt)
   end if
+  imrgrp = vcopt%imrgra
   nswrgp = vcopt%nswrgr
   imligp = vcopt%imligr
   iwarnp = vcopt%iwarni
@@ -1101,7 +1097,7 @@ if((itytur.eq.3.or.iturb.eq.23).and.iterns.eq.1) then
 
   call divrij &
  ( f_id   , itypfl ,                                              &
-   iflmb0 , init   , inc    , imrgra , nswrgp , imligp ,          &
+   iflmb0 , init   , inc    , imrgrp , nswrgp , imligp ,          &
    iwarnp ,                                                       &
    epsrgp , climgp ,                                              &
    crom   , brom   ,                                              &
@@ -1290,7 +1286,7 @@ if (iappel.eq.1.and.iphydr.eq.1) then
 
     ! Delta rho = - rho_0 beta Delta T
     do iel = 1, ncel
-      drom = - ro0 * cpro_beta(iel) * (cvar_t(iel) - t0)
+      drom = - ro0 * cpro_beta(iel) * (cvar_t(iel) - t0) * (1 - isolid(iporos, iel))
       dfrcxt(1, iel) = drom*gx - frcxt(1, iel)
       dfrcxt(2, iel) = drom*gy - frcxt(2, iel)
       dfrcxt(3, iel) = drom*gz - frcxt(3, iel)
@@ -1298,7 +1294,8 @@ if (iappel.eq.1.and.iphydr.eq.1) then
 
   else
     do iel = 1, ncel
-      drom = (crom(iel)-ro0)
+      drom = (crom(iel)-ro0) * (1 - isolid(iporos, iel))
+
       dfrcxt(1, iel) = drom*gx - frcxt(1, iel)
       dfrcxt(2, iel) = drom*gy - frcxt(2, iel)
       dfrcxt(3, iel) = drom*gz - frcxt(3, iel)
@@ -1309,9 +1306,9 @@ if (iappel.eq.1.and.iphydr.eq.1) then
   if (ncepdp.gt.0) then
     do ielpdc = 1, ncepdp
       iel=icepdc(ielpdc)
-      vit1   = vela(1,iel)
-      vit2   = vela(2,iel)
-      vit3   = vela(3,iel)
+      vit1   = vela(1,iel) * (1 - isolid(iporos, iel))
+      vit2   = vela(2,iel) * (1 - isolid(iporos, iel))
+      vit3   = vela(3,iel) * (1 - isolid(iporos, iel))
       cpdc11 = ckupdc(1,ielpdc)
       cpdc22 = ckupdc(2,ielpdc)
       cpdc33 = ckupdc(3,ielpdc)
@@ -1332,16 +1329,25 @@ if (iappel.eq.1.and.iphydr.eq.1) then
 
     ! Reference frame rotation
     do iel = 1, ncel
-      rom = -2.d0*crom(iel)
+      rom = -2.d0*crom(iel) * (1 - isolid(iporos, iel))
       call add_coriolis_v(0, rom, vela(:,iel), dfrcxt(:,iel))
     enddo
     ! Turbomachinery frozen rotors rotation
-    do iel = 1, ncel
-      if (irotce(iel).gt.0) then
-        rom = -crom(iel)
-        call add_coriolis_v(irotce(iel), rom, vela(:,iel), dfrcxt(:,iel))
-      endif
-    enddo
+    if (iturbo.eq.1) then
+      do iel = 1, ncel
+        if (irotce(iel).gt.0) then
+          rom = -crom(iel) * (1 - isolid(iporos, iel))
+          call add_coriolis_v(irotce(iel), rom, vela(:,iel), dfrcxt(:,iel))
+        endif
+      enddo
+    else if (icorio.eq.1) then
+      do iel = 1, ncel
+        if (irotce(iel).gt.0) then
+          rom = -crom(iel) * (1 - isolid(iporos, iel))
+          call add_coriolis_v(0, rom, vela(:,iel), dfrcxt(:,iel))
+        endif
+      enddo
+    endif
   endif
 
   ! Add -div( rho R) as external force
@@ -1433,32 +1439,26 @@ if (iterns.eq.1) then
   endif
 endif
 
-! At the first PISO iteration, explicit source terms are added
-if (iterns.eq.1.and.(iphydr.ne.1.or.igpust.ne.1)) then
+! Explicit user source terms are added
+if ((iphydr.ne.1.or.igpust.ne.1)) then
   ! If source terms are time-extrapolated, they are stored in fields
   if (isno2t.gt.0) then
-    do iel = 1, ncel
-      do isou = 1, 3
-        c_st_vel(isou,iel) = c_st_vel(isou,iel) + tsexp(isou,iel)
-      enddo
-    enddo
-
-  else
-    ! If no PISO sweep
-    if (nterup.eq.1) then
+    if (iterns.eq.1) then
       do iel = 1, ncel
         do isou = 1, 3
-          trav(isou,iel) = trav(isou,iel) + tsexp(isou,iel)
-        enddo
-      enddo
-    ! If PISO sweeps
-    else
-      do iel = 1, ncel
-        do isou = 1, 3
-          trava(isou,iel) = trava(isou,iel) + tsexp(isou,iel)
+          c_st_vel(isou,iel) = c_st_vel(isou,iel) + tsexp(isou,iel)
         enddo
       enddo
     endif
+
+  else
+    ! Alwways in the current work array because this may be updated
+    ! during  PISO sweeps
+     do iel = 1, ncel
+       do isou = 1, 3
+         trav(isou,iel) = trav(isou,iel) + tsexp(isou,iel)
+       enddo
+    enddo
   endif
 endif
 
@@ -1630,6 +1630,7 @@ idiffp = vcopt_u%idiff
 ndircp = vcopt_u%ndircl
 nswrsp = vcopt_u%nswrsm
 nswrgp = vcopt_u%nswrgr
+imrgrp = vcopt_u%imrgra
 imligp = vcopt_u%imligr
 ircflp = vcopt_u%ircflu
 ischcp = vcopt_u%ischcv
@@ -1661,7 +1662,7 @@ if (iappel.eq.1) then
   ! of the predicted velocity
   call coditv &
  ( idtvar , iterns , ivarfl(iu)      , iconvp , idiffp , ndircp , &
-   imrgra , nswrsp , nswrgp , imligp , ircflp , ivisse ,          &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp , ivisse ,          &
    ischcp , isstpp , iescap , idftnp , iswdyp ,                   &
    iwarnp ,                                                       &
    blencp , epsilp , epsrsp , epsrgp , climgp ,                   &
@@ -1705,7 +1706,7 @@ if (iappel.eq.1) then
 
     call coditv &
  ( idtvar , iterns , ivarfl(iu)      , iconvp , idiffp , ndircp , &
-   imrgra , nswrsp , nswrgp , imligp , ircflp , ivisep ,          &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp , ivisep ,          &
    ischcp , isstpp , iescap , idftnp , iswdyp ,                   &
    iwarnp ,                                                       &
    blencp , epsilp , epsrsp , epsrgp , climgp ,                   &
@@ -1758,7 +1759,7 @@ else if (iappel.eq.2) then
 
   call bilscv &
  ( idtva0 , ivarfl(iu)      , iconvp , idiffp , nswrgp , imligp , ircflp , &
-   ischcp , isstpp , inc    , imrgra , ivisse ,                            &
+   ischcp , isstpp , inc    , imrgrp , ivisse ,                            &
    iwarnp , idftnp , imasac ,                                              &
    blencp , epsrgp , climgp , relaxp , thetap ,                            &
    vel    , vel    ,                                                       &

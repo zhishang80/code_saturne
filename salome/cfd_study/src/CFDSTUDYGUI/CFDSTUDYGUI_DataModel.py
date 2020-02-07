@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -101,7 +101,7 @@ import CFDSTUDYGUI_SolverGUI
 import CFDSTUDYGUI_Commons
 from CFDSTUDYGUI_CommandMgr import runCommand
 from CFDSTUDYGUI_Message import cfdstudyMess
-from cs_exec_environment import separate_args
+from code_saturne.cs_exec_environment import separate_args
 
 #-------------------------------------------------------------------------------
 # log config
@@ -110,7 +110,6 @@ from cs_exec_environment import separate_args
 logging.basicConfig()
 log = logging.getLogger("CFDSTUDYGUI_DataModel")
 log.setLevel(logging.NOTSET)
-
 
 #-------------------------------------------------------------------------------
 # Module name. Attribut "AttributeName" for the related SObject.

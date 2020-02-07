@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -47,8 +47,8 @@ from code_saturne.Base.QtWidgets import *
 # Application modules
 #-------------------------------------------------------------------------------
 
-from CommandMgrDialogForm import Ui_CommandMgrDialogForm
-from CommandMgrLinesDisplayedDialogForm import Ui_CommandMgrLinesDisplayedDialogForm
+from code_saturne.Base.CommandMgrDialogForm import Ui_CommandMgrDialogForm
+from code_saturne.Base.CommandMgrLinesDisplayedDialogForm import Ui_CommandMgrLinesDisplayedDialogForm
 from QtPage import IntValidator, from_qvariant, to_text_string
 
 #-------------------------------------------------------------------------------

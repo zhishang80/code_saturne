@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -36,33 +36,6 @@
 /*----------------------------------------------------------------------------*/
 
 BEGIN_C_DECLS
-
-/*=============================================================================
- * Public function prototypes for Fortran API
- *============================================================================*/
-
-/*----------------------------------------------------------------------------
- * Return the value associated to a probe.
- *
- * Fortran Interface :
- *
- * subroutine parhis (node, ndrang, var, varcap)
- * *****************
- *
- * integer          node        : <-- : local number of the element related to
- *                                      a measure node
- * integer          ndrang      : <-- : rank of the process owning the closest
- *                                      node from the measure node
- * double precision var(*)      : <-- : values of the variable on local elements
- * double precision varcap      : --> : value of the variable for the element
- *                                      related to the measure node
- *----------------------------------------------------------------------------*/
-
-void
-CS_PROCF (parhis, PARHIS)(cs_int_t   *node,
-                          cs_int_t   *ndrang,
-                          cs_real_t   var[],
-                          cs_real_t  *varcap);
 
 /*=============================================================================
  * Public function prototypes

@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -62,7 +62,6 @@ class HgnModel(Variables, Model):
         self.node_np     = self.case.xmlInitNode('numerical_parameters')
         self.node_prop   = self.case.xmlGetNode('physical_properties')
         self.node_fluid  = self.node_prop.xmlInitNode('fluid_properties')
-        self.node_ref    = self.node_thermo.xmlInitNode('reference_values')
 
         self.hgn_choice = ['off', 'no_mass_transfer', 'merkle_model']
         self.var_list   = ['void_fraction']
@@ -86,14 +85,14 @@ class HgnModel(Variables, Model):
         """
         self.isInList(model, self.hgn_choice)
         oldModel = self.node_hgn['model']
-        if oldModel != model:
-            self.node_hgn['model'] = model
-            if model == 'off':
-                self.__removeVariablesAndProperties()
-                self.node_np.xmlRemoveChild('hydrostatic_pressure')
-            else:
-                for v in self.var_list:
-                    self.setNewVariable(self.node_hgn, v, tpe="model", label=v)
+        self.node_hgn['model'] = model
+
+        if model != 'off':
+            for v in self.var_list:
+                self.setNewVariable(self.node_hgn, v, tpe="model", label=v)
+        elif oldModel and oldModel != "off":
+            self.__removeVariablesAndProperties()
+            self.node_np.xmlRemoveChild('hydrostatic_pressure')
 
     @Variables.noUndo
     def getHgnModel(self):

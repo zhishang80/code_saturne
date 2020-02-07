@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -35,15 +35,16 @@
 !-------------------------------------------------------------------------------
 subroutine atmstd(z,p,t,r)
 
+use cstphy, only:rair
+
 implicit none
 
 double precision z,t,p,r
-double precision p0,t0,zt,rair,g,a,t11,p11
+double precision p0,t0,zt,g,a,t11,p11
 
 p0 = 101325.d0
 t0 = 288.15d0
 zt = 11000.d0
-rair = 287.d0
 g = 9.81d0
 a = -6.5d-03
 

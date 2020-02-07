@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -120,11 +120,17 @@ _angle(const cs_lnum_t  v_ids[3],
   const cs_real_t lsq0 = cs_math_3_square_norm(u);
   const cs_real_t lsq1 = cs_math_3_square_norm(v);
 
+  double r = d/sqrt(lsq0*lsq1);
+  if (r > 1)
+    r = 1;
+  else if (r < -1)
+    r = -1;
+
+  double theta = acos(r);
+
   cs_real_t uv[3];
 
   cs_math_3_cross_product(u, v, uv);
-
-  double theta = acos(d/sqrt(lsq0*lsq1));
 
   /* Check the sign */
   if (cs_math_3_dot_product(uv, f_n) < 0)
@@ -285,6 +291,8 @@ _compact_indexed_data(size_t      elt_size,
  * \param[in]       n_vertices    number of selected vertices
  * \param[in]       faces         list of selected boundary faces (0 to n-1)
  * \param[in]       vertices      ids of selected vertices (0 to n-1)
+ * \param[in]       n_layers      number of layers per selected vertex
+ * \param[in]       vertices      ids of selected vertices (0 to n-1)
  * \param[out]      n_i_edges     number of interior edges
  * \param[out]      n_b_edges     number of boundary edges
  * \param[out]      i_e2sf        interior edges to selected faces
@@ -296,15 +304,19 @@ _compact_indexed_data(size_t      elt_size,
  * \param[out]      b_e2v         boundary edge to vertices connectivity
  * \param[out]      b_e_gc        boundary edge group class
  * \param[out]      b_e_io_num    boundary edge global number (or NULL)
+ *
+ * \return  pointer modified number of layers par selected vertex array if
+*           locking of some vertices is required, NULL otherwise
  */
 /*----------------------------------------------------------------------------*/
 
-static void
+static cs_lnum_t *
 _build_face_edges(cs_mesh_t         *m,
                   cs_lnum_t          n_faces,
                   cs_lnum_t          n_vertices,
                   const cs_lnum_t    faces[],
                   const cs_lnum_t    vertices[],
+                  const cs_lnum_t    n_layers[],
                   cs_lnum_t         *n_i_edges,
                   cs_lnum_t         *n_b_edges,
                   cs_lnum_2_t       *i_e2sf[],
@@ -568,6 +580,8 @@ _build_face_edges(cs_mesh_t         *m,
 
   /* Counting loop */
 
+  cs_lnum_t *lock_mult = NULL;
+
   cs_lnum_t _n_i_edges = 0, _n_b_edges = 0;
 
   for (cs_lnum_t i = 0; i < _n_edges; i++) {
@@ -581,15 +595,14 @@ _build_face_edges(cs_mesh_t         *m,
         _n_b_edges += 1;
     }
     else if (e_nf[i] > 2) {
-      cs_real_t *cv0 = m->vtx_coord + (e2v[i][0] * 3);
-      cs_real_t *cv1 = m->vtx_coord + (e2v[i][1] * 3);
-      bft_error(__FILE__, __LINE__, 0,
-                _("Edge for extrusion joining vertices at coordinates\n"
-                  " [%12.3g, %12.3g, %12.3g] and\n"
-                  " [%12.3g, %12.3g, %12.3g] has %d adjacent faces."),
-                (double)cv0[0], (double)cv0[1], (double)cv0[2],
-                (double)cv1[0], (double)cv1[1], (double)cv1[2],
-                (int)e_nf[i]);
+      /* Too many incident faces: no extrusion along this edge */
+      if (lock_mult == NULL) {
+        BFT_MALLOC(lock_mult,  m->n_vertices, cs_lnum_t);
+        for (cs_lnum_t j = 0; j < m->n_vertices; j++)
+          lock_mult[j] = 1;
+      }
+      lock_mult[e2v[i][0]] = 0;
+      lock_mult[e2v[i][1]] = 0;
     }
   }
 
@@ -684,6 +697,20 @@ _build_face_edges(cs_mesh_t         *m,
   *b_e2sf = _b_e2sf;
   *b_e2v = _b_e2v;
   *b_e_gc = _b_e_gc;
+
+  /* Restrict _n_layers to selected vertices */
+
+  cs_lnum_t  *_n_layers = NULL;
+
+  if (lock_mult != NULL) {
+    BFT_MALLOC(_n_layers, n_vertices, cs_lnum_t);
+    for (cs_lnum_t j = 0; j < n_vertices; j++) {
+      _n_layers[j] = n_layers[j] * lock_mult[vertices[j]];
+    }
+    BFT_FREE(lock_mult);
+  }
+
+  return _n_layers;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -699,6 +726,7 @@ _build_face_edges(cs_mesh_t         *m,
  * \param[in]       n_vertices    number of selected vertices
  * \param[in]       vertices      ids of selected vertices (0 to n-1)
  * \param[in]       n_layers      number of layers for each vertex
+ * \param[in]       n_layers_ini  predicted number of layers for each vertex
  * \param[in]       coord_shift   extrusion vector for each vertex
  * \param[in]       distribution  optional distribution of resulting vertices
  *                                along each extrusion vector
@@ -715,6 +743,7 @@ _add_extruded_vertices(cs_mesh_t          *m,
                        cs_lnum_t           n_vertices,
                        const cs_lnum_t     vertices[],
                        const cs_lnum_t     n_layers[],
+                       const cs_lnum_t     n_layers_ini[],
                        const cs_coord_3_t  coord_shift[],
                        const float         distribution[])
 {
@@ -755,7 +784,7 @@ _add_extruded_vertices(cs_mesh_t          *m,
       const cs_real_t *s_coo = m->vtx_coord + 3*v_id;
       const cs_lnum_t s_id = v_shift[i];
       cs_real_t *d_coo = m->vtx_coord + (n_vertices_ini + s_id)*3;
-      cs_real_t d_f = 1./n_layers[i];
+      cs_real_t d_f = 1./n_layers_ini[i];
       for (cs_lnum_t j = 0; j < n_layers[i]; j++) {
         for (cs_lnum_t k = 0; k < 3; k++)
           d_coo[j*3 + k] = s_coo[k] + d_f*(j+1)*coord_shift[i][k];
@@ -1955,7 +1984,7 @@ cs_mesh_extrude(cs_mesh_t                        *m,
   const cs_lnum_t      n_vertices = e->n_vertices;
   const cs_lnum_t     *faces = e->face_ids;
   const cs_lnum_t     *vertices = e->vertex_ids;
-  const cs_lnum_t     *n_layers = e->n_layers;
+  const cs_lnum_t     *n_layers_ini = e->n_layers;
   const cs_coord_3_t  *coord_shift = (const cs_coord_3_t *)e->coord_shift;
   const float         *distribution = e->distribution;
 
@@ -1983,26 +2012,33 @@ cs_mesh_extrude(cs_mesh_t                        *m,
   int  *b_e_gc = NULL;
   fvm_io_num_t  *i_e_io_num = NULL, *b_e_io_num = NULL;
 
-  _build_face_edges(m,
-                    n_faces,
-                    n_vertices,
-                    _faces,
-                    _vertices,
-                    &n_i_edges,
-                    &n_b_edges,
-                    &i_e2sf,
-                    &i_e2v,
-                    &i_e_io_num,
-                    &b_e2sf,
-                    &b_e2v,
-                    &b_e_gc,
-                    &b_e_io_num);
+  cs_lnum_t  *_n_layers
+    = _build_face_edges(m,
+                        n_faces,
+                        n_vertices,
+                        _faces,
+                        _vertices,
+                        n_layers_ini,
+                        &n_i_edges,
+                        &n_b_edges,
+                        &i_e2sf,
+                        &i_e2v,
+                        &i_e_io_num,
+                        &b_e2sf,
+                        &b_e2v,
+                        &b_e_gc,
+                        &b_e_io_num);
+
+  const cs_lnum_t *n_layers = (const cs_lnum_t *)_n_layers;
+  if (_n_layers == NULL)
+    n_layers = n_layers_ini;
 
   /* Now generate added vertices */
 
   cs_lnum_t *n_v_shift = _add_extruded_vertices(m,
                                                 n_vertices,
                                                 _vertices,
+                                                n_layers_ini,
                                                 n_layers,
                                                 coord_shift,
                                                 distribution);
@@ -2087,6 +2123,9 @@ cs_mesh_extrude(cs_mesh_t                        *m,
     b_e_io_num = fvm_io_num_destroy(b_e_io_num);
 
   /* Free local arrays */
+
+  n_layers = NULL;
+  BFT_FREE(_n_layers);
 
   BFT_FREE(v_s_id);
 

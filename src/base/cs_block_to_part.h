@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -50,41 +50,16 @@ BEGIN_C_DECLS
  * Type definitions
  *============================================================================*/
 
-/* Opaque block to general domain partitioning distribution structure */
-
-#if defined(HAVE_MPI)
-
-typedef struct _cs_block_to_part_t  cs_block_to_part_t;
-
-#endif
-
 /*=============================================================================
  * Public function prototypes
  *============================================================================*/
 
 #if defined(HAVE_MPI)
 
-/*----------------------------------------------------------------------------
- * Create block to partition distributor using entity destination rank array.
- *
- * arguments:
- *   comm     <-- communicator
- *   block    <-- block to partition range and size info
- *   ent_rank <-- destination rank for each entity
- *                (size: block.gnum_range[1] - block.gnum_range[0])
- *
- * returns:
- *   initialized block to partition distributor
- *----------------------------------------------------------------------------*/
-
-cs_block_to_part_t *
-cs_block_to_part_create_by_rank(MPI_Comm              comm,
-                                cs_block_dist_info_t  block,
-                                int                   ent_rank[]);
-
-/*----------------------------------------------------------------------------
- * Initialize block to partition distributor with block data using
- * strided adjacency array.
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Initialize block to partition distributor with block data using
+ *        strided adjacency array.
  *
  * The adjacency array uses 1-n based global numbers. 0 values are
  * allowed and may be used to represent empty adjacencies.
@@ -99,170 +74,45 @@ cs_block_to_part_create_by_rank(MPI_Comm              comm,
  * If the default rank for a given element is < 0, or no default
  * ranks are defined, elements with no adjacency are not distributed.
  *
- * arguments:
- *   comm              <-- communicator
- *   block             <-- block size and range info
- *   adjacent_block    <-- block info for adjacent entities
- *   stride            <-- stride of adjacency array
- *   adjacency         <-- entity adjacency (1 to n numbering)
- *   adjacent_ent_rank <-- destination rank for adjacent entities, or
- *                         NULL if based on block size and range only.
- *   default_rank      <-- default rank in case there is no adjacency, or NULL
+ * The returned all to all distributor should be used in reverse
+ * mode to copy data from the block to partition distribution.
  *
- * returns:
- *   initialized block to partition distributor
- *----------------------------------------------------------------------------*/
-
-cs_block_to_part_t *
-cs_block_to_part_create_by_adj_s(MPI_Comm              comm,
-                                 cs_block_dist_info_t  block,
-                                 cs_block_dist_info_t  adjacent_block,
-                                 int                   stride,
-                                 cs_gnum_t             adjacency[],
-                                 int                   adjacent_ent_rank[],
-                                 int                   default_rank[]);
-
-/*----------------------------------------------------------------------------
- * Initialize block to partition distributor for entities adjacent to
- * already distributed entities.
+ * If the part_gnum array is requested (i.e. passed an non-NULL pointer),
+ * the caller is responsible for freeing it.
  *
- * arguments:
- *   comm      <-- communicator
- *   bi        <-- block size and range info
- *   adj_bi    <-- block info for adjacent entities
- *   adjacency <-- entity adjacency (1 to n numbering)
+ * \param[in]   comm               communicator
+ * \param[in]   block              block size and range info
+ * \param[in]   adjacent_block     block info for adjacent entities
+ * \param[in]   stride             stride of adjacency array (1 or 2)
+ * \param[in]   adjacency          entity adjacency (1 to n numbering)
+ * \param[in]   adjacent_ent_rank  destination rank for adjacent entities, or
+ * \param[in]                      NULL if based on block size and range only.
+ * \param[in]   default_rank       default rank in case there is no adjacency,
+ *                                 or NULL
+ * \param[out]  n_part_elts        number of elements in partition, or NULL
+ * \param[out]  part_gnum          global elements numbers in partition,
+ *                                 or NULL
  *
- * returns:
- *   initialized block to partition distributor
- *----------------------------------------------------------------------------*/
+ * \return  initialized all to all block to partition distributor
+ */
+/*----------------------------------------------------------------------------*/
 
-cs_block_to_part_t *
-cs_block_to_part_create_adj(MPI_Comm              comm,
-                            cs_block_dist_info_t  adj_bi,
-                            size_t                adjacency_size,
-                            const cs_gnum_t       adjacency[]);
-
-/*----------------------------------------------------------------------------
- * Initialize block to partition distributor based global element numbers
- * for partitioned data.
- *
- * arguments:
- *   comm           <-- communicator
- *   bi             <-- block size and range info
- *   n_ents         <-- number of elements in partition
- *   global_ent_num <-- global entity numbers (in partition)
- *
- * returns:
- *   initialized partition to block distributor
- *----------------------------------------------------------------------------*/
-
-cs_block_to_part_t *
-cs_block_to_part_create_by_gnum(MPI_Comm              comm,
-                                cs_block_dist_info_t  bi,
-                                cs_lnum_t             n_ents,
-                                const cs_gnum_t       global_ent_num[]);
-
-/*----------------------------------------------------------------------------
- * Destroy a block to partition distributor structure.
- *
- * arguments:
- *   d <-> pointer to block to partition distributor structure pointer
- *----------------------------------------------------------------------------*/
-
-void
-cs_block_to_part_destroy(cs_block_to_part_t  **d);
-
-/*----------------------------------------------------------------------------
- * Return number of entities associated with local partition
- *
- * arguments:
- *   d <-- distribtor helper
- *
- * returns:
- *   number of entities associated with distribution receive
- *----------------------------------------------------------------------------*/
-
-cs_lnum_t
-cs_block_to_part_get_n_part_ents(cs_block_to_part_t  *d);
-
-/*----------------------------------------------------------------------------
- * Transfer a block to partition distributor's associated global numbering.
- *
- * The pointer to the global number array is returned, and ownership
- * of this array is given to the caller.
- *
- * arguments:
- *   d <-> pointer to block to partition distributor structure pointer
- *
- * returns:
- *   pointer to receiver global numbering, or NULL if the block to
- *   domain partition distributor was not the owner of this array.
- *----------------------------------------------------------------------------*/
-
-cs_gnum_t *
-cs_block_to_part_transfer_gnum(cs_block_to_part_t  *d);
-
-/*----------------------------------------------------------------------------
- * Copy array data from block distribution to general domain partition.
- *
- * arguments:
- *   d            <-- block to partition distributor
- *   datatype     <-- type of data considered
- *   stride       <-- number of values per entity (interlaced)
- *   block_values --> values in block distribution
- *   part_values  --> values in general domain partition
- *----------------------------------------------------------------------------*/
-
-void
-cs_block_to_part_copy_array(cs_block_to_part_t  *d,
-                            cs_datatype_t        datatype,
-                            int                  stride,
-                            const void          *block_values,
-                            void                *part_values);
-
-/*----------------------------------------------------------------------------
- * Copy a local index from block distribution to general domain partition.
- *
- * This is useful for distribution of entity connectivity information.
- *
- * arguments:
- *   d           <-- block to partition distributor
- *   block_index <-- local index in block distribution
- *   part_index  --> local index in general partition distribution
- *                   (size: n_part_entities + 1)
- *----------------------------------------------------------------------------*/
-
-void
-cs_block_to_part_copy_index(cs_block_to_part_t  *d,
-                            const cs_lnum_t     *block_index,
-                            cs_lnum_t           *part_index);
-
-/*----------------------------------------------------------------------------
- * Copy indexed data from block distribution to general domain partition.
- *
- * arguments:
- *   d           <-- block to partition distributor
- *   datatype    <-- type of data considered
- *   block_index <-- local index in block distribution
- *   block_val   <-- values in block distribution
- *                   (size: block_index[n_block_ents])
- *   part_index  --> local index in general distribution
- *   part_val    --> numbers in general  distribution
- *                   (size: part_index[n_part_ents])
- *----------------------------------------------------------------------------*/
-
-void
-cs_block_to_part_copy_indexed(cs_block_to_part_t  *d,
-                              cs_datatype_t        datatype,
-                              const cs_lnum_t     *block_index,
-                              const void          *block_val,
-                              const cs_lnum_t     *part_index,
-                              void                *part_val);
+cs_all_to_all_t *
+cs_block_to_part_create_by_adj_s(MPI_Comm               comm,
+                                 cs_block_dist_info_t   block,
+                                 cs_block_dist_info_t   adjacent_block,
+                                 int                    stride,
+                                 const cs_gnum_t        adjacency[],
+                                 const int              adjacent_ent_rank[],
+                                 const int              default_rank[],
+                                 cs_lnum_t             *n_part_elts,
+                                 cs_gnum_t            **part_gnum);
 
 #endif /* defined(HAVE_MPI) */
 
-/*----------------------------------------------------------------------------
- * Determine local references from references to global numbers.
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Determine local references from references to global numbers.
  *
  * This is based on finding the local id of a given global number
  * using a binary search.
@@ -276,18 +126,16 @@ cs_block_to_part_copy_indexed(cs_block_to_part_t  *d,
  * global number (i.e not necessarily the smallest one) may be
  * assigned to the corresponding local_number[] entry.
  *
- * arguments:
- *   n_ents                <-- number of entities
- *   base                  <-- base numbering (typically 0 or 1)
- *   global_list_size      <-- size of global entity list
- *   global_list_is_sorted <-- true if global entity list is guaranteed
- *                             to be sorted
- *   global_list           <-- global entity list
- *   global_number         <-- entity global numbers
- *                             (size: n_ents)
- *   local_number          --> entity local numbers
- *                             (size: n_ents)
- *----------------------------------------------------------------------------*/
+ * \param[in]   n_ents                 number of entities
+ * \param[in]   base                   base numbering (typically 0 or 1)
+ * \param[in]   global_list_size       size of global entity list
+ * \param[in]   global_list_is_sorted  true if global entity list is
+ *                                     guaranteed to be sorted
+ * \param[in]   global_list            global entity list
+ * \param[in]   global_number          entity global numbers (size: n_ents)
+ * \param[out]  local_number           entity local numbers (size: n_ents)
+ */
+/*----------------------------------------------------------------------------*/
 
 void
 cs_block_to_part_global_to_local(cs_lnum_t        n_ents,

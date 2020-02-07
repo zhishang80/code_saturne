@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -35,6 +35,7 @@
 #include "cs_cdo_bc.h"
 #include "cs_cdo_connect.h"
 #include "cs_cdo_diffusion.h"
+#include "cs_cdo_field_interpolation.h"
 #include "cs_cdofb_ac.h"
 #include "cs_cdofb_monolithic.h"
 #include "cs_cdofb_navsto.h"
@@ -69,6 +70,7 @@
 #include "cs_hho_stokes.h"
 #include "cs_hho_vecteq.h"
 #include "cs_hodge.h"
+#include "cs_maxwell.h"
 #include "cs_mesh_deform.h"
 #include "cs_navsto_coupling.h"
 #include "cs_navsto_param.h"
@@ -82,6 +84,7 @@
 #include "cs_sdm.h"
 #include "cs_source_term.h"
 #include "cs_static_condensation.h"
+#include "cs_thermal_system.h"
 #include "cs_walldistance.h"
 #include "cs_xdef_cw_eval.h"
 #include "cs_xdef_eval.h"

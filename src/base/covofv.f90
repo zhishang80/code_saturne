@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -124,7 +124,7 @@ integer          iiscav
 integer          ifcvsl, iflmas, iflmab
 integer          nswrgp, imligp, iwarnp
 integer          iconvp, idiffp, ndircp
-integer          nswrsp, ircflp, ischcp, isstpp, iescap, ivissv
+integer          imrgrp, nswrsp, ircflp, ischcp, isstpp, iescap, ivissv
 integer          idftnp, iswdyp
 integer          iflid , st_prv_id, st_id,  keydri, iscdri
 integer          icvflb, f_dim, iflwgr
@@ -293,6 +293,9 @@ call ustsvv &
   dt     ,                                                       &
   ckupdc , smacel , smbrv  , fimp )
 
+! C version
+call user_source_terms(ivarfl(isca(iscal)), smbrv, fimp)
+
 ! Store the source terms for convective limiter
 call field_get_key_int(iflid, kst, st_id)
 if (st_id .ge.0) then
@@ -316,7 +319,7 @@ end if
 
 ! Si on extrapole les TS :
 !   SMBRV recoit -theta TS du pas de temps precedent
-!     (on aurait pu le faire avant ustssc, mais avec le risque que
+!     (on aurait pu le faire avant ustsvv, mais avec le risque que
 !      l'utilisateur l'ecrase)
 !   SMBRV recoit la partie du terme source qui depend de la variable
 !   A l'ordre 2, on suppose que le ROVSDT fourni par l'utilisateur est <0
@@ -358,7 +361,7 @@ endif
 !     Ordre 2 non pris en compte
 
 if (ippmod(iphpar).ge.1) then
-  call pptsvv(iscal, smbrv, fimp)
+  call pptsvv(iscal, smbrv)
 endif
 
 ! Mass source term
@@ -634,6 +637,7 @@ idftnp = vcopt%idften
 ndircp = vcopt%ndircl
 nswrsp = vcopt%nswrsm
 nswrgp = vcopt%nswrgr
+imrgrp = vcopt%imrgra
 imligp = vcopt%imligr
 ircflp = vcopt%ircflu
 ischcp = vcopt%ischcv
@@ -660,7 +664,7 @@ call field_get_coefbf_v(iflid, cofbfp)
 call coditv &
 !==========
  ( idtvar , iterns , iflid  , iconvp , idiffp , ndircp ,          &
-   imrgra , nswrsp , nswrgp , imligp , ircflp , ivissv ,          &
+   imrgrp , nswrsp , nswrgp , imligp , ircflp , ivissv ,          &
    ischcp , isstpp , iescap , idftnp , iswdyp ,                   &
    iwarnp ,                                                       &
    blencp , epsilp , epsrsp , epsrgp , climgp ,                   &

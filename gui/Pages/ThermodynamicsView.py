@@ -4,7 +4,7 @@
 
 # This file is part of Code_Saturne, a general-purpose CFD tool.
 #
-# Copyright (C) 1998-2019 EDF S.A.
+# Copyright (C) 1998-2020 EDF S.A.
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU General Public License as published by the Free Software
@@ -66,7 +66,7 @@ from code_saturne.Base.QtWidgets import *
 from code_saturne.model.Common import GuiParam
 from code_saturne.Base.QtPage import DoubleValidator, ComboModel
 from code_saturne.Base.QtPage import to_text_string
-from Thermodynamics import Ui_Thermodynamics
+from code_saturne.Pages.Thermodynamics import Ui_Thermodynamics
 from code_saturne.model.ThermodynamicsModel import *
 from code_saturne.model.MainFieldsModel import MainFieldsModel
 from code_saturne.model.SpeciesModel import SpeciesModel
@@ -1197,7 +1197,7 @@ temperature = enthalpy / 1000;
         """
         if EOS == 1:
             import subprocess
-            import cs_config
+            from code_saturne import cs_config
 
             cfg = cs_config.config()
             if cfg.libs['eos'].have == "yes":

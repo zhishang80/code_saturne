@@ -2,7 +2,7 @@
 
 ! This file is part of Code_Saturne, a general-purpose CFD tool.
 !
-! Copyright (C) 1998-2019 EDF S.A.
+! Copyright (C) 1998-2020 EDF S.A.
 !
 ! This program is free software; you can redistribute it and/or modify it under
 ! the terms of the GNU General Public License as published by the Free Software
@@ -56,7 +56,6 @@ use coincl
 use cpincl
 use lagran
 use vorinc
-use ihmpre
 use radiat
 use cplsat
 use atincl
@@ -72,6 +71,7 @@ use ptrglo
 use turbomachinery
 use cs_c_bindings
 use cs_f_interfaces
+use cdomod
 
 use, intrinsic :: iso_c_binding
 
@@ -89,9 +89,9 @@ implicit none
 
 ! Local variables
 
-logical(kind=c_bool) mesh_modified
+logical(kind=c_bool) :: mesh_modified, log_active
 
-integer          modhis, iappel, modntl, iisuit, imrgrl
+integer          modhis, iappel, iisuit
 integer          iel
 
 integer          inod   , idim, ifac
@@ -235,19 +235,6 @@ if (iilagr.gt.0) then
   stats_id = timer_stats_create("lagrangian_stage", &
                                 "particle_displacement_stage", &
                                 "particle displacement")
-endif
-
-!===============================================================================
-! Geometry
-!===============================================================================
-
-! Filter extended neighborhood for least-squares gradients
-
-imrgrl = abs(imrgra)
-imrgrl = modulo(imrgrl,10)
-
-if (imrgrl.eq.3 .or. imrgrl.eq.6 .or. imrgrl.eq.9) then
-  call redvse(anomax)
 endif
 
 !===============================================================================
@@ -475,6 +462,10 @@ if (iilagr.gt.0) then
   call init_lagr_arrays(tslagr)
 endif
 
+if (i_les_balance.gt.0) then
+  call les_balance_create
+endif
+
 !===============================================================================
 ! Default initializations
 !===============================================================================
@@ -490,14 +481,16 @@ call iniva0(nscal)
 ! Compute the porosity if needed
 if (iporos.ge.1) then
 
+  ! Make fluid surfaces of mesh quantity point to the created fields
+  call cs_mesh_quantities_set_has_disable_flag(1)
+  call cs_mesh_init_fluid_quantities()
+
   ! Compute porosity from scan
   if (compute_porosity_from_scan) then
     call cs_compute_porosity_from_scan()
   endif
 
-  if (iihmpr.eq.1) then
-    call uiporo
-  endif
+  call uiporo
   call usporo
 
   ! C version
@@ -646,7 +639,7 @@ if (isuite.eq.1) then
   endif
 
   if (isuisy.eq.1) then
-    call lecsyn('les_inflow'//c_null_char)
+    call lecsyn('les_inflow.csc'//c_null_char)
   endif
 
   ! TODO
@@ -670,6 +663,10 @@ endif
 !===============================================================================
 
 call inivar(nvar, nscal)
+
+if (icdo.ge.1) then ! CDO mode
+  call cs_f_initialize_cdo_systems
+endif
 
 !===============================================================================
 ! Initializations for the 1D thermal wall module
@@ -806,6 +803,14 @@ if (iilagr.gt.0) then
 
 endif
 
+! CDO module (user-defined equations)
+!====================================
+
+if (icdo.eq.1) then
+   ! FV and CDO activated
+   call cs_f_cdo_solve_steady_state_domain
+endif
+
 ! Logging of initial values
 
 call log_iteration
@@ -889,24 +894,6 @@ if (itrale.gt.0 .and. ntmabs.gt.ntpabs) then
   endif
 endif
 
-if (ntlist.gt.0) then
-  modntl = mod(ntcabs,ntlist)
-  ! Always print 10 first iterations
-  if (ntcabs - ntpabs.le.10) then
-    modntl = 0
-  endif
-elseif(ntlist.eq.-1.and.ntcabs.eq.ntmabs) then
-  modntl = 0
-else
-  modntl = 1
-endif
-
-if (ntmabs.gt.ntpabs .and. itrale.gt.0) then
-  if (modntl.eq.0) then
-    write(nfecra,3001) ttcabs,ntcabs
-  endif
-endif
-
 !===============================================================================
 ! Step forward in time
 !===============================================================================
@@ -919,6 +906,21 @@ if (      (idtvar.eq.0 .or. idtvar.eq.1)                          &
   ntmabs = ntcabs
 endif
 
+! Set default logging (always log 10 first iterations and last one=)
+log_active = .false.
+if (ntcabs - ntpabs.le.10 .or. ntcabs.eq.ntmabs) then
+  log_active = .true.
+else if (ntlist.gt.0) then
+  if (mod(ntcabs,ntlist) .eq. 0) log_active = .true.
+endif
+call cs_log_default_activate(log_active)
+
+if (ntmabs.gt.ntpabs .and. itrale.gt.0) then
+  if (log_active) then
+    write(nfecra,3001) ttcabs, ntcabs
+  endif
+endif
+
 mesh_modified = .false.
 call cs_volume_zone_build_all(mesh_modified)
 call cs_boundary_zone_build_all(mesh_modified)
@@ -928,6 +930,14 @@ call dmtmps(titer1)
 call tridim(itrale, nvar, nscal, dt)
 
 if (ntmabs.gt.ntpabs .and. itrale.gt.0) then
+
+  ! CDO module (user-defined equations)
+  !====================================
+
+  if (icdo.eq.1) then
+     ! FV and CDO activated
+     call cs_f_cdo_solve_unsteady_state_domain
+  endif
 
   ! Lagrangian module
   !==================
@@ -942,10 +952,29 @@ if (ntmabs.gt.ntpabs .and. itrale.gt.0) then
 
   endif
 
+  ! Update gradients needed in LES balance computation
+  !=============================================================================
+
+  if (i_les_balance.gt.0) then
+    call les_balance_update_gradients
+  endif
+
   ! Compute temporal means (accumulation)
-  !======================================
+  !=============================================================================
 
   call time_moment_update_all
+
+endif
+
+!===============================================================================
+! Update mesh (ALE)
+!===============================================================================
+
+if (iale.ge.1 .and. ntmabs.gt.ntpabs) then
+
+  if (itrale.eq.0 .or. itrale.gt.nalinf) then
+    call cs_ale_update_mesh(itrale, xyzno0)
+  endif
 
 endif
 
@@ -959,28 +988,18 @@ if (itrale.gt.0) then
 
   ! 1D profiles postprocessing output
 
-  if (iihmpr.eq.1) then
-    call cs_gui_profile_output()
-    call uiexop()
-  endif
+  call cs_gui_profile_output()
+  call uiexop()
 
   call cs_f_user_extra_operations(nvar, nscal, dt)
 
   call user_extra_operations()
 
-  call timer_stats_stop(post_stats_id)
-
-endif
-
-!===============================================================================
-! Update mesh (ALE)
-!===============================================================================
-
-if (iale.ge.1 .and. ntmabs.gt.ntpabs) then
-
-  if (itrale.eq.0 .or. itrale.gt.nalinf) then
-    call cs_ale_update_mesh(itrale, xyzno0)
+  if (i_les_balance.gt.0) then
+    call les_balance_compute
   endif
+
+  call timer_stats_stop(post_stats_id)
 
 endif
 
@@ -1029,7 +1048,7 @@ if (iisuit.eq.1) then
   endif
 
   if (nent.gt.0) then
-    call ecrsyn('les_inflow'//c_null_char)
+    call ecrsyn('les_inflow.csc'//c_null_char)
   endif
 
   if (iilagr.gt.0) then
@@ -1038,6 +1057,10 @@ if (iisuit.eq.1) then
 
   if (iirayo.gt.0) then
     call cs_rad_transfer_write
+  endif
+
+  if (i_les_balance.gt.0) then
+    call les_balance_write_restart
   endif
 
   call stusui
@@ -1067,6 +1090,14 @@ endif
 !===============================================================================
 
 call pstvar(nvar, nscal)
+
+! CDO module (user-defined equations)
+!====================================
+
+if (icdo.eq.1) then
+  ! FV and CDO activated
+  call cs_f_cdo_post_domain
+endif
 
 !===============================================================================
 ! Structures
@@ -1098,7 +1129,7 @@ endif
 ! Write to "run_solver.log" every ntlist iterations
 !===============================================================================
 
-if (modntl.eq.0) then
+if (log_active) then
 
   call ecrlis(ncelet, ncel, dt, cell_f_vol)
 
@@ -1232,6 +1263,10 @@ endif
 
 if (ivrtex.eq.1) then
   call finalize_vortex
+endif
+
+if (i_les_balance.gt.0) then
+  call les_balance_finalize
 endif
 
 write(nfecra,7000)

@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -79,13 +79,35 @@ bft_mem_usage_pr_size(void);
 /*
  * Return maximum process memory use (in kB) depending on OS.
  *
- * The returned value is the maximum returned by bft_mem_usage_pr_size()
- * during the program's lifetime. With memory allocations which return
- * memory to the system, this value could be incorrect in certain cases.
+ * The returned value is the maximum memory used during the program's
+ * lifetime.
+ *
+ * returns:
+ *   maximum measured program size, or 0 if not available
  */
 
 size_t
 bft_mem_usage_max_pr_size(void);
+
+/*
+ * Return maximum process virtual memory use (in kB) depending on OS.
+ *
+ * returns:
+ *   maximum measured virtual memory usage, or 0 if not available
+ */
+
+size_t
+bft_mem_usage_max_vm_size(void);
+
+/*
+ * Return shared library memory use (in kB) depending on OS.
+ *
+ * returns:
+ *   maximum measured shared library memory usage, or 0 if not available
+ */
+
+size_t
+bft_mem_usage_shared_lib_size(void);
 
 /*
  * Return counter to number of calls to malloc, realloc, and free.

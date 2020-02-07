@@ -9,7 +9,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -110,9 +110,6 @@ void *
 cs_navsto_uzawa_create_context(cs_navsto_param_t    *nsp,
                                cs_param_bc_type_t    bc)
 {
-  assert(nsp != NULL);
-  CS_UNUSED(nsp); /* Avoid a warning when compiling */
-
   cs_navsto_uzawa_t  *nsc = NULL;
 
   BFT_MALLOC(nsc, 1, cs_navsto_uzawa_t);
@@ -134,7 +131,11 @@ cs_navsto_uzawa_create_context(cs_navsto_param_t    *nsp,
 
     /* Solver settings */
     cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "jacobi");
-    cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
+
+    if (nsp->model &  CS_NAVSTO_MODEL_STOKES)
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    else
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
   }
 
   nsc->energy = NULL;   /* Not used up to now */
@@ -195,20 +196,17 @@ cs_navsto_uzawa_init_setup(const cs_navsto_param_t    *nsp,
   cs_navsto_param_transfer(nsp, mom_eqp);
 
   /* Link the time property to the momentum equation */
-  switch (nsp->time_state) {
+  if (!cs_navsto_param_is_steady(nsp))
+    cs_equation_add_time(mom_eqp, nsp->density);
 
-  case CS_NAVSTO_TIME_STATE_FULL_STEADY:
-    break; /* Nothing to add */
+  /* Add advection term: It's in the cs_navsto_system_t structure, but it cannot
+   * be seen from here */
+  if (nsp->model & CS_NAVSTO_MODEL_INCOMPRESSIBLE_NAVIER_STOKES)
+    cs_equation_add_advection(mom_eqp,
+                              cs_advection_field_by_name("velocity_field"));
 
-  case CS_NAVSTO_TIME_STATE_UNSTEADY:
-  case CS_NAVSTO_TIME_STATE_LIMIT_STEADY:
-    cs_equation_add_time(mom_eqp, cs_property_by_name("unity"));
-    break;
-
-  default:
-    bft_error(__FILE__, __LINE__, 0,
-              " %s: Invalid choice for the time state", __func__);
-  }
+  /* CS_NAVSTO_MODEL_OSEEN: Nothing to do since the Oseen field is set by the
+   * user via cs_navsto_add_oseen_field() */
 
   /* All considered models needs a viscous term */
   cs_equation_add_diffusion(mom_eqp, nsp->lami_viscosity);
@@ -302,9 +300,6 @@ void *
 cs_navsto_ac_create_context(cs_navsto_param_t    *nsp,
                             cs_param_bc_type_t    bc)
 {
-  assert(nsp != NULL);
-  CS_UNUSED(nsp); /* Avoid warning when compiling */
-
   cs_navsto_ac_t  *nsc = NULL;
 
   BFT_MALLOC(nsc, 1, cs_navsto_ac_t);
@@ -324,7 +319,11 @@ cs_navsto_ac_create_context(cs_navsto_param_t    *nsp,
     cs_equation_set_param(eqp, CS_EQKEY_HODGE_DIFF_COEF, "sushi");
 
     cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "jacobi");
-    cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
+    if (nsp->model &  CS_NAVSTO_MODEL_STOKES)
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    else
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
+
   }
 
   /* Additional property */
@@ -385,21 +384,20 @@ cs_navsto_ac_init_setup(const cs_navsto_param_t    *nsp,
   cs_navsto_param_transfer(nsp, mom_eqp);
 
   /* Link the time property to the momentum equation */
-  switch (nsp->time_state) {
+  if (!cs_navsto_param_is_steady(nsp))
+    cs_equation_add_time(mom_eqp, nsp->density);
 
-  case CS_NAVSTO_TIME_STATE_UNSTEADY:
-  case CS_NAVSTO_TIME_STATE_LIMIT_STEADY:
-    cs_equation_add_time(mom_eqp, cs_property_by_name("unity"));
-    break;
+  /* Add advection term: It's in the cs_navsto_system_t structure, but it cannot
+   * be seen from here */
+  if (nsp->model & CS_NAVSTO_MODEL_INCOMPRESSIBLE_NAVIER_STOKES)
+    cs_equation_add_advection(mom_eqp,
+                              cs_advection_field_by_name("velocity_field"));
 
-  default:
-    bft_error(__FILE__, __LINE__, 0,
-              " %s: Invalid choice for the time state", __func__);
-  }
+  /* CS_NAVSTO_MODEL_OSEEN: Nothing to do since the Oseen field is set by the
+   * user via cs_navsto_add_oseen_field() */
 
   /* All considered models needs a viscous term */
   cs_equation_add_diffusion(mom_eqp, nsp->lami_viscosity);
-
 }
 
 /*----------------------------------------------------------------------------*/
@@ -483,9 +481,6 @@ void *
 cs_navsto_ac_vpp_create_context(cs_navsto_param_t    *nsp,
                                 cs_param_bc_type_t    bc)
 {
-  assert(nsp != NULL);
-  CS_UNUSED(nsp); /* Avoid warning when compiling */
-
   cs_navsto_ac_vpp_t  *nsc = NULL;
 
   BFT_MALLOC(nsc, 1, cs_navsto_ac_vpp_t);
@@ -505,7 +500,10 @@ cs_navsto_ac_vpp_create_context(cs_navsto_param_t    *nsp,
     cs_equation_set_param(eqp, CS_EQKEY_HODGE_DIFF_COEF, "sushi");
 
     cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "jacobi");
-    cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    if (nsp->model &  CS_NAVSTO_MODEL_STOKES)
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    else
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
   }
 
   /* The grad-div equation is usually always with homogeneous Dirichlet */
@@ -524,7 +522,10 @@ cs_navsto_ac_vpp_create_context(cs_navsto_param_t    *nsp,
     cs_equation_set_param(eqp, CS_EQKEY_HODGE_DIFF_COEF, "sushi");
 
     cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "jacobi");
-    cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    if (nsp->model &  CS_NAVSTO_MODEL_STOKES)
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    else
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
   }
 
   nsc->zeta = cs_property_add("graddiv_coef", CS_PROPERTY_ISO);
@@ -588,23 +589,23 @@ cs_navsto_ac_vpp_init_setup(const cs_navsto_param_t    *nsp,
   cs_navsto_param_transfer(nsp, gd_eqp);
 
   /* Link the time property to the momentum equation */
-  switch (nsp->time_state) {
-
-  case CS_NAVSTO_TIME_STATE_UNSTEADY:
-  case CS_NAVSTO_TIME_STATE_LIMIT_STEADY:
-    cs_equation_add_time(mom_eqp, cs_property_by_name("unity"));
-    cs_equation_add_time(gd_eqp, cs_property_by_name("unity"));
-    break;
-
-  default:
-    bft_error(__FILE__, __LINE__, 0,
-              " %s: Invalid choice for the time state", __func__);
+  if (!cs_navsto_param_is_steady(nsp)) {
+    cs_equation_add_time(mom_eqp, nsp->density);
+    cs_equation_add_time(gd_eqp, nsp->density);
   }
+
+  /* Add advection term: It's in the cs_navsto_system_t structure, but it cannot
+   * be seen from here */
+  if (nsp->model & CS_NAVSTO_MODEL_INCOMPRESSIBLE_NAVIER_STOKES)
+    cs_equation_add_advection(mom_eqp,
+                              cs_advection_field_by_name("velocity_field"));
+
+  /* CS_NAVSTO_MODEL_OSEEN: Nothing to do since the Oseen field is set by the
+   * user via cs_navsto_add_oseen_field() */
 
   /* All considered models needs a viscous term */
   cs_equation_add_diffusion(mom_eqp, nsp->lami_viscosity);
   cs_equation_add_diffusion(gd_eqp, nsp->lami_viscosity);
-
 }
 
 /*----------------------------------------------------------------------------*/
@@ -693,9 +694,6 @@ void *
 cs_navsto_monolithic_create_context(cs_navsto_param_t    *nsp,
                                     cs_param_bc_type_t    bc)
 {
-  assert(nsp != NULL);
-  CS_UNUSED(nsp); /* Avoid a warning when compiling */
-
   cs_navsto_monolithic_t  *nsc = NULL;
 
   BFT_MALLOC(nsc, 1, cs_navsto_monolithic_t);
@@ -716,8 +714,15 @@ cs_navsto_monolithic_create_context(cs_navsto_param_t    *nsp,
     cs_equation_set_param(eqp, CS_EQKEY_HODGE_DIFF_COEF, "sushi");
 
     /* Solver settings */
-    cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "none");
-    cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "gmres");
+    if (nsp->model &  CS_NAVSTO_MODEL_STOKES) {
+      cs_navsto_param_set(nsp, CS_NSKEY_SLES_STRATEGY, "gkb_saturne");
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    }
+    else {
+      cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "none");
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "gmres");
+    }
+
   }
 
   return nsc;
@@ -773,20 +778,17 @@ cs_navsto_monolithic_init_setup(const cs_navsto_param_t    *nsp,
   cs_navsto_param_transfer(nsp, mom_eqp);
 
   /* Link the time property to the momentum equation */
-  switch (nsp->time_state) {
+  if (!cs_navsto_param_is_steady(nsp))
+    cs_equation_add_time(mom_eqp, nsp->density);
 
-  case CS_NAVSTO_TIME_STATE_FULL_STEADY:
-    break; /* Nothing to add */
+  /* Add advection term: It's in the cs_navsto_system_t structure, but it cannot
+   * be seen from here */
+  if (nsp->model & CS_NAVSTO_MODEL_INCOMPRESSIBLE_NAVIER_STOKES)
+    cs_equation_add_advection(mom_eqp,
+                              cs_advection_field_by_name("velocity_field"));
 
-  case CS_NAVSTO_TIME_STATE_UNSTEADY:
-  case CS_NAVSTO_TIME_STATE_LIMIT_STEADY:
-    cs_equation_add_time(mom_eqp, cs_property_by_name("unity"));
-    break;
-
-  default:
-    bft_error(__FILE__, __LINE__, 0,
-              " %s: Invalid choice for the time state", __func__);
-  }
+  /* CS_NAVSTO_MODEL_OSEEN: Nothing to do since the Oseen field is set by the
+   * user via cs_navsto_add_oseen_field() */
 
   /* All considered models needs a viscous term */
   cs_equation_add_diffusion(mom_eqp, nsp->lami_viscosity);
@@ -847,7 +849,7 @@ cs_navsto_monolithic_get_momentum_eq(void       *context)
   if (context == NULL)
     return NULL;
 
-  cs_navsto_ac_t  *nsc = (cs_navsto_ac_t *)context;
+  cs_navsto_monolithic_t  *nsc = (cs_navsto_monolithic_t *)context;
 
   return nsc->momentum;
 }
@@ -869,9 +871,6 @@ void *
 cs_navsto_projection_create_context(cs_navsto_param_t    *nsp,
                                     cs_param_bc_type_t    bc)
 {
-  assert(nsp != NULL);
-  CS_UNUSED(nsp); /* Avoid warning when compiling */
-
   cs_navsto_projection_t  *nsc = NULL;
 
   BFT_MALLOC(nsc, 1, cs_navsto_projection_t);
@@ -892,7 +891,10 @@ cs_navsto_projection_create_context(cs_navsto_param_t    *nsp,
 
     /* Solver settings */
     cs_equation_set_param(eqp, CS_EQKEY_PRECOND, "jacobi");
-    cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
+    if (nsp->model & CS_NAVSTO_MODEL_STOKES)
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "cg");
+    else
+      cs_equation_set_param(eqp, CS_EQKEY_ITSOL, "bicg");
   }
 
   /* The default boundary condition on the pressure field is always a
@@ -966,7 +968,7 @@ cs_navsto_projection_free_context(const cs_navsto_param_t    *nsp,
 void
 cs_navsto_projection_init_setup(const cs_navsto_param_t    *nsp,
                                 int                         loc_id,
-                                _Bool                       has_previous,
+                                bool                        has_previous,
                                 void                       *context)
 {
   cs_navsto_projection_t  *nsc = (cs_navsto_projection_t *)context;
@@ -978,7 +980,7 @@ cs_navsto_projection_init_setup(const cs_navsto_param_t    *nsp,
 
   cs_navsto_param_transfer(nsp, u_eqp);
 
-  cs_equation_add_time(u_eqp, cs_property_by_name("unity"));
+  cs_equation_add_time(u_eqp, nsp->density);
 
   /* All considered models needs a viscous term */
   cs_equation_add_diffusion(u_eqp, nsp->lami_viscosity);

@@ -8,7 +8,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -152,18 +152,26 @@ cs_domain_initialize_setup(cs_domain_t                 *domain);
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief  Last setup stage of the cs_domain_t structure
+ * \brief  After having read the mesh and the first setup stage build the
+ *         connectivities and mesh quantities related to CDO/HHO schemes
  *
  * \param[in, out]  domain            pointer to a cs_domain_t struct.
- * \param[in, out]  mesh              pointer to a cs_mesh_t struct.
- * \param[in]       mesh_quantities   pointer to a cs_mesh_quantities_t struct.
  */
 /*----------------------------------------------------------------------------*/
 
 void
-cs_domain_finalize_setup(cs_domain_t                 *domain,
-                         cs_mesh_t                   *mesh,
-                         const cs_mesh_quantities_t  *mesh_quantities);
+cs_domain_init_cdo_structures(cs_domain_t              *domain);
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  Last setup stage of the cs_domain_t structure
+ *
+ * \param[in, out]  domain            pointer to a cs_domain_t struct.
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_domain_finalize_setup(cs_domain_t         *domain);
 
 /*----------------------------------------------------------------------------*/
 /*!

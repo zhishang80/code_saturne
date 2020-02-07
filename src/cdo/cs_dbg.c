@@ -5,7 +5,7 @@
 /*
   This file is part of Code_Saturne, a general-purpose CFD tool.
 
-  Copyright (C) 1998-2019 EDF S.A.
+  Copyright (C) 1998-2020 EDF S.A.
 
   This program is free software; you can redistribute it and/or modify it under
   the terms of the GNU General Public License as published by the Free Software
@@ -80,16 +80,14 @@ BEGIN_C_DECLS
  */
 /*----------------------------------------------------------------------------*/
 
-_Bool
+bool
 cs_dbg_cw_test(const cs_equation_param_t   *eqp,
                const cs_cell_mesh_t        *cm,
                const cs_cell_sys_t         *csys)
 {
   CS_UNUSED(eqp);
-  CS_UNUSED(cm);
-  CS_UNUSED(csys);
 
-#if 0 /* First example: Look for debug information related the cell number 0 */
+#if 1 /* First example: Look for debug information related the cell number 0 */
   if (cm != NULL)
     if (cm->c_id == 0)
       return true;
@@ -123,15 +121,15 @@ cs_dbg_cw_test(const cs_equation_param_t   *eqp,
   }
 #endif
 
-  return false;
+  return false; /* Default behavior */
 }
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief   Print a cs_sdm_t structure which is defined by block
+ * \brief   Print an array.
  *          Print into the file f if given otherwise open a new file named
  *          fname if given otherwise print into the standard output
- *          The usage of threshold allows one to compare more easier matrices
+ *          The usage of threshold allows one to compare more easier arrays
  *          without taking into account numerical roundoff.
  *
  * \param[in]  fp         pointer to a file structure or NULL
@@ -218,11 +216,11 @@ cs_dbg_fprintf_system(const char        *eqname,
   BFT_MALLOC(filename, len, char);
 
   sprintf(filename, "%s-sol-%04d.log", eqname, nt);
-  if (sol != NULL && level > 2)
+  if (sol != NULL && level > 4)
     cs_dbg_array_fprintf(NULL, filename, 1e-16, size, sol, 6);
 
   sprintf(filename, "%s-rhs-%04d.log", eqname, nt);
-  if (rhs != NULL && level > 3)
+  if (rhs != NULL && level > 5)
     cs_dbg_array_fprintf(NULL, filename, 1e-16, size, rhs, 6);
 
   BFT_FREE(filename);
@@ -241,9 +239,9 @@ cs_dbg_fprintf_system(const char        *eqname,
 
 void
 cs_dbg_darray_to_listing(const char        *header,
-                        const cs_lnum_t    size,
-                        const cs_real_t    array[],
-                        int                n_cols)
+                         const cs_lnum_t    size,
+                         const cs_real_t    array[],
+                         int                n_cols)
 {
   cs_log_printf(CS_LOG_DEFAULT, "\nDUMP>> %s\n", header);
 
@@ -298,6 +296,43 @@ cs_dbg_iarray_to_listing(const char        *header,
     cs_log_printf(CS_LOG_DEFAULT, "\n");
   }
 
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief  In debug mode, dump a linear system. Case of scalar-valued entries.
+ *
+ * \param[in] eqname     name of the equation related to the current system
+ * \param[in] matrix     pointer to the matrix to dump
+ */
+/*----------------------------------------------------------------------------*/
+
+void
+cs_dbg_dump_local_scalar_msr_matrix(const char          *name,
+                                    const cs_matrix_t   *matrix)
+{
+  if (cs_matrix_get_type(matrix) != CS_MATRIX_MSR)
+    return;
+
+  cs_log_printf(CS_LOG_DEFAULT, "\nDUMP MSR MATRIX FOR THE EQUATION >> %s\n",
+                name);
+
+  const cs_lnum_t  size = cs_matrix_get_n_rows(matrix);
+  const cs_lnum_t  *row_index, *col_id;
+  const cs_real_t  *d_val, *x_val;
+
+  cs_matrix_get_msr_arrays(matrix, &row_index, &col_id, &d_val, &x_val);
+
+  for (cs_lnum_t i = 0; i < size; i++) {
+
+    const cs_lnum_t  *idx = row_index + i;
+
+    cs_log_printf(CS_LOG_DEFAULT, "%4d |D|% -6.4e |E", i, d_val[i]);
+    for (cs_lnum_t j = idx[0]; j < idx[1]; j++)
+      cs_log_printf(CS_LOG_DEFAULT, "|% -6.4e c%4d", x_val[j], col_id[j]);
+    cs_log_printf(CS_LOG_DEFAULT, "\n");
+
+  } /* Loop on rows */
 }
 
 /*----------------------------------------------------------------------------*/
